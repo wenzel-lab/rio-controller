@@ -82,3 +82,18 @@ class PiStrobe:
     valid, data = self.packet_query( 4, [] )
     cam_read_time_us = int.from_bytes( data[1:3], byteorder='little', signed=False )
     return ( valid and ( data[0] == 0 ), cam_read_time_us )
+
+  def set_trigger_mode( self, hardware_trigger ):
+    """
+    Set trigger mode for strobe synchronization.
+    
+    Args:
+        hardware_trigger: True for hardware trigger mode (camera triggers strobe),
+                         False for software trigger mode (current behavior)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    mode = 1 if hardware_trigger else 0
+    valid, data = self.packet_query( 5, [mode] )
+    return ( valid and ( data[0] == 0 ) )

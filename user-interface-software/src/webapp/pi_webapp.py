@@ -173,13 +173,23 @@ def on_flow( data ):
     index = data['parameters']['index']
     pressure_mbar_target = data['parameters']['pressure_mbar_target']
     valid = flow.set_pressure( index, pressure_mbar_target )
-  if ( data['cmd'] == 'control_mode' ):
+  elif ( data['cmd'] == 'flow_ul_hr_target' ):
+    index = data['parameters']['index']
+    flow_ul_hr_target = data['parameters']['flow_ul_hr_target']
+    valid = flow.set_flow( index, flow_ul_hr_target )
+  elif ( data['cmd'] == 'control_mode' ):
     index = data['parameters']['index']
     control_mode = data['parameters']['control_mode']
     valid = flow.set_control_mode( index, int( control_mode ) )
+  elif ( data['cmd'] == 'flow_pi_consts' ):
+    index = data['parameters']['index']
+    pi_p = int( data['parameters']['p'] )
+    pi_i = int( data['parameters']['i'] )
+    pi_consts = [pi_p, pi_i]
+    valid = flow.set_flow_pi_consts( index, pi_consts )
     
-    update_flows_data()
-    socketio.emit( 'flows', flows_data )
+  update_flows_data()
+  socketio.emit( 'flows', flows_data )
 
 def gen( camera ):
   while True:

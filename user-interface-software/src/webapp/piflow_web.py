@@ -28,26 +28,43 @@ class flow_web:
     self.pressure_mbar_text     = [ ("")      for i in range(self.flow.NUM_CONTROLLERS) ]
     self.pressure_mbar_targets  = [ (0.00)    for i in range(self.flow.NUM_CONTROLLERS) ]
     self.flow_ul_hr_text        = [ ("")      for i in range(self.flow.NUM_CONTROLLERS) ]
+    self.flow_ul_hr_targets     = [ (0.00)    for i in range(self.flow.NUM_CONTROLLERS) ]
     self.control_modes          = [ (0)       for i in range(self.flow.NUM_CONTROLLERS) ]
     self.control_modes_text     = [ ("")      for i in range(self.flow.NUM_CONTROLLERS) ]
+    self.flow_pi_consts         = [ [0, 0]   for i in range(self.flow.NUM_CONTROLLERS) ]
     
     valid, id, id_valid = self.flow.get_id()
     print( "ID OK:{}, ID={}".format( id_valid, id ) )
     self.enabled = valid and id_valid
+    self.connected = self.enabled
+    self.reload = False
     
     self.get_pressure_targets()
+    self.get_flow_targets()
     self.get_control_modes()
+    self.get_flow_pi_consts()
 
   def get_pressure_targets( self ):
     valid, pressures_mbar_targets = self.flow.get_pressure_target()
     if valid:
       self.pressure_mbar_targets = pressures_mbar_targets
 
+  def get_flow_targets( self ):
+    valid, flows_ul_hr_targets = self.flow.get_flow_target()
+    if valid:
+      self.flow_ul_hr_targets = flows_ul_hr_targets
+
   def get_control_modes( self ):
     valid, control_modes = self.flow.get_control_modes()
     if valid:
       self.control_modes = control_modes
       self.control_modes_text = [ (self.ctrl_mode_str[control_mode]) for control_mode in control_modes ]
+
+  def get_flow_pi_consts( self ):
+    valid, flow_pid_consts = self.flow.get_flow_pid_consts()
+    if valid:
+      # Extract only P and I, set D=0 for PI control
+      self.flow_pi_consts = [ [pid_consts[0], pid_consts[1]] for pid_consts in flow_pid_consts ]
 
   def set_pressure( self, index, pressure_mbar ):
     try:
@@ -58,12 +75,27 @@ class flow_web:
     except:
       pass
   
+  def set_flow( self, index, flow_ul_hr ):
+    try:
+      flow = int( flow_ul_hr )
+      self.flow.set_flow( [index], [flow] )
+      self.get_flow_targets()
+    except:
+      pass
+
   def set_control_mode( self, index, control_mode ):
     try:
       self.flow.set_control_mode( [index], [control_mode] )
-#      self.pressure_targets[index] = self.get_temp_target()
-#      self.pressure_targets[index] = pressure
       self.get_control_modes()
+    except:
+      pass
+
+  def set_flow_pi_consts( self, index, pi_consts ):
+    try:
+      # Convert PI to PID format: [P, I] -> [P, I, 0] (D=0 for PI control)
+      pid_consts = [pi_consts[0], pi_consts[1], 0]
+      self.flow.set_flow_pid_consts( [index], [pid_consts] )
+      self.get_flow_pi_consts()
     except:
       pass
   
@@ -97,7 +129,16 @@ class flow_web:
 #        self.flows_actual = [11, 22, 33, 44]
       okay = okay and valid
       
-      if not okay:
+      if okay and not self.connected:
+        self.get_pressure_targets()
+        self.get_flow_targets()
+        self.get_control_modes()
+        self.get_flow_pi_consts()
+        self.reload = okay
+      
+      self.connected = okay
+      
+      if not self.connected:
         self.status_text = [ ( "Connection Error" ) for i in range (self.flow.NUM_CONTROLLERS) ]
 #        self.status_text = "Connection Error"
       else:
@@ -115,8 +156,7 @@ class flow_web:
       
       try:
         self.pressure_mbar_text = [ ( "{} / {}".format( round( self.pressures_actual[i], 2 ), round( self.pressure_mbar_targets[i], 2 ) ) ) for i in range (self.flow.NUM_CONTROLLERS) ]
-        self.flow_ul_hr_text = [ ( "{}".format( round( self.flows_actual[i], 2 ) ) ) for i in range (self.flow.NUM_CONTROLLERS) ]
-#        self.flow_ul_hr_text = [ ( "{} / {}".format( round( self.flows_actual[i], 2 ), round( self.flow_targets[i], 2 ) ) ) for i in range (self.flow.NUM_CONTROLLERS) ]
+        self.flow_ul_hr_text = [ ( "{} / {}".format( round( self.flows_actual[i], 2 ), round( self.flow_ul_hr_targets[i], 2 ) ) ) for i in range (self.flow.NUM_CONTROLLERS) ]
       except:
         pass
       
