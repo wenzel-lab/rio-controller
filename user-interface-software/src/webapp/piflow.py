@@ -1,6 +1,7 @@
 import time
-import spidev
 import picommon
+# Note: spidev is not directly used - we use picommon.spi instead
+# picommon handles simulation mode automatically
 
 class PiFlow:
   DEVICE_ID                       = 'MICROFLOW'
@@ -17,6 +18,8 @@ class PiFlow:
   PACKET_TYPE_GET_FLOW_ACTUAL     = 7
   PACKET_TYPE_SET_CONTROL_MODE    = 8
   PACKET_TYPE_GET_CONTROL_MODE    = 9
+  PACKET_TYPE_SET_FPID_CONSTS     = 10
+  PACKET_TYPE_GET_FPID_CONSTS     = 11
   
   NUM_CONTROLLERS                 = 4
   
@@ -136,6 +139,16 @@ class PiFlow:
       pressures_mbar.extend( [pressure_mbar] )
     return ( valid and ( data[0] == 0 ), pressures_mbar )
 
+  def get_flow_target( self ):
+    valid, data = self.packet_query( self.PACKET_TYPE_GET_FLOW_TARGET, [] )
+    count = int( ( len(data) - 1 ) / 2 )
+    flows_ul_hr=[]
+    for i in range(count):
+      index = 1 + ( i << 1 )
+      flow_ul_hr = int.from_bytes( data[index:index+2], byteorder='little', signed=False )
+      flows_ul_hr.extend( [flow_ul_hr] )
+    return ( valid and ( data[0] == 0 ), flows_ul_hr )
+
   def get_flow_actual( self ):
     valid, data = self.packet_query( self.PACKET_TYPE_GET_FLOW_ACTUAL, [] )
     count = int( ( len(data) - 1 ) / 2 )
@@ -146,6 +159,15 @@ class PiFlow:
       flows_ul_hr.extend( [flow_ul_hr] )
     return ( valid and ( data[0] == 0 ), flows_ul_hr )
 
+  def set_flow( self, indices, flows_ul_hr ):
+    data_bytes = []
+    for i in range(len(indices)):
+      mask = 1 << indices[i]
+      flow_ul_hr = int( flows_ul_hr[i] )
+      data_bytes.extend( [mask] + list( flow_ul_hr.to_bytes( 2, 'little', signed=False ) ) )
+    valid, data = self.packet_query( self.PACKET_TYPE_SET_FLOW_TARGET, data_bytes )
+    return ( ( valid and ( data[0] == 0 ) ) )
+
   def get_control_modes( self ):
     valid, data = self.packet_query( self.PACKET_TYPE_GET_CONTROL_MODE, [] )
     count = len(data) - 1
@@ -155,4 +177,28 @@ class PiFlow:
       control_mode = data[index]
       control_modes.extend( [control_mode] )
     return ( valid and ( data[0] == 0 ), control_modes )
+
+  def set_flow_pid_consts( self, indices, pid_consts ):
+    data_bytes = []
+    for i in range(len(indices)):
+      mask = 1 << indices[i]
+      pid_const = pid_consts[i]
+      data_bytes.extend( [mask] + list( pid_const[0].to_bytes( 2, 'little', signed=False ) ) )
+      data_bytes.extend( list( pid_const[1].to_bytes( 2, 'little', signed=False ) ) )
+      data_bytes.extend( list( pid_const[2].to_bytes( 2, 'little', signed=False ) ) )
+    valid, data = self.packet_query( self.PACKET_TYPE_SET_FPID_CONSTS, data_bytes )
+    return ( ( valid and ( data[0] == 0 ) ) )
+
+  def get_flow_pid_consts( self ):
+    valid, data = self.packet_query( self.PACKET_TYPE_GET_FPID_CONSTS, [] )
+    count = int( ( len(data) - 1 ) / ( 3 * 2 ) )  # 3 constants * 2 bytes each
+    pid_consts = []
+    for i in range(count):
+      consts = []
+      for j in range(3):  # P, I, D
+        index = 1 + ( 2 * ( 3 * i + j ) )
+        const = int.from_bytes( data[index:index+2], byteorder='little', signed=False )
+        consts.extend( [const] )
+      pid_consts.extend( [consts] )
+    return ( valid and ( data[0] == 0 ), pid_consts )
 

@@ -13,17 +13,26 @@ Usage:
 """
 
 from .config import SimulationConfig, load_config
-from .camera_simulated import SimulatedCamera
 from .spi_simulated import SimulatedSPIHandler
 from .strobe_simulated import SimulatedStrobe
 from .flow_simulated import SimulatedFlow
 
+# Camera simulation requires numpy/opencv - import lazily
+try:
+    from .camera_simulated import SimulatedCamera
+    _CAMERA_AVAILABLE = True
+except ImportError:
+    _CAMERA_AVAILABLE = False
+    SimulatedCamera = None
+
 __all__ = [
     'SimulationConfig',
     'load_config',
-    'SimulatedCamera',
     'SimulatedSPIHandler',
     'SimulatedStrobe',
     'SimulatedFlow',
 ]
+
+if _CAMERA_AVAILABLE:
+    __all__.append('SimulatedCamera')
 

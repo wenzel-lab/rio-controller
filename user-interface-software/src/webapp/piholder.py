@@ -1,6 +1,7 @@
 import time
-import spidev
 import picommon
+# Note: spidev is not directly used - we use picommon.spi instead
+# picommon handles simulation mode automatically
 
 class PiHolder:
   DEVICE_ID                         = 'SAMPLE_HOLDER'

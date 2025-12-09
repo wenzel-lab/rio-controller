@@ -38,7 +38,10 @@ class heater_web:
         break
 #      else:
 #        time.sleep( 0.1 )
-    print( "Heater {} ID OK:{}".format( heater_num, valid ) )
+    # Use logging instead of print (logging configured in main app)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Heater {heater_num} ID OK: {valid}")
     self.enabled = valid and id_valid
     
     self.temp_c_target = self.get_temp_target()

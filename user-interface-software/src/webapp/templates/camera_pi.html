@@ -10,17 +10,30 @@
   
   function cam_update()
   {
-    $('#strobe_enable').html( strobe.enable ? 'Enabled' : 'Disabled' );
-    $('#btn_strobe_enable').html( strobe.enable ? 'Disable' : 'Enable' );
-    
-    $('#strobe_hold').html( strobe.hold ? 'On' : 'Off' );
-    $('#btn_strobe_hold').html( strobe.hold ? 'Hold Off' : 'Hold On' );
-    
-    $('#strobe_period_us').html( strobe.period_ns / 1000 );
-    $('#strobe_wait_us').html( strobe.wait_ns / 1000 );
-    $('#strobe_cam_time_us').html( strobe.cam_read_time_us );
-    
-    $('#strobe_framerate').html( strobe.framerate );
+    // Initialize strobe buttons with default text if data not available
+    if (typeof strobe !== 'undefined' && strobe !== null) {
+      $('#strobe_enable').html( strobe.enable ? 'Enabled' : 'Disabled' );
+      $('#btn_strobe_enable').html( strobe.enable ? 'Disable' : 'Enable' );
+      
+      $('#strobe_hold').html( strobe.hold ? 'On' : 'Off' );
+      $('#btn_strobe_hold').html( strobe.hold ? 'Hold Off' : 'Hold On' );
+      
+      $('#strobe_period_us').html( strobe.period_ns ? (strobe.period_ns / 1000).toFixed(2) : '0' );
+      $('#strobe_wait_us').html( strobe.wait_ns ? (strobe.wait_ns / 1000).toFixed(2) : '0' );
+      $('#strobe_cam_time_us').html( strobe.cam_read_time_us || '0' );
+      
+      $('#strobe_framerate').html( strobe.framerate || '0' );
+    } else {
+      // Default values if strobe data not loaded yet
+      $('#strobe_enable').html( 'Disabled' );
+      $('#btn_strobe_enable').html( 'Enable' );
+      $('#strobe_hold').html( 'Off' );
+      $('#btn_strobe_hold').html( 'Hold On' );
+      $('#strobe_period_us').html( '0' );
+      $('#strobe_wait_us').html( '0' );
+      $('#strobe_cam_time_us').html( '0' );
+      $('#strobe_framerate').html( '0' );
+    }
     $('#btn_cam_snapshot').html( "Snapshot" );
     $('#btn_cam_optimize').html( "Optimize" );
   }
@@ -59,35 +72,56 @@
   var cameraImg = document.getElementById('camera_image');
   var roiCanvas = document.getElementById('roi_canvas');
   
-  if (cameraImg && roiCanvas) {
-    // Wait for image to load
-    cameraImg.addEventListener('load', function() {
-      if (!roiSelector) {
-        roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
-        
-        // Listen for ROI updates from server
-        socket.on('roi', function(data) {
-          if (data.roi) {
-            roiSelector.setROI(data.roi);
-            updateROIInfo();
-          }
-        });
+  function initROISelector() {
+    if (!cameraImg || !roiCanvas) {
+      console.log('ROI selector: waiting for elements...');
+      setTimeout(initROISelector, 100);
+      return;
+    }
+    
+    if (roiSelector) {
+      return; // Already initialized
+    }
+    
+    console.log('Initializing ROI selector...');
+    roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
+    
+    // Listen for ROI updates from server
+    socket.on('roi', function(data) {
+      if (data.roi) {
+        // Scale ROI from image coordinates to canvas coordinates
+        const scaleX = roiCanvas.width / cameraImg.naturalWidth;
+        const scaleY = roiCanvas.height / cameraImg.naturalHeight;
+        const scaledROI = {
+          x: data.roi.x * scaleX,
+          y: data.roi.y * scaleY,
+          width: data.roi.width * scaleX,
+          height: data.roi.height * scaleY
+        };
+        roiSelector.setROI(scaledROI);
+        updateROIInfo();
+      } else {
+        // Clear ROI locally without sending command back to server
+        // (to avoid infinite loop)
+        roiSelector.clearROI(false); // false = don't send to server
+        updateROIInfo();
       }
     });
     
-    // Also try immediately (in case image already loaded)
+    // Request current ROI from server
+    socket.emit('roi', {cmd: 'get'});
+  }
+  
+  // Wait for image to load
+  if (cameraImg) {
     if (cameraImg.complete) {
-      if (!roiSelector) {
-        roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
-        
-        socket.on('roi', function(data) {
-          if (data.roi) {
-            roiSelector.setROI(data.roi);
-            updateROIInfo();
-          }
-        });
-      }
+      initROISelector();
+    } else {
+      cameraImg.addEventListener('load', initROISelector);
     }
+  } else {
+    // Try again after a short delay
+    setTimeout(initROISelector, 500);
   }
   
   function updateROIInfo() {
@@ -104,17 +138,14 @@
   function clearROI() {
     if (roiSelector) {
       roiSelector.clearROI();
+      // Send clear command to backend
+      socket.emit('roi', {cmd: 'clear'});
       updateROIInfo();
     }
   }
   
-  function resetROI() {
-    if (roiSelector) {
-      roiSelector.clearROI();
-      // Request current ROI from server (if any)
-      socket.emit('roi', {cmd: 'get'});
-    }
-  }
+  // Make function globally accessible
+  window.clearROI = clearROI;
   
   socket.on( 'strobe', function( data ) {
     strobe = data;
@@ -137,7 +168,6 @@
   </div>
   <div style="margin: 10px 0;">
     <button id="btn_roi_clear" onclick="clearROI()" style="width: 100px; margin-right: 10px;">Clear ROI</button>
-    <button id="btn_roi_reset" onclick="resetROI()" style="width: 100px;">Reset ROI</button>
     <span id="roi_info" style="margin-left: 20px; font-weight: bold;"></span>
   </div>
   <table style="border: 1px solid black; padding: 10px" cellpadding="2px">

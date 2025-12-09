@@ -1,16 +1,32 @@
 """
 Simulated camera implementation.
 
-Generates synthetic frames with optional droplet patterns for testing.
+Generates synthetic frames with optional droplet patterns for testing without
+physical hardware. This module provides a drop-in replacement for real camera
+implementations, allowing the application to run and be tested on any system.
+
+Classes:
+    SimulatedCamera: Camera implementation that generates synthetic frames
 """
 
 import numpy as np
 import cv2
 import time
-import io
+import logging
 from typing import Optional, Callable, Tuple
 from threading import Event, Thread
-import platform
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Constants
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
+DEFAULT_FPS = 30
+DEFAULT_DROPLET_COUNT = 5
+DEFAULT_DROPLET_SIZE_RANGE = (10, 50)
+JPEG_QUALITY = 85
+FRAME_WAIT_TIME_S = 0.1
 
 # Try to import real camera classes (will fail on non-Pi systems, that's OK)
 try:
@@ -45,20 +61,33 @@ class SimulatedCamera(BaseCamera):
     - JPEG encoding for web streaming
     """
     
-    def __init__(self, width: int = 640, height: int = 480, fps: int = 30,
-                 generate_droplets: bool = True, droplet_count: int = 5,
-                 droplet_size_range: Tuple[int, int] = (10, 50)):
+    def __init__(self, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT,
+                 fps: int = DEFAULT_FPS, generate_droplets: bool = True,
+                 droplet_count: int = DEFAULT_DROPLET_COUNT,
+                 droplet_size_range: Tuple[int, int] = DEFAULT_DROPLET_SIZE_RANGE):
         """
         Initialize simulated camera.
         
         Args:
-            width: Frame width in pixels
-            height: Frame height in pixels
-            fps: Target frames per second
-            generate_droplets: Whether to draw synthetic droplets
-            droplet_count: Number of droplets per frame
-            droplet_size_range: (min, max) droplet radius in pixels
+            width: Frame width in pixels (default: 640)
+            height: Frame height in pixels (default: 480)
+            fps: Target frames per second (default: 30)
+            generate_droplets: Whether to draw synthetic droplets (default: True)
+            droplet_count: Number of droplets per frame (default: 5)
+            droplet_size_range: (min, max) droplet radius in pixels (default: (10, 50))
+        
+        Raises:
+            ValueError: If width, height, or fps are invalid
         """
+        # Validate inputs
+        if width <= 0 or height <= 0:
+            raise ValueError(f"Invalid dimensions: {width}x{height}")
+        if fps <= 0:
+            raise ValueError(f"Invalid FPS: {fps}")
+        if droplet_count < 0:
+            raise ValueError(f"Invalid droplet count: {droplet_count}")
+        
+        logger.debug(f"Initializing SimulatedCamera: {width}x{height} @ {fps}fps, droplets={generate_droplets}")
         self.config = {
             "size": [width, height],
             "FrameRate": fps,
@@ -147,16 +176,25 @@ class SimulatedCamera(BaseCamera):
             return  # Already running
         
         self.cam_running_event.set()
-        self.frame_thread = Thread(target=self._capture_loop, daemon=True)
+        self.frame_thread = Thread(target=self._capture_loop, daemon=True, name="SimulatedCameraThread")
         self.frame_thread.start()
-        print(f"[SimulatedCamera] Started ({self.width}x{self.height} @ {self.fps} FPS)")
+        logger.info(f"SimulatedCamera started ({self.width}x{self.height} @ {self.fps} FPS)")
     
     def stop(self):
-        """Stop camera capture."""
+        """
+        Stop camera capture.
+        
+        Clears the running event and waits for the frame thread to terminate.
+        """
+        if not self.cam_running_event.is_set():
+            return  # Already stopped
+        
         self.cam_running_event.clear()
         if self.frame_thread:
             self.frame_thread.join(timeout=2.0)
-        print("[SimulatedCamera] Stopped")
+            if self.frame_thread.is_alive():
+                logger.warning("SimulatedCamera thread did not terminate within timeout")
+        logger.debug("SimulatedCamera stopped")
     
     def _capture_loop(self):
         """Main capture loop (runs in background thread)."""
@@ -173,7 +211,7 @@ class SimulatedCamera(BaseCamera):
                 try:
                     self.frame_callback()
                 except Exception as e:
-                    print(f"[SimulatedCamera] Frame callback error: {e}")
+                    logger.error(f"Frame callback error: {e}")
             
             # Maintain frame rate
             elapsed = time.time() - start_time
@@ -240,6 +278,10 @@ class SimulatedCamera(BaseCamera):
         """Set frame callback (called on each frame capture)."""
         self.frame_callback = callback
     
+    def close(self):
+        """Close camera (alias for stop for compatibility)."""
+        self.stop()
+    
     def generate_frames(self, config=None):
         """
         Generator that yields JPEG-encoded frames (for web streaming).
@@ -253,13 +295,17 @@ class SimulatedCamera(BaseCamera):
             self.start()
         
         # Wait a bit for first frame
-        time.sleep(0.1)
+        time.sleep(FRAME_WAIT_TIME_S)
         
         while self.cam_running_event.is_set():
             frame = self.get_frame_array()
             if frame is not None:
                 # Encode as JPEG
-                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                yield buffer.tobytes()
+                try:
+                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                    if buffer is not None:
+                        yield buffer.tobytes()
+                except Exception as e:
+                    logger.error(f"Error encoding frame as JPEG: {e}")
             time.sleep(1.0 / self.fps)
 

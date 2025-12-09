@@ -1,4 +1,5 @@
-<doctype html="">
+<!DOCTYPE html>
+<html>
   <head>
     {% if cam.camera == 'rpi' %}
       {% import 'camera_pi.html' as cam_html %}
@@ -8,11 +9,113 @@
     
     <title>Open Microfluidics Station</title>
     <!--meta http-equiv="refresh" content="2" /-->
+    <meta charset="UTF-8">
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; }
+      h2, h3 { color: #333; }
+      table { border-collapse: collapse; margin: 10px 0; }
+      td { padding: 5px; }
+    </style>
+  </head>
+  <body>
     <h2>Open Microfluidics Station</h2>
+    <p></p><p>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        </p><ul class="flashes">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <p>Update Count: <a id='update_count'>{{debug.update_count}}</a></p>
+
+    <h3>Camera</h3>
+    <!--<p>Camera: {{cam.camera}}</p>-->
+    <select id="select_camera" onchange="cam_select()">
+      <option value="none">None</option>
+      <option value="rpi"{% if cam.camera == "rpi" %} selected{%endif%}>RPI</option>
+    </select>    
+    {{ cam_html.html() }}
+    
+    {% for flow in flows %}
+      <h3>Flow {{loop.index}}</h3>
+      <table style="border: 1px solid black; padding: 10px" cellpadding="2px">
+        <tr>
+          <td width=150>Status</td>
+          <td width=150><p id='flow{{loop.index}}_status'></p></td>
+        </tr>
+        <tr valign="top">
+          <td>Control Mode</td>
+          <td><p id='flow{{loop.index}}_control_mode'></p></td>
+          <td></td>
+          <td>
+          {% set flow_loop = loop %}
+          {% for mode_str in flows[flow_loop.index-1].control_modes %}
+            <input type="radio" name="input_flow{{flow_loop.index}}_control_mode" value="{{loop.index-1}}" onclick="flow_control_mode({{flow_loop.index-1}})" {% if flows[flow_loop.index-1].control_mode == (loop.index-1) %} checked{%endif%}><label>{{mode_str}}</label><br>
+          {% endfor %}
+          </td>
+        </tr>
+        <tr>
+          <td>Pressure (mbar)</td>
+          <td><p id='flow{{loop.index}}_pressure_mbar_text'></p></td>
+          <td><input type="number" id="input_flow{{loop.index}}_pressure_mbar_target" min="0" max="10000"></td>
+          <td><button id='btn_flow{{loop.index}}_pressure_mbar_target', onclick="flow_pressure_mbar_target({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+        <tr>
+          <td>Flow (ul/hr)</td>
+          <td><p id='flow{{loop.index}}_flow_ul_hr_text'></p></td>
+          <td><input type="number" id="input_flow{{loop.index}}_flow_ul_hr_target" min="0" max="10000"></td>
+          <td><button id='btn_flow{{loop.index}}_flow_ul_hr_target', onclick="flow_flow_ul_hr_target({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+      </table>
+    {% endfor %}
+  
+    {% for heater in heaters %}
+      <h3>Heater {{loop.index}}</h3>
+      <table style="border: 1px solid black; padding: 10px" cellpadding="2px">
+        <tr>
+          <td width=150>Status</td>
+          <td width=100><p id='heater{{loop.index}}_status'></p></td>
+        </tr>
+        <tr>
+          <td>PID Enabled</td>
+          <td><p id='heater{{loop.index}}_pid_enabled'></p></td>
+          <td></td>
+          <td><button id='btn_heater{{loop.index}}_pid_enabled', onclick="heater_pid_enable({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+        <tr>
+          <td>Temperature (degC)</td>
+          <td><p id='heater{{loop.index}}_temp_text'></p></td>
+          <td><input type="number" id="input_heater{{loop.index}}_temp_c_target" min="-50" max="100"></td>
+          <td><button id='btn_heater{{loop.index}}_temp_c_target', onclick="heater_temp_c_target({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+        <tr>
+          <td>Autotune Status</td>
+          <td><p id='heater{{loop.index}}_autotune_status'></p></td>
+          <td><input type="number" id="input_heater{{loop.index}}_autotune_target_temp" min="-50" max="100"></td>
+          <td><button id='btn_heater{{loop.index}}_autotune', onclick="heater_autotune({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+        <tr>
+          <td>Power Limit (%)</td>
+          <td><p id='heater{{loop.index}}_power_limit'></p></td>
+          <td><input type="number" id="input_heater{{loop.index}}_power_limit" min="1" max="100"></td>
+          <td><button id='btn_heater{{loop.index}}_power_limit', onclick="heater_set_power_limit({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+        <tr>
+          <td>Stir Speed</td>
+          <td><p id='heater{{loop.index}}_stir_speed'></p></td>
+          <td><input type="number" id="input_heater{{loop.index}}_stir_speed" min="0" max="100"></td>
+          <td><button id='btn_heater{{loop.index}}_stir' onclick="heater_stir({{loop.index-1}})", style="width: 100px">Set</button></td>
+        </tr>
+      </table>
+    {% endfor %}
 
     <script src="//code.jquery.com/jquery-1.12.4.min.js" integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ=" crossorigin="anonymous"></script>
-    <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
-    <!--<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.6/socket.io.min.js"></script>-->
+    <!-- Updated to Socket.IO 4.x for compatibility with Flask-SocketIO 5.x -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='roi_selector.js') }}"></script>
     <script type="text/javascript" charset="utf-8">
     //  var socket = io.connect('http://' + document.domain + ':' + location.port);
@@ -70,8 +173,10 @@
           $('#flow'+(i+1)+'_status').html( flows[i].status );
           $('#flow'+(i+1)+'_pressure_mbar_text').html( flows[i].pressure_mbar_text );
           $('#flow'+(i+1)+'_flow_ul_hr_text').html( flows[i].flow_ul_hr_text );
-          $('#flow'+(i+1)+'_control_mode').html( flows[i].control_modes[flows[i].control_mode] );
-          $("input:radio[name=input_flow"+(i+1)+"_control_mode][value='"+flows[i].control_mode+"']").prop( "checked", true );
+          // Map firmware mode to UI mode for display
+          var firmwareMode = flows[i].control_mode; // This is now the UI mode index (0, 1, or 2)
+          $('#flow'+(i+1)+'_control_mode').html( flows[i].control_modes[firmwareMode] );
+          $("input:radio[name=input_flow"+(i+1)+"_control_mode][value='"+firmwareMode+"']").prop( "checked", true );
         }
       }
       
@@ -134,103 +239,5 @@
         socket.emit( 'flow', { cmd: 'control_mode', parameters: { 'index': index, 'control_mode': ( $('input:radio[name=input_flow'+(index+1)+'_control_mode]:checked').val() ) } } );
       }
     </script>
-  </head>
-
-  <body>
-    <p></p><p>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        </p><ul class="flashes">
-        {% for message in messages %}
-          <li>{{ message }}</li>
-        {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
-
-    <p>Update Count: <a id='update_count'>{{debug.update_count}}</a></p>
-
-    <h3>Camera</h3>
-    <!--<p>Camera: {{cam.camera}}</p>-->
-    <select id="select_camera" onchange="cam_select()">
-      <option value="none">None</option>
-      <option value="rpi"{% if cam.camera == "rpi" %} selected{%endif%}>RPI</option>
-    </select>    
-    {{ cam_html.html() }}
-    
-    {% for flow in flows %}
-      <h3>Flow {{loop.index}}</h3>
-      <table style="border: 1px solid black; padding: 10px" cellpadding="2px">
-        <tr>
-          <td width=150>Status</td>
-          <td width=150><p id='flow{{loop.index}}_status'></p></td>
-        </tr>
-        <tr valign="top">
-          <td>Control Mode</td>
-          <td><p id='flow{{loop.index}}_control_mode'></p></td>
-          <td></td>
-          <td>
-          {% set flow_loop = loop %}
-          {% for mode_str in flows[flow_loop.index-1].control_modes %}
-            <input type="radio" name="input_flow{{flow_loop.index}}_control_mode" value="{{loop.index-1}}" onclick="flow_control_mode({{flow_loop.index-1}})" {% if flows[flow_loop.index-1].control_mode == mode_str %} checked{%endif%}><label>{{mode_str}}</label><br>
-          {% endfor %}
-          </td>
-        </tr>
-        <tr>
-          <td>Pressure (mbar)</td>
-          <td><p id='flow{{loop.index}}_pressure_mbar_text'></p></td>
-          <td><input type="number" id="input_flow{{loop.index}}_pressure_mbar_target" min="0" max="10000"></td>
-          <td><button id='btn_flow{{loop.index}}_pressure_mbar_target', onclick="flow_pressure_mbar_target({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-        <tr>
-          <td>Flow (ul/hr)</td>
-          <td><p id='flow{{loop.index}}_flow_ul_hr_text'></p></td>
-          <td><input type="number" id="input_flow{{loop.index}}_flow_ul_hr_target" min="0" max="10000"></td>
-          <td><button id='btn_flow{{loop.index}}_flow_ul_hr_target', onclick="flow_flow_ul_hr_target({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-      </table>
-    {% endfor %}
-  
-    {% for heater in heaters %}
-      <h3>Heater {{loop.index}}</h3>
-      <table style="border: 1px solid black; padding: 10px" cellpadding="2px">
-        <tr>
-          <td width=150>Status</td>
-          <td width=100><p id='heater{{loop.index}}_status'></p></td>
-        </tr>
-        <tr>
-          <td>PID Enabled</td>
-          <td><p id='heater{{loop.index}}_pid_enabled'></p></td>
-          <td></td>
-          <td><button id='btn_heater{{loop.index}}_pid_enabled', onclick="heater_pid_enable({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-        <tr>
-          <td>Temperature (degC)</td>
-          <td><p id='heater{{loop.index}}_temp_text'></p></td>
-          <td><input type="number" id="input_heater{{loop.index}}_temp_c_target" min="-50" max="100"></td>
-          <td><button id='btn_heater{{loop.index}}_temp_c_target', onclick="heater_temp_c_target({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-        <tr>
-          <td>Autotune Status</td>
-          <td><p id='heater{{loop.index}}_autotune_status'></p></td>
-          <td><input type="number" id="input_heater{{loop.index}}_autotune_target_temp" min="-50" max="100"></td>
-          <td><button id='btn_heater{{loop.index}}_autotune', onclick="heater_autotune({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-        <tr>
-          <td>Power Limit (%)</td>
-          <td><p id='heater{{loop.index}}_power_limit'></p></td>
-          <td><input type="number" id="input_heater{{loop.index}}_power_limit" min="1" max="100"></td>
-          <td><button id='btn_heater{{loop.index}}_power_limit', onclick="heater_set_power_limit({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-        <tr>
-          <td>Stir Speed</td>
-          <td><p id='heater{{loop.index}}_stir_speed'></p></td>
-          <td><input type="number" id="input_heater{{loop.index}}_stir_speed" min="0" max="100"></td>
-          <td><button id='btn_heater{{loop.index}}_stir' onclick="heater_stir({{loop.index-1}})", style="width: 100px">Set</button></td>
-        </tr>
-      </table>
-    {% endfor %}
-
   </body>
-
-</doctype>
+</html>

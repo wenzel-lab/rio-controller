@@ -8,10 +8,22 @@ Based on tested code from flow-microscopy-platform repository:
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Callable, Tuple, Dict, Generator
-import numpy as np
+from typing import Optional, Callable, Tuple, Dict, Generator, TYPE_CHECKING, Any
 import platform
 import os
+
+# numpy is only needed for type hints and actual camera implementations
+# Make it optional so the base class can be imported without numpy
+if TYPE_CHECKING:
+    import numpy as np
+else:
+    try:
+        import numpy as np
+    except ImportError:
+        # Create a dummy class for type hints when numpy isn't available
+        class _DummyNDArray:
+            pass
+        np = type('np', (), {'ndarray': _DummyNDArray})()
 
 
 class BaseCamera(ABC):
@@ -55,7 +67,7 @@ class BaseCamera(ABC):
         pass
     
     @abstractmethod
-    def get_frame_array(self) -> np.ndarray:
+    def get_frame_array(self) -> Any:  # np.ndarray when numpy available
         """
         Get single frame as numpy array
         
@@ -65,7 +77,7 @@ class BaseCamera(ABC):
         pass
     
     @abstractmethod
-    def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> np.ndarray:
+    def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> Any:  # np.ndarray when numpy available
         """
         Get ROI (Region of Interest) frame as numpy array
         
@@ -146,24 +158,62 @@ def create_camera(simulation: bool = False, sim_config: dict = None) -> BaseCame
     Raises:
         RuntimeError: If no camera library is available (and not in simulation mode)
     """
-    # Check for simulation mode first
+    import os
+    
+    # Helper function to import simulation camera
+    def _import_simulated_camera():
+        """Import SimulatedCamera with multiple fallback strategies."""
+        import sys
+        import os as os_module
+        
+        # Get the parent directory (src/)
+        current_file = os_module.path.abspath(__file__)
+        parent_dir = os_module.path.dirname(os_module.path.dirname(current_file))
+        
+        # Strategy 1: Add parent directory to path and import
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        
+        try:
+            from simulation.camera_simulated import SimulatedCamera
+            return SimulatedCamera
+        except ImportError as e1:
+            # Strategy 2: Try importing from absolute path
+            try:
+                sim_path = os_module.path.join(parent_dir, 'simulation')
+                if sim_path not in sys.path:
+                    sys.path.insert(0, sim_path)
+                from camera_simulated import SimulatedCamera
+                return SimulatedCamera
+            except ImportError as e2:
+                # Check if it's a missing dependency (numpy/opencv) vs path issue
+                error_msg = str(e1) if 'numpy' in str(e1).lower() or 'cv2' in str(e1).lower() else str(e2)
+                if 'numpy' in error_msg.lower() or 'cv2' in error_msg.lower() or 'opencv' in error_msg.lower():
+                    raise ImportError(f"Simulation dependencies missing: {error_msg}. Install with: pip install numpy opencv-python")
+                raise ImportError(f"Could not import SimulatedCamera: {error_msg}")
+    
+    # Check for simulation mode first (explicit parameter)
     if simulation:
         try:
-            from ..simulation.camera_simulated import SimulatedCamera
+            SimulatedCamera = _import_simulated_camera()
             if sim_config:
                 return SimulatedCamera(**sim_config)
             return SimulatedCamera()
-        except ImportError:
-            print("Warning: Simulation module not available, falling back to real camera")
+        except ImportError as e:
+            print(f"Warning: Simulation module not available ({e}), falling back to real camera")
     
     # Check environment variable for simulation
-    import os
     if os.getenv('RIO_SIMULATION', 'false').lower() == 'true':
         try:
-            from ..simulation.camera_simulated import SimulatedCamera
+            SimulatedCamera = _import_simulated_camera()
             return SimulatedCamera()
-        except ImportError:
-            print("Warning: Simulation module not available, falling back to real camera")
+        except ImportError as e:
+            print(f"Warning: Simulation module not available ({e})")
+            # In simulation mode, we should use simulated camera, so raise error
+            raise RuntimeError(
+                "Simulation mode enabled but simulation module unavailable. "
+                "Install dependencies: pip install numpy opencv-python"
+            )
     
     # Check if 64-bit OS
     machine = platform.machine()
@@ -178,6 +228,7 @@ def create_camera(simulation: bool = False, sim_config: dict = None) -> BaseCame
             test_cam.close()
             del test_cam
             
+            # Import only when we know picamera2 is available
             from .pi_camera_v2 import PiCameraV2
             return PiCameraV2()
         except (ImportError, Exception) as e:
@@ -187,9 +238,16 @@ def create_camera(simulation: bool = False, sim_config: dict = None) -> BaseCame
     # Fall back to 32-bit (picamera)
     try:
         from picamera import PiCamera
+        # Import only when we know picamera is available
         from .pi_camera_legacy import PiCameraLegacy
         return PiCameraLegacy()
     except ImportError:
+        # If we're not on a Raspberry Pi, suggest simulation mode
+        if machine not in ('armv7l', 'aarch64', 'arm64'):
+            raise RuntimeError(
+                "No camera library available on this platform. "
+                "Enable simulation mode: export RIO_SIMULATION=true"
+            )
         raise RuntimeError(
             "No camera library available. "
             "Install either 'picamera' (32-bit) or 'picamera2' (64-bit), "

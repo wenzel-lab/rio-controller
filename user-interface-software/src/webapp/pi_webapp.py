@@ -1,215 +1,237 @@
+"""
+Main Flask application entry point for Rio microfluidics controller.
+
+This module follows MVC architecture:
+- Model: Hardware access classes (PiFlow, PiStrobe, Camera, etc.)
+- View: Templates and static files (HTML, JavaScript, CSS)
+- Controller: Request handlers and WebSocket event handlers
+
+The application separates concerns:
+- Controllers handle business logic and coordinate between models and views
+- ViewModel formats data for template rendering
+- Models handle hardware communication
+- Views handle presentation
+
+Usage:
+    python pi_webapp.py [PORT]
+    
+    Or set RIO_PORT environment variable for port number.
+"""
+
 import time
-from threading import Thread, Event
-from flask import Flask, flash, render_template, request, redirect, Response
-from flask_socketio import SocketIO, join_room, emit, send
-import eventlet 
+import os
+import sys
+import logging
+from threading import Event
+from flask import Flask, render_template, Response
+from flask_socketio import SocketIO
+import eventlet
 import picommon
-from pistrobe import PiStrobe
 from piholder_web import heater_web
-#from camera import Camera
 from camera_pi import Camera
-#from vimba_pi import Camera
-from piflow_web import flow_web
+from piflow_web import FlowWeb
+from controllers import CameraController, FlowController, HeaterController, ViewModel
 
-eventlet.monkey_patch( os=True, select=True, socket=True, thread=False, time=True, psycopg=True )
-#eventlet.monkey_patch()
+# Configure eventlet monkey patching
+eventlet.monkey_patch(os=True, select=True, socket=True, thread=False, time=True, psycopg=True)
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Global state
 exit_event = Event()
+debug_data = {'update_count': 0}
 
-picommon.spi_init( 0, 2, 30000 )
+# Initialize hardware communication
+logger.info("Initializing SPI communication...")
+try:
+    picommon.spi_init(0, 2, 30000)
+except Exception as e:
+    logger.error(f"Error initializing SPI: {e}")
+    raise
 
-debug_data = { 'update_count': 0 }
-
-heaters_data = [ { 'status': '', 'temp_text': '', 'temp_c_actual': 0.0, 'temp_c_target': 0.0, 'pid_enabled': False,
-                   'power_limit': 0, 'autotune_status': '', 'autotune_target_temp': 0.0, 'autotuning': False,
-                   'stir_speed_text': '', 'stir_speed_target': 0, 'stir_enabled': False } for i in range(4) ]
-heater1 = heater_web( 1, picommon.PORT_HEATER1 )
-heater2 = heater_web( 2, picommon.PORT_HEATER2 )
-heater3 = heater_web( 3, picommon.PORT_HEATER3 )
-heater4 = heater_web( 4, picommon.PORT_HEATER4 )
+# Initialize hardware models
+logger.info("Initializing hardware models...")
+heater1 = heater_web(1, picommon.PORT_HEATER1)
+heater2 = heater_web(2, picommon.PORT_HEATER2)
+heater3 = heater_web(3, picommon.PORT_HEATER3)
+heater4 = heater_web(4, picommon.PORT_HEATER4)
 heaters = [heater1, heater2, heater3, heater4]
 
-flows_data = [ { 'status': '', 'pressure_mbar_text': '', 'pressure_mbar_target': 0.0, 'flow_ul_hr_text':'', 'control_modes': [], 'control_mode': '' } for i in range(4) ]
-flow = flow_web( picommon.PORT_FLOW )
+flow = FlowWeb(picommon.PORT_FLOW)
 
-app = Flask( __name__, static_folder='static', static_url_path='/static' )
-socketio = SocketIO( app, async_mode = 'eventlet' )
-thread = None
+# Initialize Flask application
+app = Flask(__name__, static_folder='static', static_url_path='/static')
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
 
-cam = Camera( exit_event, socketio )
-#cam.initialize()
-#cam.init2()
+# Initialize camera (socketio will be set after creation)
+cam = Camera(exit_event, socketio)
 
-def update_heater_data( index, heater ):
-  heaters_data[index]['status'] = heater.status_text
-#  heaters_data[index]['temp_text'] = '{}'.format( round( heater.temp_text, 2 ) )
-  heaters_data[index]['temp_text'] = heater.temp_text
-  heaters_data[index]['temp_c_target'] = heater.temp_c_target
-  heaters_data[index]['pid_enabled'] = heater.pid_enabled
-  heaters_data[index]['power_limit'] = heater.heat_power_limit_pc
-  heaters_data[index]['autotune_status'] = heater.autotune_status_text
-  heaters_data[index]['autotune_target_temp'] = heater.autotune_target_temp
-  heaters_data[index]['autotuning'] = heater.autotuning
-  heaters_data[index]['stir_speed_text'] = heater.stir_speed_text
-  heaters_data[index]['stir_speed_target'] = heater.stir_target_speed
-  heaters_data[index]['stir_enabled'] = heater.stir_enabled
+# Initialize controllers
+logger.info("Initializing controllers...")
+camera_controller = CameraController(cam, socketio)
+flow_controller = FlowController(flow, socketio)
+heater_controller = HeaterController(heaters, socketio)
 
-def update_heaters_data():
-  heater1.update()
-  heater2.update()
-  heater3.update()
-  heater4.update()
-  update_heater_data( 0, heater1 )
-  update_heater_data( 1, heater2 )
-  update_heater_data( 2, heater3 )
-  update_heater_data( 3, heater4 )
+# Initialize view model
+view_model = ViewModel()
 
-def update_flow_data( index ):
-  flows_data[index]['status'] = flow.status_text[index]
-  flows_data[index]['pressure_mbar_text'] = flow.pressure_mbar_text[index]
-  flows_data[index]['pressure_mbar_target'] = flow.pressure_mbar_targets[index]
-  flows_data[index]['flow_ul_hr_text'] = flow.flow_ul_hr_text[index]
-  flows_data[index]['control_modes'] = flow.ctrl_mode_str
-  flows_data[index]['control_mode'] = flow.control_modes[index]
+# Background update thread
+update_thread = None
 
-def update_flows_data():
-  flow.update()
-  update_flow_data( 0 )
-  update_flow_data( 1 )
-  update_flow_data( 2 )
-  update_flow_data( 3 )
-
-def update_all_data():
-  cam.update_strobe_data()
-  update_heaters_data()
-  update_flows_data()
-
-def background_stuff():
-  while True:
-    time.sleep( 1 )
-#    event.wait( 1 )
-#    pi_wait_s( 1 )
+def update_all_data() -> None:
+    """
+    Update all device data from hardware.
     
-    debug_data['update_count'] = debug_data['update_count'] + 1
-    
-    update_all_data()
-    
-    socketio.emit( 'debug', debug_data )
-    socketio.emit( 'heaters', heaters_data )
-    socketio.emit( 'flows', flows_data )
-    cam.emit()
+    This function coordinates data updates from all hardware models.
+    The ViewModel is used to format data for templates.
+    """
+    try:
+        cam.update_strobe_data()
+        
+        # Update heaters
+        for heater in heaters:
+            heater.update()
+        
+        # Update flow
+        flow.update()
+        
+    except Exception as e:
+        logger.error(f"Error updating device data: {e}")
 
-def start_server():
-  global thread
-  if thread is None:
-#    thread = socketio.start_background_task( target=background_stuff, args=(picommon.pi_lock,) )
-    thread = socketio.start_background_task( target=background_stuff )
-#    thread = Thread( target=background_stuff )
-#    thread.start()
 
-#@app.route('/', methods=['GET', 'POST'])
-@app.route( '/' )
+def background_update_loop() -> None:
+    """
+    Background thread loop for periodic data updates.
+    
+    Updates device data and emits to WebSocket clients at regular intervals.
+    Uses ViewModel to format data for clients.
+    """
+    while True:
+        try:
+            time.sleep(1.0)
+            debug_data['update_count'] += 1
+            update_all_data()
+            
+            # Format data using view model
+            heaters_data = view_model.format_heater_data(heaters)
+            flows_data = view_model.format_flow_data(flow)
+            debug_formatted = view_model.format_debug_data(debug_data['update_count'])
+            
+            # Emit updated data to all clients
+            socketio.emit('debug', debug_formatted)
+            socketio.emit('heaters', heaters_data)
+            socketio.emit('flows', flows_data)
+            cam.emit()
+            
+        except Exception as e:
+            logger.error(f"Error in background update loop: {e}")
+
+
+def start_background_thread() -> None:
+    """Start the background data update thread."""
+    global update_thread
+    if update_thread is None:
+        update_thread = socketio.start_background_task(target=background_update_loop)
+        logger.info("Background update thread started")
+
+@app.route('/')
 def index():
-  debug_data['update_count'] = debug_data['update_count'] + 1
-#  start_server()
-  return render_template( 'index.html', debug=debug_data, strobe=cam.strobe_data, heaters=heaters_data, flows=flows_data, cam=cam.cam_data )
-
-@socketio.on( 'create' )
-def on_create( data ):
-  pass
-
-@socketio.on( 'connect' )
-def on_connect():
-  print( "Connected" )
-  start_server()
-  pass
-
-@socketio.on( 'cam_select' )
-def on_cam( data ):
-  if ( data['cmd'] == 'select' ):
-    cam.cam_data['camera'] = data['parameters']['camera']
-    socketio.emit( 'reload' )
-#    socketio.emit( 'cam', cam.cam_data )
-
-@socketio.on( 'heater' )
-def on_heater( data ):
-  index = -1
-  
-  if ( data['cmd'] == 'temp_c_target' ):
-    index = data['parameters']['index']
-    temp_c_target = data['parameters']['temp_c_target']
-    valid = heaters[index].set_temp( temp_c_target )
-  elif ( data['cmd'] == 'pid_enable' ):
-    index = data['parameters']['index']
-    enabled = data['parameters']['on']
-    valid = heaters[index].set_pid_running( enabled )
-  elif ( data['cmd'] == 'power_limit_pc' ):
-    index = data['parameters']['index']
-    power_limit_pc = data['parameters']['power_limit_pc']
-    valid = heaters[index].set_heat_power_limit_pc( power_limit_pc )
-  elif ( data['cmd'] == 'autotune' ):
-    index = data['parameters']['index']
-    enabled = data['parameters']['on']
-    temp = data['parameters']['temp']
-    heaters[index].autotune_target_temp = temp
-    valid = heaters[index].set_autotune( enabled )
-  elif ( data['cmd'] == 'stir' ):
-    index = data['parameters']['index']
-    enabled = data['parameters']['on']
-    speed = data['parameters']['speed']
-    heaters[index].stir_target_speed = speed
-    valid = heaters[index].set_stir_running( enabled )
-  
-  if index >= 0:
-    heaters[index].update()
-    update_heater_data( index, heaters[index] )
-    socketio.emit( 'heaters', heaters_data )
-
-@socketio.on( 'flow' )
-def on_flow( data ):
-  index = -1
-  
-  if ( data['cmd'] == 'pressure_mbar_target' ):
-    index = data['parameters']['index']
-    pressure_mbar_target = data['parameters']['pressure_mbar_target']
-    valid = flow.set_pressure( index, pressure_mbar_target )
-  elif ( data['cmd'] == 'flow_ul_hr_target' ):
-    index = data['parameters']['index']
-    flow_ul_hr_target = data['parameters']['flow_ul_hr_target']
-    valid = flow.set_flow( index, flow_ul_hr_target )
-  elif ( data['cmd'] == 'control_mode' ):
-    index = data['parameters']['index']
-    control_mode = data['parameters']['control_mode']
-    valid = flow.set_control_mode( index, int( control_mode ) )
-  elif ( data['cmd'] == 'flow_pi_consts' ):
-    index = data['parameters']['index']
-    pi_p = int( data['parameters']['p'] )
-    pi_i = int( data['parameters']['i'] )
-    pi_consts = [pi_p, pi_i]
-    valid = flow.set_flow_pi_consts( index, pi_consts )
+    """
+    Main page route handler.
     
-  update_flows_data()
-  socketio.emit( 'flows', flows_data )
+    Renders the main template with current device state.
+    Uses ViewModel to format all data for template rendering.
+    """
+    try:
+        debug_data['update_count'] += 1
+        
+        # Format data for template using view model
+        heaters_data = view_model.format_heater_data(heaters)
+        flows_data = view_model.format_flow_data(flow)
+        camera_data = view_model.format_camera_data(cam)
+        strobe_data = view_model.format_strobe_data(cam)
+        debug_formatted = view_model.format_debug_data(debug_data['update_count'])
+        
+        logger.debug(f"Rendering index.html with camera={camera_data.get('camera', 'unknown')}")
+        
+        return render_template(
+            'index.html',
+            debug=debug_formatted,
+            strobe=strobe_data,
+            heaters=heaters_data,
+            flows=flows_data,
+            cam=camera_data
+        )
+    except Exception as e:
+        logger.error(f"Error rendering template: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"<html><body><h1>Error</h1><pre>{str(e)}</pre></body></html>", 500
 
-def gen( camera ):
-  while True:
-    frame = camera.get_frame()
-    yield ( b'--frame\r\n'
-            b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n' )
+@socketio.on('connect')
+def on_connect():
+    """Handle WebSocket client connection."""
+    logger.info("WebSocket client connected")
+    start_background_thread()
 
-@app.route( '/video' )
+
+@socketio.on('disconnect')
+def on_disconnect():
+    """Handle WebSocket client disconnection."""
+    logger.info("WebSocket client disconnected")
+
+@app.route('/video')
 def video():
-  return Response( gen( cam ), mimetype='multipart/x-mixed-replace; boundary=frame' )
+    """
+    Video stream route handler.
+    
+    Returns MJPEG stream of camera feed, or 404 if camera is disabled.
+    """
+    if cam.cam_data.get('camera') == 'none':
+        return Response('Camera disabled', status=404, mimetype='text/plain')
+    
+    def generate_frames():
+        """Generator for MJPEG frames."""
+        while True:
+            try:
+                frame = cam.get_frame()
+                if frame:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                else:
+                    time.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Error generating video frame: {e}")
+                time.sleep(0.1)
+    
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-def before_first_request():
-  print( "Before First Request -----------------------------" )
 
 if __name__ == '__main__':
-    update_all_data()
-#    app.run( debug=True, host='0.0.0.0', threaded=True )
-    app.before_first_request( before_first_request )
-    socketio.run( app, host='0.0.0.0', debug=True, use_reloader=False )
-#    socketio.run( app, host='0.0.0.0', debug=True )
+    # Parse command line arguments
+    port = int(os.getenv('RIO_PORT', '5000'))
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except ValueError:
+            logger.warning(f"Invalid port number: {sys.argv[1]}, using default: {port}")
     
-    exit_event.set()
+    logger.info(f"Starting Rio microfluidics controller on port {port}...")
+    logger.info(f"If port is in use, kill the process with: lsof -ti:{port} | xargs kill -9")
+    logger.info(f"Or use a different port: python pi_webapp.py <PORT_NUMBER>")
+    
+    # Initialize data before starting server
+    update_all_data()
+    
+    # Start server
+    try:
+        socketio.run(app, host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    finally:
+        exit_event.set()
+        logger.info("Server shutting down...")
     

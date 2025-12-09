@@ -2,11 +2,26 @@
 Simulated flow controller.
 
 Mocks PIC-based flow/pressure control hardware for testing without physical hardware.
+This module provides a drop-in replacement for the real PiFlow class,
+allowing the application to run and be tested on any system.
+
+Classes:
+    SimulatedFlow: Flow controller implementation that simulates PIC behavior
 """
 
 import time
+import logging
 from typing import List, Tuple, Optional
 import random
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Constants
+DEFAULT_REPLY_PAUSE_S = 0.1
+DEFAULT_NUM_CHANNELS = 4
+DEFAULT_PRESSURE_RANGE = (0, 6000)  # mbar
+DEFAULT_FLOW_RANGE = (0, 1000)  # ul/hr
 
 
 class SimulatedFlow:
@@ -36,48 +51,65 @@ class SimulatedFlow:
     
     NUM_CONTROLLERS = 4
     
-    # Control modes
-    MODE_PRESSURE_OPEN_LOOP = 0
-    MODE_PRESSURE_CLOSED_LOOP = 1
-    MODE_FLOW_CLOSED_LOOP = 2
+    # Control modes (matching real firmware)
+    MODE_OFF = 0
+    MODE_PRESSURE_OPEN_LOOP = 1
+    MODE_PRESSURE_CLOSED_LOOP = 2
+    MODE_FLOW_CLOSED_LOOP = 3
     
-    def __init__(self, device_port: int, reply_pause_s: float = 0.1, num_channels: int = 4):
+    def __init__(self, device_port: int, reply_pause_s: float = DEFAULT_REPLY_PAUSE_S,
+                 num_channels: int = DEFAULT_NUM_CHANNELS):
         """
         Initialize simulated flow controller.
         
         Args:
             device_port: GPIO port number (simulated)
-            reply_pause_s: Reply pause time (simulated)
-            num_channels: Number of flow channels
+            reply_pause_s: Reply pause time in seconds (simulated, default: 0.1)
+            num_channels: Number of flow channels (default: 4)
+        
+        Raises:
+            ValueError: If device_port, reply_pause_s, or num_channels are invalid
         """
+        if device_port < 0:
+            raise ValueError(f"Invalid device port: {device_port}")
+        if reply_pause_s < 0:
+            raise ValueError(f"Invalid reply pause time: {reply_pause_s}")
+        if num_channels <= 0:
+            raise ValueError(f"Invalid number of channels: {num_channels}")
+        
         self.device_port = device_port
         self.reply_pause_s = reply_pause_s
         self.num_channels = num_channels
+        
+        logger.debug(f"SimulatedFlow initialized (port={device_port}, channels={num_channels})")
         
         # Internal state for each channel
         self.pressure_targets = [0.0] * num_channels
         self.pressure_actuals = [0.0] * num_channels
         self.flow_targets = [0.0] * num_channels
         self.flow_actuals = [0.0] * num_channels
-        self.control_modes = [self.MODE_PRESSURE_OPEN_LOOP] * num_channels
+        self.control_modes = [self.MODE_OFF] * num_channels  # Default to Off
         
-        # PID constants (P, I, D) for each channel
-        self.pid_consts = [[1000, 100, 0]] * num_channels  # Default PI constants (D=0)
-        
-        print(f"[SimulatedFlow] Initialized (port={device_port}, channels={num_channels})")
+        # PID constants (P, I, D) for each channel - stored as U16 values
+        self.pid_consts = [[0, 0, 0]] * num_channels  # Default: all zeros
     
     def packet_query(self, type_: int, data: List[int]) -> Tuple[bool, List[int]]:
         """
         Query device (write + read response).
         
+        Simulates the SPI query protocol: process command, wait for reply,
+        then return response data matching the real firmware format.
+        
         Args:
-            type_: Packet type
-            data: Packet data
+            type_: Packet type (PACKET_TYPE_* constant)
+            data: Packet data bytes
         
         Returns:
-            (valid, response_data) tuple
+            Tuple of (valid, response_data) where:
+            - valid: True if query was successful
+            - response_data: Response bytes from simulated device
         """
-        # Simulate reply delay
+        # Simulate reply delay (PIC processing time)
         time.sleep(self.reply_pause_s)
         
         response = []
@@ -88,97 +120,133 @@ class SimulatedFlow:
             response = list(self.DEVICE_ID.encode('ascii'))
         
         elif type_ == self.PACKET_TYPE_SET_PRESSURE_TARGET:
-            if len(data) >= 2:
-                channel = data[0]
-                pressure_raw = int.from_bytes(data[1:3], 'little', signed=False)
-                pressure_mbar = pressure_raw / self.PRESSURE_SCALE
-                if 0 <= channel < self.num_channels:
-                    self.pressure_targets[channel] = pressure_mbar
-                    # Simulate actual pressure approaching target
-                    self.pressure_actuals[channel] = pressure_mbar * 0.95 + random.uniform(-10, 10)
+            # Real firmware format: mask (U8) + pressure (U16) for each channel
+            # Multiple channels can be set in one packet
+            i = 0
+            while i < len(data):
+                if i + 2 < len(data):
+                    mask = data[i]
+                    pressure_raw = int.from_bytes(data[i+1:i+3], 'little', signed=False)
+                    pressure_mbar = pressure_raw / self.PRESSURE_SCALE
+                    # Process each channel in mask
+                    for channel in range(self.num_channels):
+                        if mask & (1 << channel):
+                            self.pressure_targets[channel] = pressure_mbar
+                            # Simulate actual pressure approaching target
+                            self.pressure_actuals[channel] = pressure_mbar * 0.95 + random.uniform(-10, 10)
+                    i += 3
+                else:
+                    break
             response = [0]  # Success
         
         elif type_ == self.PACKET_TYPE_GET_PRESSURE_TARGET:
-            if len(data) >= 1:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    pressure_raw = int(self.pressure_targets[channel] * self.PRESSURE_SCALE)
-                    response = [0] + list(pressure_raw.to_bytes(2, 'little', signed=False))
+            # Real firmware returns [0] + pressure (U16) for each channel
+            response = [0]
+            for channel in range(self.num_channels):
+                pressure_raw = int(self.pressure_targets[channel] * self.PRESSURE_SCALE)
+                response.extend(list(pressure_raw.to_bytes(2, 'little', signed=False)))
         
         elif type_ == self.PACKET_TYPE_GET_PRESSURE_ACTUAL:
-            if len(data) >= 1:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    # Simulate some variation
-                    self.pressure_actuals[channel] += random.uniform(-5, 5)
-                    self.pressure_actuals[channel] = max(0, min(self.pressure_actuals[channel], 6000))
-                    pressure_raw = int(self.pressure_actuals[channel] * self.PRESSURE_SCALE)
-                    response = [0] + list(pressure_raw.to_bytes(2, 'little', signed=False))
+            # Real firmware returns [0] + pressure (S16) for each channel (signed for actual)
+            response = [0]
+            for channel in range(self.num_channels):
+                # Simulate some variation
+                self.pressure_actuals[channel] += random.uniform(-5, 5)
+                self.pressure_actuals[channel] = max(0, min(self.pressure_actuals[channel], 6000))
+                pressure_raw = int(self.pressure_actuals[channel] * self.PRESSURE_SCALE)
+                response.extend(list(pressure_raw.to_bytes(2, 'little', signed=True)))
         
         elif type_ == self.PACKET_TYPE_SET_FLOW_TARGET:
-            if len(data) >= 3:
-                channel = data[0]
-                flow_raw = int.from_bytes(data[1:3], 'little', signed=False)
-                flow_ul_hr = flow_raw / 10.0  # Assuming 0.1 ul/hr resolution
-                if 0 <= channel < self.num_channels:
-                    self.flow_targets[channel] = flow_ul_hr
-                    # Simulate actual flow approaching target
-                    self.flow_actuals[channel] = flow_ul_hr * 0.9 + random.uniform(-5, 5)
+            # Real firmware format: mask (U8) + flow (U16) for each channel
+            # Flow is in ul/hr as U16 (no scaling)
+            i = 0
+            while i < len(data):
+                if i + 2 < len(data):
+                    mask = data[i]
+                    flow_ul_hr = int.from_bytes(data[i+1:i+3], 'little', signed=False)
+                    # Process each channel in mask
+                    for channel in range(self.num_channels):
+                        if mask & (1 << channel):
+                            self.flow_targets[channel] = float(flow_ul_hr)
+                            # Simulate actual flow approaching target
+                            self.flow_actuals[channel] = flow_ul_hr * 0.9 + random.uniform(-5, 5)
+                    i += 3
+                else:
+                    break
             response = [0]  # Success
         
         elif type_ == self.PACKET_TYPE_GET_FLOW_TARGET:
-            if len(data) >= 1:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    flow_raw = int(self.flow_targets[channel] * 10.0)
-                    response = [0] + list(flow_raw.to_bytes(2, 'little', signed=False))
+            # Real firmware returns [0] + flow (U16) for each channel
+            response = [0]
+            for channel in range(self.num_channels):
+                flow_ul_hr = int(self.flow_targets[channel])
+                response.extend(list(flow_ul_hr.to_bytes(2, 'little', signed=False)))
         
         elif type_ == self.PACKET_TYPE_GET_FLOW_ACTUAL:
-            if len(data) >= 1:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    # Simulate some variation
-                    self.flow_actuals[channel] += random.uniform(-2, 2)
-                    self.flow_actuals[channel] = max(0, min(self.flow_actuals[channel], 1000))
-                    flow_raw = int(self.flow_actuals[channel] * 10.0)
-                    response = [0] + list(flow_raw.to_bytes(2, 'little', signed=False))
+            # Real firmware returns [0] + flow (S16) for each channel (signed for actual)
+            response = [0]
+            for channel in range(self.num_channels):
+                # Simulate some variation
+                self.flow_actuals[channel] += random.uniform(-2, 2)
+                self.flow_actuals[channel] = max(0, min(self.flow_actuals[channel], 1000))
+                flow_ul_hr = int(self.flow_actuals[channel])
+                response.extend(list(flow_ul_hr.to_bytes(2, 'little', signed=True)))
         
         elif type_ == self.PACKET_TYPE_SET_CONTROL_MODE:
-            if len(data) >= 2:
-                channel = data[0]
-                mode = data[1]
-                if 0 <= channel < self.num_channels and 0 <= mode <= 2:
-                    self.control_modes[channel] = mode
+            # Real firmware format: mask (U8) + mode (U8) for each channel
+            i = 0
+            while i < len(data):
+                if i + 1 < len(data):
+                    mask = data[i]
+                    mode = data[i + 1]
+                    # Process each channel in mask
+                    for channel in range(self.num_channels):
+                        if mask & (1 << channel):
+                            if 0 <= mode <= 3:  # 0=Off, 1=Pressure Open Loop, 2=Pressure Closed Loop, 3=Flow Closed Loop
+                                self.control_modes[channel] = mode
+                    i += 2
+                else:
+                    break
             response = [0]  # Success
         
         elif type_ == self.PACKET_TYPE_GET_CONTROL_MODE:
-            if len(data) >= 1:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    response = [0, self.control_modes[channel]]
+            # Real firmware returns [0] + mode (U8) for each channel
+            response = [0]
+            for channel in range(self.num_channels):
+                response.append(self.control_modes[channel])
         
         elif type_ == self.PACKET_TYPE_SET_FPID_CONSTS:
-            if len(data) >= 10:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    # P, I, D as 3-byte values (little-endian)
-                    p = int.from_bytes(data[1:4], 'little', signed=False)
-                    i = int.from_bytes(data[4:7], 'little', signed=False)
-                    d = int.from_bytes(data[7:10], 'little', signed=False)
-                    self.pid_consts[channel] = [p, i, d]
+            # Real firmware format: mask (U8) + P (U16) + I (U16) + D (U16) for each channel
+            i = 0
+            while i < len(data):
+                if i + 6 < len(data):
+                    mask = data[i]
+                    p = int.from_bytes(data[i+1:i+3], 'little', signed=False)
+                    i_val = int.from_bytes(data[i+3:i+5], 'little', signed=False)
+                    d = int.from_bytes(data[i+5:i+7], 'little', signed=False)
+                    # Process each channel in mask
+                    for channel in range(self.num_channels):
+                        if mask & (1 << channel):
+                            self.pid_consts[channel] = [p, i_val, d]
+                    i += 7
+                else:
+                    break
             response = [0]  # Success
         
         elif type_ == self.PACKET_TYPE_GET_FPID_CONSTS:
-            if len(data) >= 1:
-                channel = data[0]
-                if 0 <= channel < self.num_channels:
-                    p, i, d = self.pid_consts[channel]
-                    response = [0]
-                    response.extend(list(p.to_bytes(3, 'little', signed=False)))
-                    response.extend(list(i.to_bytes(3, 'little', signed=False)))
-                    response.extend(list(d.to_bytes(3, 'little', signed=False)))
+            # Real firmware returns [0] + P (U16) + I (U16) + D (U16) for each channel
+            response = [0]
+            for channel in range(self.num_channels):
+                p, i_val, d = self.pid_consts[channel]
+                response.extend(list(p.to_bytes(2, 'little', signed=False)))
+                response.extend(list(i_val.to_bytes(2, 'little', signed=False)))
+                response.extend(list(d.to_bytes(2, 'little', signed=False)))
         else:
             valid = False
+            logger.warning(f"Unknown packet type in query: {type_}")
+        
+        if not valid:
+            logger.debug(f"Invalid packet query: type={type_}, data_len={len(data)}")
         
         return valid, response
     

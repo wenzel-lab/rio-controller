@@ -5,10 +5,16 @@ Supports YAML configuration files and environment variables.
 """
 
 import os
-import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
+
+# YAML is optional - config can work with just environment variables
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
 
 
 @dataclass
@@ -65,6 +71,8 @@ class SimulationConfig:
     @classmethod
     def from_yaml(cls, path: Path) -> 'SimulationConfig':
         """Load config from YAML file."""
+        if not YAML_AVAILABLE:
+            raise ImportError("PyYAML is required to load YAML config files. Install with: pip install PyYAML")
         with open(path, 'r') as f:
             data = yaml.safe_load(f) or {}
         return cls.from_dict(data)

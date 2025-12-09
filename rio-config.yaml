@@ -33,4 +33,3 @@ spi:
   bus: 0
   mode: 2
   speed_hz: 30000
-

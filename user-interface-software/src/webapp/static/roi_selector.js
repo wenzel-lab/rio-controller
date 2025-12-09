@@ -383,10 +383,17 @@ class ROISelector {
         }
     }
     
-    clearROI() {
+    clearROI(sendToServer = true) {
+        /**
+         * Clear the ROI selection.
+         * 
+         * @param {boolean} sendToServer - If true, send clear command to server.
+         *                                  If false, only clear locally (used when
+         *                                  receiving clear notification from server).
+         */
         this.roi = null;
         this.draw();
-        if (this.socket) {
+        if (this.socket && sendToServer) {
             this.socket.emit('roi', {cmd: 'clear'});
         }
         localStorage.removeItem('camera_roi');

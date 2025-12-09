@@ -1,6 +1,7 @@
 import time
-import spidev
 import picommon
+# Note: spidev is not directly used - we use picommon.spi instead
+# picommon handles simulation mode automatically
 
 class PiStrobe:
   STX = 2
@@ -40,6 +41,9 @@ class PiStrobe:
     picommon.spi.xfer2( msg )
     
   def packet_query( self, type, data ):
+    # Initialize return values in case of early exception
+    valid = False
+    data_read = []
     try:
       picommon.spi_lock()
       self.packet_write( type, data )
@@ -51,13 +55,21 @@ class PiStrobe:
       try:
         while valid and ( type_read != type ) and ( type_read != 0 ):
           valid, type_read, data_read = self.packet_read()
-      except:
+      except Exception:
         valid = False
+        data_read = []
       picommon.spi_deselect_current()
-    except:
-      pass
+    except Exception as e:
+      # Log error for debugging but don't raise
+      # Note: We can't import logging at module level due to circular dependencies
+      # in some cases, so we'll just set valid=False and let the caller handle it
+      valid = False
+      data_read = []
     finally:
-      picommon.spi_release()
+      try:
+        picommon.spi_release()
+      except Exception:
+        pass  # Ignore errors in finally block
     return valid, data_read
     
   def set_enable( self, enable ):
