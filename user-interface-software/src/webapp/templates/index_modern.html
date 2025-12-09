@@ -117,40 +117,42 @@
                                             <span id="roi_info" class="badge bg-info"></span>
                                         </div>
                                         
-                                        <div class="card">
-                                            <div class="card-body">
-                                                <h6 class="card-subtitle mb-3">Strobe Control</h6>
-                                                <div class="row g-3">
-                                                    <div class="col-md-3">
-                                                        <label class="form-label">Enabled</label>
-                                                        <p id="strobe_enable" class="form-control-plaintext"></p>
-                                                        <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-primary btn-sm w-100"></button>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <label class="form-label">Hold</label>
-                                                        <p id="strobe_hold" class="form-control-plaintext"></p>
-                                                        <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary btn-sm w-100"></button>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <label class="form-label">Period (μs)</label>
-                                                        <p id="strobe_period_us" class="form-control-plaintext"></p>
-                                                        <div class="input-group input-group-sm">
-                                                            <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000">
-                                                            <button id="btn_strobe_period_us" onclick="strobe_period()" class="btn btn-outline-primary">Set</button>
+                                        <div class="mt-3">
+                                            <div class="card">
+                                                <div class="card-body">
+                                                    <h6 class="card-subtitle mb-3">Strobe Control</h6>
+                                                    <div class="row g-3">
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Enabled</label>
+                                                            <p id="strobe_enable" class="form-control-plaintext"></p>
+                                                            <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-primary btn-sm w-100"></button>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Hold</label>
+                                                            <p id="strobe_hold" class="form-control-plaintext"></p>
+                                                            <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary btn-sm w-100"></button>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Period (μs)</label>
+                                                            <p id="strobe_period_us" class="form-control-plaintext"></p>
+                                                            <div class="input-group input-group-sm">
+                                                                <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000">
+                                                                <button id="btn_strobe_period_us" onclick="strobe_period()" class="btn btn-outline-primary">Set</button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Cam Read Time (μs)</label>
+                                                            <p id="strobe_cam_time_us" class="form-control-plaintext"></p>
+                                                            <label class="form-label">Framerate</label>
+                                                            <p id="strobe_framerate" class="form-control-plaintext"></p>
+                                                            <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success btn-sm w-100">Optimize</button>
                                                         </div>
                                                     </div>
-                                                    <div class="col-md-3">
-                                                        <label class="form-label">Cam Read Time (μs)</label>
-                                                        <p id="strobe_cam_time_us" class="form-control-plaintext"></p>
-                                                        <label class="form-label">Framerate</label>
-                                                        <p id="strobe_framerate" class="form-control-plaintext"></p>
-                                                        <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success btn-sm w-100">Optimize</button>
+                                                    <div class="mt-3">
+                                                        <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary">
+                                                            <i class="bi bi-camera"></i> Snapshot
+                                                        </button>
                                                     </div>
-                                                </div>
-                                                <div class="mt-3">
-                                                    <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary">
-                                                        <i class="bi bi-camera"></i> Snapshot
-                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -315,80 +317,40 @@
         var heaters = {{heaters|tojson}};
         var flows = {{flows|tojson}};
         
-        // Initialize ROI selector
-        var roiSelector = null;
-        var cameraImg = document.getElementById('camera_image');
-        var roiCanvas = document.getElementById('roi_canvas');
-        
-        function initROISelector() {
-            if (!cameraImg || !roiCanvas) {
-                console.log('ROI selector: waiting for elements...');
-                setTimeout(initROISelector, 100);
-                return;
-            }
-            
-            if (roiSelector) {
-                return; // Already initialized
-            }
-            
-            console.log('Initializing ROI selector...');
-            roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
-            
-            // Listen for ROI updates from server
-            socket.on('roi', function(data) {
-                if (data.roi) {
-                    const scaleX = roiCanvas.width / cameraImg.naturalWidth;
-                    const scaleY = roiCanvas.height / cameraImg.naturalHeight;
-                    const scaledROI = {
-                        x: data.roi.x * scaleX,
-                        y: data.roi.y * scaleY,
-                        width: data.roi.width * scaleX,
-                        height: data.roi.height * scaleY
-                    };
-                    roiSelector.setROI(scaledROI);
-                    updateROIInfo();
-                } else {
-                    roiSelector.clearROI(false);
-                    updateROIInfo();
-                }
-            });
-            
-            socket.emit('roi', {cmd: 'get'});
-        }
-        
+        // ROI selector will be initialized by cam_html.js_doc_ready()
+        // This function is exposed globally for the button
         function updateROIInfo() {
-            if (roiSelector && roiSelector.getROI()) {
+            var roiInfo = document.getElementById('roi_info');
+            if (roiInfo) {
+                // This will be updated by the ROI selector from camera_pi.html
+                // We'll update it here as a fallback
+                if (typeof roiSelector !== 'undefined' && roiSelector && roiSelector.getROI()) {
+                    var roi = roiSelector.getROI();
+                    roiInfo.textContent = 
+                        'ROI: (' + Math.round(roi.x) + ', ' + Math.round(roi.y) + ') ' + 
+                        Math.round(roi.width) + '×' + Math.round(roi.height) + ' px';
+                } else {
+                    roiInfo.textContent = 'No ROI selected';
+                }
+            }
+        }
+        
+        // Make sure updateROIInfo is called periodically
+        setInterval(function() {
+            updateROIInfo();
+            // Also update the badge if ROI selector exists
+            if (typeof roiSelector !== 'undefined' && roiSelector) {
                 var roi = roiSelector.getROI();
-                document.getElementById('roi_info').textContent = 
-                    'ROI: (' + Math.round(roi.x) + ', ' + Math.round(roi.y) + ') ' + 
-                    Math.round(roi.width) + '×' + Math.round(roi.height) + ' px';
-            } else {
-                document.getElementById('roi_info').textContent = 'No ROI selected';
+                var roiInfo = document.getElementById('roi_info');
+                if (roiInfo && roi) {
+                    roiInfo.textContent = 
+                        'ROI: (' + Math.round(roi.x) + ', ' + Math.round(roi.y) + ') ' + 
+                        Math.round(roi.width) + '×' + Math.round(roi.height) + ' px';
+                } else if (roiInfo) {
+                    roiInfo.textContent = 'No ROI selected';
+                }
             }
-        }
-        
-        function clearROI() {
-            if (roiSelector) {
-                roiSelector.clearROI();
-                socket.emit('roi', {cmd: 'clear'});
-                updateROIInfo();
-            }
-        }
-        
-        window.clearROI = clearROI;
-        
-        // Wait for image to load
-        if (cameraImg) {
-            if (cameraImg.complete) {
-                initROISelector();
-            } else {
-                cameraImg.addEventListener('load', initROISelector);
-            }
-        } else {
-            setTimeout(initROISelector, 500);
-        }
-        
-        setInterval(updateROIInfo, 500);
+        }, 500);
         
         // Heater functions
         function heaters_update_init() {

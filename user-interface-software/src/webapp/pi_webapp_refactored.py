@@ -157,7 +157,7 @@ def index():
         debug_formatted = view_model.format_debug_data(debug_data['update_count'])
         
         return render_template(
-            'index.html',
+            'index_modern.html',
             debug=debug_formatted,
             strobe=strobe_data,
             heaters=heaters_data,
