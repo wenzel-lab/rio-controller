@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rio Microfluidics Controller</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f5f5;
+        }
+        .sidebar {
+            background-color: #343a40;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .sidebar img {
+            filter: brightness(0) invert(1);
+        }
+        .main-content {
+            padding: 20px;
+        }
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .camera-container {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+        }
+        #camera_image {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        #roi_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+        .debug-info {
+            font-size: 0.85em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-1 sidebar">
+                <div class="text-center">
+                    <i class="bi bi-droplet" style="font-size: 3rem; color: white;"></i>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-11 main-content">
+                <h1 class="mb-4">Rio Microfluidics Controller</h1>
+                
+                <!-- Tabs Navigation -->
+                <ul class="nav nav-tabs" id="mainTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="camera-view-tab" data-bs-toggle="tab" data-bs-target="#camera-view-pane" type="button" role="tab">
+                            <i class="bi bi-camera"></i> Camera View
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="camera-config-tab" data-bs-toggle="tab" data-bs-target="#camera-config-pane" type="button" role="tab">
+                            <i class="bi bi-gear"></i> Camera Config
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="flow-tab" data-bs-toggle="tab" data-bs-target="#flow-pane" type="button" role="tab">
+                            <i class="bi bi-water"></i> Flow Control
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="heater-tab" data-bs-toggle="tab" data-bs-target="#heater-pane" type="button" role="tab">
+                            <i class="bi bi-thermometer-half"></i> Heaters
+                        </button>
+                    </li>
+                </ul>
+                
+                <!-- Tab Content -->
+                <div class="tab-content mt-3" id="mainTabContent">
+                    <!-- Camera View Tab -->
+                    <div class="tab-pane fade show active" id="camera-view-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-camera-video"></i> Camera Feed
+                                        </h5>
+                                        {% if cam.camera in ['rpi', 'rpi_hq', 'mako'] %}
+                                            {% import 'camera_pi.html' as cam_html %}
+                                        {% else %}
+                                            {% import 'camera_none.html' as cam_html %}
+                                        {% endif %}
+                                        
+                                        <div class="d-flex justify-content-center mb-3">
+                                            <div class="camera-container">
+                                                <img id="camera_image" src="{{ url_for('video') }}" alt="Camera feed" class="img-fluid">
+                                                <canvas id="roi_canvas"></canvas>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary btn-sm me-2">
+                                                <span style="font-size: 1.2em;">✕</span> Clear ROI
+                                            </button>
+                                            <span id="roi_info" class="badge bg-info">No ROI selected</span>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <div class="card">
+                                                <div class="card-body">
+                                                    <h6 class="card-subtitle mb-3">Strobe Control</h6>
+                                                    <div class="row g-3">
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Enabled</label>
+                                                            <p id="strobe_enable" class="form-control-plaintext"></p>
+                                                            <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-primary btn-sm w-100"></button>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Hold</label>
+                                                            <p id="strobe_hold" class="form-control-plaintext"></p>
+                                                            <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary btn-sm w-100"></button>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Period (μs)</label>
+                                                            <p id="strobe_period_us" class="form-control-plaintext"></p>
+                                                            <div class="input-group input-group-sm">
+                                                                <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000">
+                                                                <button id="btn_strobe_period_us" onclick="strobe_period()" class="btn btn-outline-primary">Set</button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <label class="form-label">Cam Read Time (μs)</label>
+                                                            <p id="strobe_cam_time_us" class="form-control-plaintext"></p>
+                                                            <label class="form-label">Framerate</label>
+                                                            <p id="strobe_framerate" class="form-control-plaintext"></p>
+                                                            <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success btn-sm w-100">Optimize</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary">
+                                                            <i class="bi bi-camera"></i> Snapshot
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Camera Config Tab -->
+                    <div class="tab-pane fade" id="camera-config-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Camera Selection</h5>
+                                        <div class="mb-3">
+                                            <label for="select_camera" class="form-label">Select Camera Type:</label>
+                                            <select id="select_camera" class="form-select" onchange="cam_select()">
+                                                <option value="none">None</option>
+                                                <option value="rpi"{% if cam.camera == "rpi" %} selected{%endif%}>Raspberry Pi Camera V2</option>
+                                                <option value="rpi_hq"{% if cam.camera == "rpi_hq" %} selected{%endif%}>Raspberry Pi HQ Camera</option>
+                                                <option value="mako"{% if cam.camera == "mako" %} selected{%endif%}>MAKO Camera</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Debug Information</h5>
+                                        <div class="debug-info">
+                                            <p>Update Count: <span id="update_count">{{debug.update_count}}</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Flow Control Tab -->
+                    <div class="tab-pane fade" id="flow-pane" role="tabpanel">
+                        {% for flow in flows %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Flow Controller {{loop.index}}</h5>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Status</label>
+                                        <p id="flow{{loop.index}}_status" class="form-control-plaintext"></p>
+                                    </div>
+                                    <div class="col-md-9">
+                                        <label class="form-label">Control Mode</label>
+                                        <p id="flow{{loop.index}}_control_mode" class="form-control-plaintext"></p>
+                                        {% set flow_loop = loop %}
+                                        {% for mode_str in flows[flow_loop.index-1].control_modes %}
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="input_flow{{flow_loop.index}}_control_mode" 
+                                                   id="flow{{flow_loop.index}}_mode{{loop.index-1}}" 
+                                                   value="{{loop.index-1}}" 
+                                                   onclick="flow_control_mode({{flow_loop.index-1}})" 
+                                                   {% if flows[flow_loop.index-1].control_mode == (loop.index-1) %} checked{%endif%}>
+                                            <label class="form-check-label" for="flow{{flow_loop.index}}_mode{{loop.index-1}}">
+                                                {{mode_str}}
+                                            </label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Pressure (mbar)</label>
+                                        <p id="flow{{loop.index}}_pressure_mbar_text" class="form-control-plaintext"></p>
+                                        <div class="input-group">
+                                            <input type="number" id="input_flow{{loop.index}}_pressure_mbar_target" class="form-control" min="0" max="10000">
+                                            <button class="btn btn-primary" onclick="flow_pressure_mbar_target({{loop.index-1}})">Set</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Flow (μl/hr)</label>
+                                        <p id="flow{{loop.index}}_flow_ul_hr_text" class="form-control-plaintext"></p>
+                                        <div class="input-group">
+                                            <input type="number" id="input_flow{{loop.index}}_flow_ul_hr_target" class="form-control" min="0" max="10000">
+                                            <button class="btn btn-primary" onclick="flow_flow_ul_hr_target({{loop.index-1}})">Set</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Heaters Tab -->
+                    <div class="tab-pane fade" id="heater-pane" role="tabpanel">
+                        {% for heater in heaters %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Heater {{loop.index}}</h5>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Status</label>
+                                        <p id="heater{{loop.index}}_status" class="form-control-plaintext"></p>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">PID Enabled</label>
+                                        <p id="heater{{loop.index}}_pid_enabled" class="form-control-plaintext"></p>
+                                        <button id="btn_heater{{loop.index}}_pid_enabled" onclick="heater_pid_enable({{loop.index-1}})" class="btn btn-primary btn-sm w-100"></button>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Temperature (°C)</label>
+                                        <p id="heater{{loop.index}}_temp_text" class="form-control-plaintext"></p>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" id="input_heater{{loop.index}}_temp_c_target" class="form-control" min="-50" max="100">
+                                            <button class="btn btn-primary" onclick="heater_temp_c_target({{loop.index-1}})">Set</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Power Limit (%)</label>
+                                        <p id="heater{{loop.index}}_power_limit" class="form-control-plaintext"></p>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" id="input_heater{{loop.index}}_power_limit" class="form-control" min="1" max="100">
+                                            <button class="btn btn-primary" onclick="heater_set_power_limit({{loop.index-1}})">Set</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Autotune Status</label>
+                                        <p id="heater{{loop.index}}_autotune_status" class="form-control-plaintext"></p>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" id="input_heater{{loop.index}}_autotune_target_temp" class="form-control" min="-50" max="100">
+                                            <button id="btn_heater{{loop.index}}_autotune" onclick="heater_autotune({{loop.index-1}})" class="btn btn-warning"></button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Stir Speed</label>
+                                        <p id="heater{{loop.index}}_stir_speed" class="form-control-plaintext"></p>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" id="input_heater{{loop.index}}_stir_speed" class="form-control" min="0" max="100">
+                                            <button id="btn_heater{{loop.index}}_stir" onclick="heater_stir({{loop.index-1}})" class="btn btn-secondary"></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='roi_selector.js') }}"></script>
+    
+    <script type="text/javascript">
+        {{ cam_html.js_functions( cam, strobe ) }}
+        
+        var socket = io();
+        var heaters = {{heaters|tojson}};
+        var flows = {{flows|tojson}};
+        
+        // ROI update function - only called when ROI actually changes
+        function updateROIInfo() {
+            var roiInfo = document.getElementById('roi_info');
+            if (roiInfo && typeof roiSelector !== 'undefined' && roiSelector) {
+                var roi = roiSelector.getROI();
+                if (roi) {
+                    // Convert from canvas coordinates to image coordinates
+                    var scaleX = roiSelector.imgWidth / roiSelector.canvas.width;
+                    var scaleY = roiSelector.imgHeight / roiSelector.canvas.height;
+                    var imgX = Math.round(roi.x * scaleX);
+                    var imgY = Math.round(roi.y * scaleY);
+                    var imgW = Math.round(roi.width * scaleX);
+                    var imgH = Math.round(roi.height * scaleY);
+                    roiInfo.textContent = 
+                        'ROI: (' + imgX + ', ' + imgY + ') ' + imgW + '×' + imgH + ' px';
+                    roiInfo.className = 'badge bg-success';
+                } else {
+                    roiInfo.textContent = 'No ROI selected';
+                    roiInfo.className = 'badge bg-info';
+                }
+            }
+        }
+        
+        // Make updateROIInfo globally accessible
+        window.updateROIInfo = updateROIInfo;
+        
+        // Listen for ROI changes from server (only update when server sends update)
+        socket.on('roi', function(data) {
+            if (typeof roiSelector !== 'undefined' && roiSelector) {
+                if (data.roi) {
+                    // Scale ROI from image coordinates to canvas coordinates
+                    const scaleX = roiSelector.canvas.width / roiSelector.imgWidth;
+                    const scaleY = roiSelector.canvas.height / roiSelector.imgHeight;
+                    const scaledROI = {
+                        x: data.roi.x * scaleX,
+                        y: data.roi.y * scaleY,
+                        width: data.roi.width * scaleX,
+                        height: data.roi.height * scaleY
+                    };
+                    roiSelector.setROI(scaledROI);
+                } else {
+                    roiSelector.clearROI(false); // false = don't send to server (avoid loop)
+                }
+                updateROIInfo();
+            }
+        });
+        
+        // Initialize ROI selector when page loads
+        var roiSelector = null;
+        var cameraImg = document.getElementById('camera_image');
+        var roiCanvas = document.getElementById('roi_canvas');
+        
+        function initROISelector() {
+            if (!cameraImg || !roiCanvas) {
+                setTimeout(initROISelector, 100);
+                return;
+            }
+            
+            if (roiSelector) {
+                return; // Already initialized
+            }
+            
+            roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
+            window.roiSelector = roiSelector; // Make globally accessible
+            
+            // Request current ROI from server
+            socket.emit('roi', {cmd: 'get'});
+        }
+        
+        // Wait for image to load
+        if (cameraImg) {
+            if (cameraImg.complete) {
+                initROISelector();
+            } else {
+                cameraImg.addEventListener('load', initROISelector);
+            }
+        } else {
+            setTimeout(initROISelector, 500);
+        }
+        
+        // Clear ROI function (for button)
+        function clearROI() {
+            if (roiSelector) {
+                roiSelector.clearROI();
+            }
+        }
+        window.clearROI = clearROI;
+        
+        // Heater functions
+        function heaters_update_init() {
+            for (var i = 0; i <= 3; i++) {
+                $('#input_heater' + (i + 1) + '_temp_c_target').val(heaters[i].temp_c_target.toString());
+                $('#input_heater' + (i + 1) + '_autotune_target_temp').val(heaters[i].autotune_target_temp.toString());
+                $('#input_heater' + (i + 1) + '_power_limit').val(heaters[i].power_limit.toString());
+                $('#input_heater' + (i + 1) + '_stir_speed').val(heaters[i].stir_speed_target.toString());
+            }
+        }
+        
+        function heaters_update() {
+            for (var i = 0; i <= 3; i++) {
+                $('#heater' + (i + 1) + '_pid_enabled').html(heaters[i].pid_enabled ? "Enabled" : "Disabled");
+                $('#btn_heater' + (i + 1) + '_pid_enabled').html(heaters[i].pid_enabled ? 'Disable' : 'Enable');
+                $('#heater' + (i + 1) + '_autotune_status').html(heaters[i].autotune_status);
+                $('#btn_heater' + (i + 1) + '_autotune').html(heaters[i].autotuning ? 'Stop' : 'Start');
+                $('#heater' + (i + 1) + '_power_limit').html(heaters[i].power_limit);
+                $('#heater' + (i + 1) + '_stir_speed').html(heaters[i].stir_speed_text);
+                $('#btn_heater' + (i + 1) + '_stir').html(heaters[i].stir_enabled ? 'Stop' : 'Start');
+                $('#heater' + (i + 1) + '_status').html(heaters[i].status);
+                $('#heater' + (i + 1) + '_temp_text').html(heaters[i].temp_text);
+            }
+        }
+        
+        // Flow functions
+        function flows_update_init() {
+            for (var i = 0; i <= 3; i++) {
+                $('#input_flow' + (i + 1) + '_pressure_mbar_target').val(flows[i].pressure_mbar_target.toString());
+            }
+        }
+        
+        function flows_update() {
+            for (var i = 0; i <= 3; i++) {
+                $('#flow' + (i + 1) + '_status').html(flows[i].status);
+                $('#flow' + (i + 1) + '_pressure_mbar_text').html(flows[i].pressure_mbar_text);
+                $('#flow' + (i + 1) + '_flow_ul_hr_text').html(flows[i].flow_ul_hr_text);
+                var firmwareMode = flows[i].control_mode;
+                $('#flow' + (i + 1) + '_control_mode').html(flows[i].control_modes[firmwareMode]);
+                $("input:radio[name=input_flow" + (i + 1) + "_control_mode][value='" + firmwareMode + "']").prop("checked", true);
+            }
+        }
+        
+        // Socket.IO event handlers
+        $(document).ready(function() {
+            {{ cam_html.js_doc_ready() }}
+            
+            heaters_update_init();
+            flows_update_init();
+            heaters_update();
+            flows_update();
+            
+            socket.on('connect', function() {
+                console.log('WebSocket connected!');
+            });
+            
+            socket.on('disconnect', function() {
+                console.log('WebSocket connection lost!');
+            });
+            
+            socket.on('reload', function(data) {
+                location.reload(true);
+            });
+            
+            socket.on('debug', function(data) {
+                $('#update_count').html(data.update_count);
+            });
+            
+            socket.on('strobe', function(data) {
+                strobe = data;
+                cam_update();
+            });
+            
+            socket.on('cam', function(data) {
+                cam = data;
+                cam_update();
+            });
+            
+            socket.on('heaters', function(data) {
+                heaters = data;
+                heaters_update();
+            });
+            
+            socket.on('flows', function(data) {
+                flows = data;
+                flows_update();
+            });
+        });
+        
+        // Control functions
+        function cam_select() {
+            socket.emit('cam_select', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } });
+        }
+        
+        function heater_temp_c_target(index) {
+            socket.emit('heater', { cmd: 'temp_c_target', parameters: { 'index': index, 'temp_c_target': $('#input_heater' + (index + 1) + '_temp_c_target').val() } });
+        }
+        
+        function heater_pid_enable(index) {
+            socket.emit('heater', { cmd: 'pid_enable', parameters: { 'index': index, 'on': !heaters[index].pid_enabled } });
+        }
+        
+        function heater_autotune(index) {
+            socket.emit('heater', { cmd: 'autotune', parameters: { 'index': index, 'on': !heaters[index].autotuning, 'temp': $('#input_heater' + (index + 1) + '_autotune_target_temp').val() } });
+        }
+        
+        function heater_set_power_limit(index) {
+            socket.emit('heater', { cmd: 'power_limit_pc', parameters: { 'index': index, 'power_limit_pc': $('#input_heater' + (index + 1) + '_power_limit').val() } });
+        }
+        
+        function heater_stir(index) {
+            socket.emit('heater', { cmd: 'stir', parameters: { 'index': index, 'on': !heaters[index].stir_enabled, 'speed': $('#input_heater' + (index + 1) + '_stir_speed').val() } });
+        }
+        
+        function flow_pressure_mbar_target(index) {
+            socket.emit('flow', { cmd: 'pressure_mbar_target', parameters: { 'index': index, 'pressure_mbar_target': $('#input_flow' + (index + 1) + '_pressure_mbar_target').val() } });
+        }
+        
+        function flow_flow_ul_hr_target(index) {
+            socket.emit('flow', { cmd: 'flow_ul_hr_target', parameters: { 'index': index, 'flow_ul_hr_target': $('#input_flow' + (index + 1) + '_flow_ul_hr_target').val() } });
+        }
+        
+        function flow_control_mode(index) {
+            socket.emit('flow', { cmd: 'control_mode', parameters: { 'index': index, 'control_mode': $('input:radio[name=input_flow' + (index + 1) + '_control_mode]:checked').val() } });
+        }
+    </script>
+</body>
+</html>
+

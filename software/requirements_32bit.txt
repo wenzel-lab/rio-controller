@@ -1,0 +1,28 @@
+# Requirements for Rio Microfluidics Controller - 32-bit Raspberry Pi
+# Use this file for Raspberry Pi OS 32-bit (Legacy)
+
+# Web framework
+Flask>=2.0.0,<4.0.0
+Flask-SocketIO>=5.0.0,<6.0.0
+Werkzeug>=2.0.0,<4.0.0
+Jinja2>=3.0.0
+MarkupSafe>=2.0.0
+itsdangerous>=2.0.0
+eventlet>=0.33.0
+
+# Image processing
+Pillow>=9.0.0
+numpy>=1.19.0,<2.0.0  # numpy 2.0+ requires 64-bit
+opencv-python>=4.5.0,<5.0.0
+
+# Raspberry Pi hardware (32-bit)
+spidev==3.6
+RPi.GPIO==0.7.1
+picamera==1.13  # Legacy camera library for 32-bit
+
+# WebSocket support
+python-socketio>=5.0.0
+
+# Configuration file support
+PyYAML>=6.0
+

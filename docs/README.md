@@ -35,15 +35,25 @@ This folder contains all documentation, guides, reports, and analysis files gene
 
 - **DROPLET_DETECTION_ROADMAP.md** - Droplet detection feature roadmap
 
+## Repository Organization
+
+- **STRUCTURE.md** - Software folder structure and import paths
+- **IMPORT_CHECK.md** - Import path verification details
+- **IMPORT_VERIFICATION.md** - Complete import verification report
+- **REORGANIZATION_PLAN.md** - Repository reorganization plan
+- **REORGANIZATION_SUMMARY.md** - Reorganization summary and changes
+
 ## Quick Reference
 
 ### For Developers
 - Start with **ARCHITECTURE_AND_BEST_PRACTICES.md** for architecture overview
 - See **CODE_QUALITY_IMPROVEMENTS.md** for coding standards
 - Check **SIMULATION_GUIDE.md** for testing without hardware
+- Review **STRUCTURE.md** for folder organization
 
 ### For Troubleshooting
 - **IMPORT_FIXES.md** - Import errors
+- **IMPORT_VERIFICATION.md** - Import path verification
 - **PORT_IN_USE_FIX.md** - Port conflicts
 - **FINAL_SCAN_SUMMARY.md** - Known issues and fixes
 
