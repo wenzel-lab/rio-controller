@@ -30,6 +30,9 @@ class Camera(object):
       
       self.cam_data = { 'camera': 'none', 'status': '' }
       
+      # ROI storage (x, y, width, height) in image coordinates
+      self.roi = None
+      
       @self.socketio.on( 'cam' )
       def on_cam( data ):
         self.on_cam( data )
@@ -37,6 +40,10 @@ class Camera(object):
       @self.socketio.on( 'strobe' )
       def on_strobe( data ):
         self.on_strobe( data )
+      
+      @self.socketio.on( 'roi' )
+      def on_roi( data ):
+        self.on_roi( data )
 
     def initialize( self ):
         if self.thread is None:
@@ -67,29 +74,18 @@ class Camera(object):
     def _thread( self ):
 #        with picamera.PiCamera() as camera:
 #        with self.camera as camera:
-            # camera setup
-#            self.camera.resolution = ( 320, 240 )
-            self.camera.resolution = ( 1024, 768 )
-#            self.camera.hflip = True
-#            self.camera.vflip = True
-            self.camera.awb_mode = 'auto'
-            self.camera.exposure_mode = 'off'
-            #ISO will not adjust gains when exposure_mode='off'
-            #self.camera.iso = 800
+            # Camera setup using new abstraction
+            self.camera.set_config({
+                "Width": 1024,
+                "Height": 768,
+                "FrameRate": 30
+            })
+            self.camera.start()
 
-            # let camera warm up
-#            camera.start_preview()
-#            time.sleep(2)
-
-            stream = io.BytesIO()
-            for foo in self.camera.capture_continuous( stream, 'jpeg', use_video_port=True ):
-                # store frame
-                stream.seek(0)
-                self.frame = stream.read()
-
-                # reset stream for next frame
-                stream.seek(0)
-                stream.truncate()
+            # Use new camera abstraction - generate_frames() returns JPEG bytes
+            for frame_data in self.camera.generate_frames():
+                # store frame (frame_data is already JPEG bytes)
+                self.frame = frame_data
 
 #                time.sleep( 0.1 )
                 
@@ -140,7 +136,8 @@ class Camera(object):
       if valid:
         self.cam_read_time_us = cam_read_time_us
       
-      self.strobe_framerate = int( self.strobe_cam.camera.framerate )
+      # Get framerate from camera config (new abstraction)
+      self.strobe_framerate = int( self.strobe_cam.camera.config.get("FrameRate", 30) )
 #      self.strobe_time_text = "{} us".format( round( float( self.strobe_cam.strobe_period_ns ) / 1000, 3 ) )
     
     def update_strobe_data( self ):
@@ -180,4 +177,46 @@ class Camera(object):
       
       self.update_strobe_data()
       self.socketio.emit( 'strobe', self.strobe_data )
+    
+    def on_roi( self, data ):
+      """
+      Handle ROI WebSocket commands
+      
+      Commands:
+        - 'set': Set ROI coordinates
+        - 'get': Get current ROI
+        - 'clear': Clear ROI
+      """
+      if ( data['cmd'] == 'set' ):
+        params = data['parameters']
+        self.roi = {
+          'x': int(params.get('x', 0)),
+          'y': int(params.get('y', 0)),
+          'width': int(params.get('width', 0)),
+          'height': int(params.get('height', 0))
+        }
+        print( f"ROI set: ({self.roi['x']}, {self.roi['y']}) {self.roi['width']}×{self.roi['height']}" )
+        # Echo back to all clients
+        self.socketio.emit( 'roi', { 'roi': self.roi } )
+      elif ( data['cmd'] == 'get' ):
+        # Send current ROI
+        if self.roi:
+          self.socketio.emit( 'roi', { 'roi': self.roi } )
+        else:
+          self.socketio.emit( 'roi', { 'roi': None } )
+      elif ( data['cmd'] == 'clear' ):
+        self.roi = None
+        print( "ROI cleared" )
+        self.socketio.emit( 'roi', { 'roi': None } )
+    
+    def get_roi( self ):
+      """
+      Get current ROI coordinates
+      
+      Returns:
+        tuple: (x, y, width, height) or None if not set
+      """
+      if self.roi:
+        return (self.roi['x'], self.roi['y'], self.roi['width'], self.roi['height'])
+      return None
     

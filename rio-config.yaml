@@ -1,0 +1,36 @@
+# Rio Controller Configuration
+# This file configures the Rio microfluidics controller software
+
+# Global simulation mode
+# Set to true to run without hardware (for testing on Mac/PC)
+simulation: true
+
+# Camera configuration
+camera:
+  width: 640
+  height: 480
+  fps: 30
+  generate_droplets: true  # Generate synthetic droplets in simulation
+  droplet_count: 5         # Number of droplets per frame
+  droplet_size_range: [10, 50]  # Min/max droplet radius in pixels
+
+# Strobe configuration
+strobe:
+  port: 24
+  reply_pause_s: 0.1
+  simulate_timing: true
+
+# Flow controller configuration
+flow:
+  port: 26
+  reply_pause_s: 0.1
+  num_channels: 4
+  pressure_range: [0, 6000]  # mbar
+  flow_range: [0, 1000]      # ul/hr
+
+# SPI configuration
+spi:
+  bus: 0
+  mode: 2
+  speed_hz: 30000
+

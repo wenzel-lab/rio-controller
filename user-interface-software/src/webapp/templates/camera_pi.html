@@ -54,6 +54,68 @@
   strobe_update_init();
   cam_update();
   
+  // Initialize ROI selector
+  var roiSelector = null;
+  var cameraImg = document.getElementById('camera_image');
+  var roiCanvas = document.getElementById('roi_canvas');
+  
+  if (cameraImg && roiCanvas) {
+    // Wait for image to load
+    cameraImg.addEventListener('load', function() {
+      if (!roiSelector) {
+        roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
+        
+        // Listen for ROI updates from server
+        socket.on('roi', function(data) {
+          if (data.roi) {
+            roiSelector.setROI(data.roi);
+            updateROIInfo();
+          }
+        });
+      }
+    });
+    
+    // Also try immediately (in case image already loaded)
+    if (cameraImg.complete) {
+      if (!roiSelector) {
+        roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
+        
+        socket.on('roi', function(data) {
+          if (data.roi) {
+            roiSelector.setROI(data.roi);
+            updateROIInfo();
+          }
+        });
+      }
+    }
+  }
+  
+  function updateROIInfo() {
+    if (roiSelector && roiSelector.getROI()) {
+      var roi = roiSelector.getROI();
+      document.getElementById('roi_info').textContent = 
+        'ROI: (' + Math.round(roi.x) + ', ' + Math.round(roi.y) + ') ' + 
+        Math.round(roi.width) + '×' + Math.round(roi.height) + ' px';
+    } else {
+      document.getElementById('roi_info').textContent = 'No ROI selected';
+    }
+  }
+  
+  function clearROI() {
+    if (roiSelector) {
+      roiSelector.clearROI();
+      updateROIInfo();
+    }
+  }
+  
+  function resetROI() {
+    if (roiSelector) {
+      roiSelector.clearROI();
+      // Request current ROI from server (if any)
+      socket.emit('roi', {cmd: 'get'});
+    }
+  }
+  
   socket.on( 'strobe', function( data ) {
     strobe = data;
     cam_update();
@@ -62,10 +124,22 @@
     cam = data;
     cam_update();
   });
+  
+  // Update ROI info periodically
+  setInterval(updateROIInfo, 500);
 {% endmacro %}
 
 {% macro html() %}
-  <p><img src="{{ url_for('video') }}"></p>
+  <!-- Camera feed with ROI selector -->
+  <div style="position: relative; display: inline-block;">
+    <img id="camera_image" src="{{ url_for('video') }}" style="display: block; max-width: 100%; height: auto;">
+    <canvas id="roi_canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair;"></canvas>
+  </div>
+  <div style="margin: 10px 0;">
+    <button id="btn_roi_clear" onclick="clearROI()" style="width: 100px; margin-right: 10px;">Clear ROI</button>
+    <button id="btn_roi_reset" onclick="resetROI()" style="width: 100px;">Reset ROI</button>
+    <span id="roi_info" style="margin-left: 20px; font-weight: bold;"></span>
+  </div>
   <table style="border: 1px solid black; padding: 10px" cellpadding="2px">
       <tr>
         <td width=150>Enabled</td>

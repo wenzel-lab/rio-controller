@@ -32,7 +32,7 @@ heaters = [heater1, heater2, heater3, heater4]
 flows_data = [ { 'status': '', 'pressure_mbar_text': '', 'pressure_mbar_target': 0.0, 'flow_ul_hr_text':'', 'control_modes': [], 'control_mode': '' } for i in range(4) ]
 flow = flow_web( picommon.PORT_FLOW )
 
-app = Flask( __name__ )
+app = Flask( __name__, static_folder='static', static_url_path='/static' )
 socketio = SocketIO( app, async_mode = 'eventlet' )
 thread = None
 
