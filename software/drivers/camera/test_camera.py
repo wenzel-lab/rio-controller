@@ -18,8 +18,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Note: This test file may need updating for new structure
-# from drivers.camera import create_camera, BaseCamera
-import numpy as np
+from drivers.camera import create_camera, BaseCamera  # noqa: E402
+import numpy as np  # noqa: F401, E402
 
 
 def test_camera_creation():
@@ -82,11 +82,7 @@ def test_configuration(camera: BaseCamera):
     """Test camera configuration"""
     print("\nTesting configuration...")
     try:
-        config = {
-            "Width": 640,
-            "Height": 480,
-            "FrameRate": 30
-        }
+        config = {"Width": 640, "Height": 480, "FrameRate": 30}
         camera.set_config(config)
         print("✓ Configuration set")
         return True
@@ -100,13 +96,13 @@ def main():
     print("=" * 50)
     print("Camera Abstraction Layer Test")
     print("=" * 50)
-    
+
     # Test camera creation
     camera = test_camera_creation()
     if camera is None:
         print("\n✗ Cannot continue without camera")
         return
-    
+
     # Run tests
     tests = [
         ("Start/Stop", lambda: test_camera_start_stop(camera)),
@@ -114,7 +110,7 @@ def main():
         ("ROI Capture", lambda: test_roi_capture(camera)),
         ("Configuration", lambda: test_configuration(camera)),
     ]
-    
+
     results = []
     for name, test_func in tests:
         try:
@@ -123,7 +119,7 @@ def main():
         except Exception as e:
             print(f"✗ {name} test crashed: {e}")
             results.append((name, False))
-    
+
     # Summary
     print("\n" + "=" * 50)
     print("Test Summary")
@@ -131,13 +127,13 @@ def main():
     for name, result in results:
         status = "✓ PASS" if result else "✗ FAIL"
         print(f"{status}: {name}")
-    
+
     # Cleanup
     try:
         camera.close()
-    except:
+    except Exception:
         pass
-    
+
     # Exit code
     all_passed = all(result for _, result in results)
     sys.exit(0 if all_passed else 1)
@@ -145,4 +141,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

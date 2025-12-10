@@ -52,20 +52,20 @@ CONTROL_MODE_FIRMWARE_TO_UI = {
     0: 0,  # Off -> Off
     1: 1,  # Pressure Open Loop -> Set Pressure
     2: 0,  # Pressure Closed Loop (hidden) -> Off
-    3: 2   # Flow Closed Loop -> Flow Closed Loop
+    3: 2,  # Flow Closed Loop -> Flow Closed Loop
 }
 
 CONTROL_MODE_UI_TO_FIRMWARE = {
     0: 0,  # Off -> Off
     1: 1,  # Set Pressure -> Pressure Open Loop
-    2: 3   # Flow Closed Loop -> Flow Closed Loop
+    2: 3,  # Flow Closed Loop -> Flow Closed Loop
 }
 
 # Camera Types
-CAMERA_TYPE_NONE = 'none'
-CAMERA_TYPE_RPI = 'rpi'
-CAMERA_TYPE_RPI_HQ = 'rpi_hq'
-CAMERA_TYPE_MAKO = 'mako'
+CAMERA_TYPE_NONE = "none"
+CAMERA_TYPE_RPI = "rpi"
+CAMERA_TYPE_RPI_HQ = "rpi_hq"
+CAMERA_TYPE_MAKO = "mako"
 
 # File Paths
 SNAPSHOT_FOLDER = "home/pi/snapshots/"
@@ -78,32 +78,31 @@ FPS_OPTIMIZATION_CONVERGENCE_THRESHOLD_US = 1000  # Convergence threshold in mic
 FPS_OPTIMIZATION_POST_PADDING_OFFSET_US = 100  # Additional padding offset
 
 # WebSocket Events
-WS_EVENT_CAM = 'cam'
-WS_EVENT_STROBE = 'strobe'
-WS_EVENT_ROI = 'roi'
-WS_EVENT_HEATER = 'heater'
-WS_EVENT_FLOW = 'flow'
-WS_EVENT_DEBUG = 'debug'
-WS_EVENT_RELOAD = 'reload'
+WS_EVENT_CAM = "cam"
+WS_EVENT_STROBE = "strobe"
+WS_EVENT_ROI = "roi"
+WS_EVENT_HEATER = "heater"
+WS_EVENT_FLOW = "flow"
+WS_EVENT_DEBUG = "debug"
+WS_EVENT_RELOAD = "reload"
 
 # WebSocket Commands
-CMD_SELECT = 'select'
-CMD_SNAPSHOT = 'snapshot'
-CMD_OPTIMIZE = 'optimize'
-CMD_SET_CONFIG = 'set_config'
-CMD_HOLD = 'hold'
-CMD_ENABLE = 'enable'
-CMD_TIMING = 'timing'
-CMD_SET = 'set'
-CMD_GET = 'get'
-CMD_CLEAR = 'clear'
-CMD_TEMP_C_TARGET = 'temp_c_target'
-CMD_PID_ENABLE = 'pid_enable'
-CMD_POWER_LIMIT_PC = 'power_limit_pc'
-CMD_AUTOTUNE = 'autotune'
-CMD_STIR = 'stir'
-CMD_PRESSURE_MBAR_TARGET = 'pressure_mbar_target'
-CMD_FLOW_UL_HR_TARGET = 'flow_ul_hr_target'
-CMD_CONTROL_MODE = 'control_mode'
-CMD_FLOW_PI_CONSTS = 'flow_pi_consts'
-
+CMD_SELECT = "select"
+CMD_SNAPSHOT = "snapshot"
+CMD_OPTIMIZE = "optimize"
+CMD_SET_CONFIG = "set_config"
+CMD_HOLD = "hold"
+CMD_ENABLE = "enable"
+CMD_TIMING = "timing"
+CMD_SET = "set"
+CMD_GET = "get"
+CMD_CLEAR = "clear"
+CMD_TEMP_C_TARGET = "temp_c_target"
+CMD_PID_ENABLE = "pid_enable"
+CMD_POWER_LIMIT_PC = "power_limit_pc"
+CMD_AUTOTUNE = "autotune"
+CMD_STIR = "stir"
+CMD_PRESSURE_MBAR_TARGET = "pressure_mbar_target"
+CMD_FLOW_UL_HR_TARGET = "flow_ul_hr_target"
+CMD_CONTROL_MODE = "control_mode"
+CMD_FLOW_PI_CONSTS = "flow_pi_consts"

@@ -14,7 +14,7 @@ import os
 import unittest
 
 # Set simulation mode for all tests
-os.environ['RIO_SIMULATION'] = 'true'
+os.environ["RIO_SIMULATION"] = "true"
 
 # Add parent directory (software/) to path
 software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,19 +27,16 @@ def discover_and_run_tests():
     # Discover tests in the tests directory
     loader = unittest.TestLoader()
     suite = loader.discover(
-        start_dir=os.path.dirname(__file__),
-        pattern='test_*.py',
-        top_level_dir=software_dir
+        start_dir=os.path.dirname(__file__), pattern="test_*.py", top_level_dir=software_dir
     )
-    
+
     # Run tests
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
-    
+
     # Return exit code
     return 0 if result.wasSuccessful() else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(discover_and_run_tests())
-

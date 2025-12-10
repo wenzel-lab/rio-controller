@@ -10,31 +10,33 @@ from .camera_base import BaseCamera, create_camera
 # The create_camera() function will import these when actually needed
 try:
     from .pi_camera_legacy import PiCameraLegacy
+
     _LEGACY_AVAILABLE = True
 except ImportError:
     _LEGACY_AVAILABLE = False
-    PiCameraLegacy = None
+    PiCameraLegacy = None  # type: ignore[assignment, misc]
 
 try:
     from .pi_camera_v2 import PiCameraV2
+
     _V2_AVAILABLE = True
 except ImportError:
     _V2_AVAILABLE = False
-    PiCameraV2 = None
+    PiCameraV2 = None  # type: ignore[assignment, misc]
 
 try:
     from .mako_camera import MakoCamera
+
     _MAKO_AVAILABLE = True
 except ImportError:
     _MAKO_AVAILABLE = False
-    MakoCamera = None
+    MakoCamera = None  # type: ignore[assignment, misc]
 
-__all__ = ['BaseCamera', 'create_camera']
+__all__ = ["BaseCamera", "create_camera"]
 
 if _LEGACY_AVAILABLE:
-    __all__.append('PiCameraLegacy')
+    __all__.append("PiCameraLegacy")
 if _V2_AVAILABLE:
-    __all__.append('PiCameraV2')
+    __all__.append("PiCameraV2")
 if _MAKO_AVAILABLE:
-    __all__.append('MakoCamera')
-
+    __all__.append("MakoCamera")

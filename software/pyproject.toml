@@ -1,0 +1,53 @@
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | \.pytest_cache
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "simulation: marks tests that require simulation mode",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+ignore_missing_imports = true
+explicit_package_bases = true
+# Ignore missing imports for hardware-specific libraries
+[[tool.mypy.overrides]]
+module = [
+    "spidev",
+    "RPi.GPIO",
+    "picamera",
+    "picamera2",
+    "vimba",
+    "eventlet",
+    "flask_socketio",
+]
+ignore_missing_imports = true
+

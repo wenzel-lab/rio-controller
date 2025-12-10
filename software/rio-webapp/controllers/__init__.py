@@ -17,10 +17,4 @@ from .flow_controller import FlowController
 from .heater_controller import HeaterController
 from .view_model import ViewModel
 
-__all__ = [
-    'CameraController',
-    'FlowController',
-    'HeaterController',
-    'ViewModel'
-]
-
+__all__ = ["CameraController", "FlowController", "HeaterController", "ViewModel"]

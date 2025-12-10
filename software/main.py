@@ -19,7 +19,7 @@ See docs/ARCHITECTURE_TERMINOLOGY.md for terminology explanation.
 
 Usage:
     python main.py [PORT]
-    
+
     Or set RIO_PORT environment variable for port number.
 """
 
@@ -36,56 +36,64 @@ software_dir = os.path.dirname(os.path.abspath(__file__))
 if software_dir not in sys.path:
     sys.path.insert(0, software_dir)
 
-from drivers.spi_handler import spi_init, PORT_HEATER1, PORT_HEATER2, PORT_HEATER3, PORT_HEATER4, PORT_FLOW
-from controllers.heater_web import heater_web
-from controllers.camera import Camera
-from controllers.flow_web import FlowWeb
+from drivers.spi_handler import (  # noqa: E402
+    spi_init,
+    PORT_HEATER1,
+    PORT_HEATER2,
+    PORT_HEATER3,
+    PORT_HEATER4,
+    PORT_FLOW,
+)
+from controllers.heater_web import heater_web  # noqa: E402
+from controllers.camera import Camera  # noqa: E402
+from controllers.flow_web import FlowWeb  # noqa: E402
 
 # Import webapp controllers from rio-webapp/controllers
 # Note: There's a naming conflict - we have both:
 #   - software/controllers/ (device controllers: flow_web, heater_web, camera, strobe_cam)
 #   - software/rio-webapp/controllers/ (web controllers: camera_controller, flow_controller, etc.)
 # Solution: Import directly from the files to avoid package name conflict
-rio_webapp_controllers_dir = os.path.join(software_dir, 'rio-webapp', 'controllers')
+rio_webapp_controllers_dir = os.path.join(software_dir, "rio-webapp", "controllers")
 if rio_webapp_controllers_dir not in sys.path:
     sys.path.insert(0, rio_webapp_controllers_dir)
 
 # Import directly from controller files
-from camera_controller import CameraController
-from flow_controller import FlowController
-from heater_controller import HeaterController
-from view_model import ViewModel
+from camera_controller import CameraController  # noqa: E402
+from flow_controller import FlowController  # noqa: E402
+from heater_controller import HeaterController  # noqa: E402
+from view_model import ViewModel  # noqa: E402
 
 # Import routes module (from rio-webapp directory)
-rio_webapp_dir = os.path.join(software_dir, 'rio-webapp')
+rio_webapp_dir = os.path.join(software_dir, "rio-webapp")
 if rio_webapp_dir not in sys.path:
     sys.path.insert(0, rio_webapp_dir)
-from routes import register_routes, create_background_update_task
+from routes import register_routes, create_background_update_task  # noqa: E402
 
 # Configure eventlet monkey patching
 eventlet.monkey_patch(os=True, select=True, socket=True, thread=False, time=True, psycopg=True)
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 # Global state
 exit_event = Event()
-debug_data = {'update_count': 0}
+debug_data = {"update_count": 0}
 
 # Initialize hardware communication
 logger.info("Initializing SPI communication...")
 spi_init(0, 2, 30000)
 
 # Create Flask app and SocketIO first (needed for Camera initialization)
-app = Flask(__name__, 
-            template_folder=os.path.join(software_dir, 'rio-webapp', 'templates'),
-            static_folder=os.path.join(software_dir, 'rio-webapp', 'static'),
-            static_url_path='/static')
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+app = Flask(
+    __name__,
+    template_folder=os.path.join(software_dir, "rio-webapp", "templates"),
+    static_folder=os.path.join(software_dir, "rio-webapp", "static"),
+    static_url_path="/static",
+)
+socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
 
 # Initialize hardware models (after SPI init and Flask/SocketIO setup)
 logger.info("Initializing hardware models...")
@@ -105,7 +113,9 @@ logger.info("Initializing controllers...")
 camera_controller = CameraController(cam, socketio)
 flow_controller = FlowController(flow, socketio)
 heater_controller = HeaterController(heaters, socketio)
-view_model = ViewModel(flow, cam)  # ViewModel now accepts flow and camera for backward compatibility
+view_model = ViewModel(
+    flow, cam
+)  # ViewModel now accepts flow and camera for backward compatibility
 
 # Note: All web controllers register their WebSocket handlers automatically in __init__()
 # No need to call register_handlers() separately
@@ -114,27 +124,33 @@ view_model = ViewModel(flow, cam)  # ViewModel now accepts flow and camera for b
 register_routes(app, socketio, view_model, heaters, flow, cam, debug_data)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
-    
-    parser = argparse.ArgumentParser(description='Rio Microfluidics Controller Web App')
-    parser.add_argument('port', type=int, nargs='?', 
-                       default=int(os.getenv('RIO_PORT', '5000')),
-                       help='Port number to run the web app on')
+
+    parser = argparse.ArgumentParser(description="Rio Microfluidics Controller Web App")
+    parser.add_argument(
+        "port",
+        type=int,
+        nargs="?",
+        default=int(os.getenv("RIO_PORT", "5000")),
+        help="Port number to run the web app on",
+    )
     args = parser.parse_args()
-    
+
     port = args.port
-    
+
     logger.info(f"Starting Rio microfluidics controller on port {port}...")
     logger.info(f"If port is in use, kill the process with: lsof -ti:{port} | xargs kill -9")
-    logger.info(f"Or use a different port: python main.py <PORT_NUMBER>")
-    
+    logger.info("Or use a different port: python main.py <PORT_NUMBER>")
+
     # Start background update thread
-    background_task = create_background_update_task(socketio, view_model, heaters, flow, cam, debug_data)
+    background_task = create_background_update_task(
+        socketio, view_model, heaters, flow, cam, debug_data
+    )
     socketio.start_background_task(background_task)
-    
+
     try:
-        socketio.run(app, host='0.0.0.0', port=port, debug=False)
+        socketio.run(app, host="0.0.0.0", port=port, debug=False)
     except KeyboardInterrupt:
         logger.info("Server shutting down...")
         exit_event.set()
