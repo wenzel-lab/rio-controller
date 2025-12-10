@@ -138,7 +138,9 @@ class BaseCamera(ABC):
 
 
 def create_camera(
-    camera_type: Optional[str] = None, simulation: bool = False, sim_config: Optional[Dict[str, Any]] = None
+    camera_type: Optional[str] = None,
+    simulation: bool = False,
+    sim_config: Optional[Dict[str, Any]] = None,
 ) -> BaseCamera:
     """
     Factory function to create appropriate camera instance
@@ -181,7 +183,9 @@ def create_camera(
     return _create_pi_camera()
 
 
-def _create_simulated_camera(simulation: bool, sim_config: Optional[Dict[str, Any]] = None) -> BaseCamera:
+def _create_simulated_camera(
+    simulation: bool, sim_config: Optional[Dict[str, Any]] = None
+) -> BaseCamera:
     """Create simulated camera instance."""
     import sys
     import os as os_module

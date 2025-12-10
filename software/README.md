@@ -57,7 +57,17 @@ software/
 │   ├── test_integration.py # Integration tests
 │   └── test_all.py         # Run all tests
 │
-└── droplet-detection/      # Droplet detection algorithms (future)
+└── droplet-detection/      # Droplet detection algorithms
+    ├── detector.py         # Main detection pipeline
+    ├── preprocessor.py     # Image preprocessing
+    ├── segmenter.py        # Contour detection
+    ├── measurer.py         # Geometric measurements
+    ├── artifact_rejector.py # Temporal filtering
+    ├── histogram.py        # Statistics and histograms
+    ├── config.py           # Configuration management
+    ├── benchmark.py        # Performance benchmarking
+    ├── optimize.py         # Parameter optimization
+    └── test_integration.py  # Integration tests
 ```
 
 ## Launching the Software
@@ -118,6 +128,7 @@ software/
      - **Camera Config**: Camera selection and debug information
      - **Flow Control**: Pressure and flow control for 4 channels
      - **Heaters**: Temperature and stirring control for 4 heaters
+     - **Droplet Detection**: Real-time droplet detection with histogram visualization
 
 ### Simulation Mode
 
@@ -172,6 +183,37 @@ python tests/test_integration.py # Integration tests
 ```
 
 See `tests/README.md` for detailed test documentation.
+
+### Droplet Detection
+
+The system includes real-time droplet detection capabilities:
+
+**Quick Start:**
+1. Set ROI in Camera View tab
+2. Go to Droplet Detection tab
+3. Click "Start Detection"
+4. View real-time histograms and statistics
+
+**Documentation:**
+- User Guide: `docs/droplet_detection_user_guide.md`
+- Developer Guide: `docs/droplet_detection_developer_guide.md`
+- Testing & Optimization: `docs/testing_and_optimization_guide.md`
+
+**Testing:**
+```bash
+# Run integration tests
+python -m droplet_detection.test_integration
+
+# Run performance benchmarks
+python -m droplet_detection.benchmark
+
+# Optimize parameters
+python -m droplet_detection.optimize
+```
+
+**API:**
+- REST API: `GET /api/droplet/status`, `POST /api/droplet/start`, etc.
+- WebSocket: `socket.emit('droplet', {cmd: 'start'})`
 
 ### Troubleshooting
 

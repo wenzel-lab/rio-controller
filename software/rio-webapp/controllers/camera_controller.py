@@ -51,6 +51,53 @@ class CameraController:
         def on_cam_select(data: Dict[str, Any]) -> None:
             self.handle_camera_select(data)
 
+    def _stop_camera_thread(self) -> None:
+        """Stop the current camera thread if it's running."""
+        if not (
+            hasattr(self.camera, "thread") and self.camera.thread and self.camera.thread.is_alive()
+        ):
+            return
+
+        if hasattr(self.camera, "exit_event"):
+            self.camera.exit_event.set()
+        try:
+            self.camera.thread.join(timeout=2.0)
+        except Exception:
+            pass
+
+    def _set_camera_type(self, camera_name: str) -> str:
+        """
+        Set camera type in strobe_cam and handle errors.
+
+        Args:
+            camera_name: Name of camera to set
+
+        Returns:
+            Actual camera name (may be 'none' if setting failed)
+        """
+        if not hasattr(self.camera, "strobe_cam"):
+            return camera_name
+
+        success = self.camera.strobe_cam.set_camera_type(camera_name)
+        if not success and camera_name != "none":
+            logger.error(f"Failed to set camera type to {camera_name}")
+            return "none"  # Fall back to none on error
+
+        return camera_name
+
+    def _update_camera_instance(self, camera_name: str) -> None:
+        """
+        Update camera instance based on camera name.
+
+        Args:
+            camera_name: Name of camera ('none' or camera type)
+        """
+        self.camera.cam_data["camera"] = camera_name
+        if camera_name != "none" and self.camera.strobe_cam and self.camera.strobe_cam.camera:
+            self.camera.camera = self.camera.strobe_cam.camera
+        else:
+            self.camera.camera = None
+
     def handle_camera_select(self, data: Dict[str, Any]) -> None:
         """
         Handle camera selection command.
@@ -67,31 +114,13 @@ class CameraController:
             logger.info(f"Camera selection changed to: {camera_name}")
 
             # Stop current camera thread if running
-            if (
-                hasattr(self.camera, "thread")
-                and self.camera.thread
-                and self.camera.thread.is_alive()
-            ):
-                if hasattr(self.camera, "exit_event"):
-                    self.camera.exit_event.set()
-                try:
-                    self.camera.thread.join(timeout=2.0)
-                except Exception:
-                    pass
+            self._stop_camera_thread()
 
             # Set camera type in strobe_cam (will create appropriate camera instance)
-            if hasattr(self.camera, "strobe_cam"):
-                success = self.camera.strobe_cam.set_camera_type(camera_name)
-                if not success and camera_name != "none":
-                    logger.error(f"Failed to set camera type to {camera_name}")
-                    camera_name = "none"  # Fall back to none on error
+            camera_name = self._set_camera_type(camera_name)
 
-            # Update camera data
-            self.camera.cam_data["camera"] = camera_name
-            if camera_name != "none" and self.camera.strobe_cam and self.camera.strobe_cam.camera:
-                self.camera.camera = self.camera.strobe_cam.camera
-            else:
-                self.camera.camera = None
+            # Update camera data and instance
+            self._update_camera_instance(camera_name)
 
             # Emit reload to trigger page refresh
             self.socketio.emit("reload")

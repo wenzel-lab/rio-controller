@@ -40,7 +40,10 @@ FRAME_WAIT_TIME_S = 0.1
 try:
     import sys
     import os as os_module
-    parent_dir = os_module.path.dirname(os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__))))
+
+    parent_dir = os_module.path.dirname(
+        os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__)))
+    )
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
     from drivers.camera.camera_base import BaseCamera
@@ -177,7 +180,7 @@ class SimulatedCamera(BaseCamera):
                 # Convert tuples to lists for mutation
                 pos_list = list(self.droplet_positions[i])
                 vel_list = list(self.droplet_velocities[i])
-                
+
                 # Update position
                 pos_list[0] += vel_list[0]
                 pos_list[1] += vel_list[1]

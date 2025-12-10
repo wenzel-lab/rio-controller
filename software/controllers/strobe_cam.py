@@ -98,17 +98,20 @@ class PiStrobeCam:
         # Create default camera (rpi) for initialization
         try:
             camera_instance = create_camera()
-            self.camera: Optional[BaseCamera] = camera_instance if camera_instance is not None else None
+            self.camera: Optional[BaseCamera] = (
+                camera_instance if camera_instance is not None else None
+            )
             self._camera_type: Optional[str] = "rpi" if camera_instance is not None else None
 
             # Configure camera with default settings
-            self.camera.set_config(
-                {
-                    "Width": CAMERA_DEFAULT_WIDTH,
-                    "Height": CAMERA_DEFAULT_HEIGHT,
-                    "FrameRate": CAMERA_DEFAULT_FPS,
-                }
-            )
+            if self.camera is not None:
+                self.camera.set_config(
+                    {
+                        "Width": CAMERA_DEFAULT_WIDTH,
+                        "Height": CAMERA_DEFAULT_HEIGHT,
+                        "FrameRate": CAMERA_DEFAULT_FPS,
+                    }
+                )
         except Exception as e:
             logger.error(f"Error creating/configuring camera: {e}")
             # In simulation mode, this should work, so raise
@@ -160,7 +163,7 @@ class PiStrobeCam:
                     self.camera.close()
                 except Exception:
                     pass
-                self.camera = None  # type: ignore[assignment]
+                self.camera = None
 
             if camera_type == "none":
                 self._camera_type = None
@@ -283,6 +286,9 @@ class PiStrobeCam:
 
     def _update_camera_config(self, framerate: int, shutter_speed_us: int) -> bool:
         """Update camera configuration."""
+        if self.camera is None:
+            logger.error("Camera is None, cannot update config")
+            return False
         try:
             self.camera.set_config({"FrameRate": framerate, "ShutterSpeed": shutter_speed_us})
             return True
@@ -292,6 +298,9 @@ class PiStrobeCam:
 
     def _ensure_camera_started(self) -> bool:
         """Ensure camera is started and strobe is enabled."""
+        if self.camera is None:
+            logger.error("Camera is None, cannot start")
+            return False
         try:
             self.camera.start()
         except Exception as e:

@@ -60,7 +60,7 @@ def test_external_dependencies():
 def test_internal_modules():
     """Test internal module imports"""
     import pytest
-    
+
     print("\n" + "=" * 60)
     print("Testing Internal Module Imports")
     print("=" * 60)
@@ -184,7 +184,7 @@ def test_initialization():
     print("=" * 60)
 
     import pytest
-    
+
     try:
         from drivers.spi_handler import spi_init
 

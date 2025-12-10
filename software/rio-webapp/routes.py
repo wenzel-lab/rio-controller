@@ -15,7 +15,7 @@ import sys
 import os
 from flask import Flask, render_template, Response
 from flask_socketio import SocketIO
-from typing import List, Any
+from typing import List, Any, Optional
 
 # Add parent directory to path for imports
 software_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,7 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 def register_routes(
-    app: Flask, socketio: SocketIO, view_model, heaters: List[Any], flow, cam, debug_data: dict
+    app: Flask,
+    socketio: SocketIO,
+    view_model,
+    heaters: List[Any],
+    flow,
+    cam,
+    debug_data: dict,
+    droplet_controller: Optional[Any] = None,
 ) -> None:
     """
     Register all Flask routes and WebSocket handlers.
@@ -39,13 +46,182 @@ def register_routes(
         flow: Flow device controller
         cam: Camera device controller
         debug_data: Dictionary for debug information (mutated)
+        droplet_controller: Optional DropletDetectorController instance
     """
-    _register_http_routes(app, view_model, heaters, flow, cam, debug_data)
+    _register_http_routes(app, view_model, heaters, flow, cam, debug_data, droplet_controller)
     _register_websocket_handlers(socketio)
 
 
+def _handle_route_error(e: Exception, route_name: str):
+    """Handle route errors consistently."""
+    from flask import jsonify
+
+    logger.error(f"Error in {route_name}: {e}")
+    return jsonify({"error": str(e)}), 500
+
+
+def _register_droplet_status_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet status route."""
+    from flask import jsonify
+
+    @app.route("/api/droplet/status", methods=["GET"])
+    def droplet_status():
+        """Get droplet detection status."""
+        try:
+            return jsonify(
+                {
+                    "running": droplet_controller.running,
+                    "frame_count": droplet_controller.frame_count,
+                    "droplet_count_total": droplet_controller.droplet_count_total,
+                    "statistics": droplet_controller.get_statistics(),
+                }
+            )
+        except Exception as e:
+            return _handle_route_error(e, "droplet_status")
+
+
+def _register_droplet_histogram_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet histogram route."""
+    from flask import jsonify
+
+    @app.route("/api/droplet/histogram", methods=["GET"])
+    def droplet_histogram():
+        """Get current histogram data."""
+        try:
+            return jsonify(droplet_controller.get_histogram())
+        except Exception as e:
+            return _handle_route_error(e, "droplet_histogram")
+
+
+def _register_droplet_statistics_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet statistics route."""
+    from flask import jsonify
+
+    @app.route("/api/droplet/statistics", methods=["GET"])
+    def droplet_statistics():
+        """Get current statistics."""
+        try:
+            return jsonify(droplet_controller.get_statistics())
+        except Exception as e:
+            return _handle_route_error(e, "droplet_statistics")
+
+
+def _register_droplet_performance_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet performance route."""
+    from flask import jsonify
+
+    @app.route("/api/droplet/performance", methods=["GET"])
+    def droplet_performance():
+        """Get performance timing metrics."""
+        try:
+            return jsonify(droplet_controller.get_performance_metrics())
+        except Exception as e:
+            return _handle_route_error(e, "droplet_performance")
+
+
+def _register_droplet_status_routes(app: Flask, droplet_controller: Any) -> None:
+    """Register all droplet status API routes."""
+    _register_droplet_status_route(app, droplet_controller)
+    _register_droplet_histogram_route(app, droplet_controller)
+    _register_droplet_statistics_route(app, droplet_controller)
+    _register_droplet_performance_route(app, droplet_controller)
+
+
+def _register_droplet_control_routes(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet control API routes."""
+    from flask import jsonify
+
+    @app.route("/api/droplet/start", methods=["POST"])
+    def droplet_start():
+        """Start droplet detection."""
+        try:
+            success = droplet_controller.start()
+            if success:
+                return jsonify({"success": True, "message": "Detection started"})
+            return (
+                jsonify({"success": False, "message": "Failed to start. Check ROI is set."}),
+                400,
+            )
+        except Exception as e:
+            return _handle_route_error(e, "droplet_start")
+
+    @app.route("/api/droplet/stop", methods=["POST"])
+    def droplet_stop():
+        """Stop droplet detection."""
+        try:
+            droplet_controller.stop()
+            return jsonify({"success": True, "message": "Detection stopped"})
+        except Exception as e:
+            return _handle_route_error(e, "droplet_stop")
+
+
+def _register_droplet_config_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet config route."""
+    from flask import jsonify, request
+
+    @app.route("/api/droplet/config", methods=["POST"])
+    def droplet_config():
+        """Update droplet detection configuration."""
+        try:
+            config_data = request.get_json()
+            if not config_data:
+                return jsonify({"error": "No configuration data provided"}), 400
+
+            success = droplet_controller.update_config(config_data)
+            if success:
+                return jsonify({"success": True, "message": "Configuration updated"})
+            return (
+                jsonify({"success": False, "message": "Failed to update configuration"}),
+                400,
+            )
+        except Exception as e:
+            return _handle_route_error(e, "droplet_config")
+
+
+def _register_droplet_profile_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet profile route."""
+    from flask import jsonify, request
+
+    @app.route("/api/droplet/profile", methods=["POST"])
+    def droplet_profile():
+        """Load parameter profile."""
+        try:
+            data = request.get_json()
+            if not data or "path" not in data:
+                return jsonify({"error": "Profile path not provided"}), 400
+
+            success = droplet_controller.load_profile(data["path"])
+            if success:
+                return jsonify({"success": True, "message": f"Profile loaded: {data['path']}"})
+            return (
+                jsonify({"success": False, "message": f"Failed to load profile: {data['path']}"}),
+                400,
+            )
+        except Exception as e:
+            return _handle_route_error(e, "droplet_profile")
+
+
+def _register_droplet_config_routes(app: Flask, droplet_controller: Any) -> None:
+    """Register all droplet configuration API routes."""
+    _register_droplet_config_route(app, droplet_controller)
+    _register_droplet_profile_route(app, droplet_controller)
+
+
+def _register_droplet_api_routes(app: Flask, droplet_controller: Any) -> None:
+    """Register all droplet detection API routes."""
+    _register_droplet_status_routes(app, droplet_controller)
+    _register_droplet_control_routes(app, droplet_controller)
+    _register_droplet_config_routes(app, droplet_controller)
+
+
 def _register_http_routes(
-    app: Flask, view_model, heaters: List[Any], flow, cam, debug_data: dict
+    app: Flask,
+    view_model,
+    heaters: List[Any],
+    flow,
+    cam,
+    debug_data: dict,
+    droplet_controller: Optional[Any] = None,
 ) -> None:
     """Register HTTP routes."""
 
@@ -102,6 +278,10 @@ def _register_http_routes(
 
         return Response(generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
+    # Droplet detection API routes
+    if droplet_controller is not None:
+        _register_droplet_api_routes(app, droplet_controller)
+
 
 def _register_websocket_handlers(socketio: SocketIO) -> None:
     """Register WebSocket event handlers."""
@@ -118,7 +298,13 @@ def _register_websocket_handlers(socketio: SocketIO) -> None:
 
 
 def create_background_update_task(
-    socketio: SocketIO, view_model, heaters: List[Any], flow, cam, debug_data: dict
+    socketio: SocketIO,
+    view_model,
+    heaters: List[Any],
+    flow,
+    cam,
+    debug_data: dict,
+    droplet_web_controller: Optional[Any] = None,
 ):
     """
     Create and return a background update task function.
@@ -169,6 +355,19 @@ def create_background_update_task(
                 socketio.emit("cam", camera_data)
                 socketio.emit("strobe", strobe_data)
                 socketio.emit("debug", debug_formatted)
+                
+                # Emit droplet detection updates (if controller available and running)
+                if droplet_web_controller is not None:
+                    try:
+                        # Only emit if detection is actually running
+                        if (hasattr(droplet_web_controller, 'droplet_controller') and 
+                            hasattr(droplet_web_controller.droplet_controller, 'running') and
+                            droplet_web_controller.droplet_controller.running):
+                            droplet_web_controller.emit_histogram()
+                            droplet_web_controller.emit_statistics()
+                    except Exception as e:
+                        # Don't break background loop if droplet detection has issues
+                        logger.debug(f"Error in droplet update loop: {e}")
             except Exception as e:
                 logger.error(f"Error in background update loop: {e}")
                 time.sleep(1.0)

@@ -9,7 +9,7 @@ from picamera2 import Picamera2
 import cv2
 import os
 import time
-from typing import Optional, Dict, Tuple, Generator, Any
+from typing import Optional, Dict, Tuple, Generator
 import numpy as np
 from queue import Queue
 from threading import Event
@@ -62,9 +62,7 @@ class PiCameraV2(BaseCamera):
                 size_tuple = (int(size_config[0]), int(size_config[1]))
             else:
                 size_tuple = (640, 480)
-            self.cam.configure(
-                self.cam.create_video_configuration(main={"size": size_tuple})
-            )
+            self.cam.configure(self.cam.create_video_configuration(main={"size": size_tuple}))
             self.cam.set_controls({"FrameRate": self.config["FrameRate"]})
             self.cam.start()
 
@@ -93,9 +91,7 @@ class PiCameraV2(BaseCamera):
             size_tuple = (int(size_config[0]), int(size_config[1]))
         else:
             size_tuple = (640, 480)
-        self.cam.configure(
-            self.cam.create_video_configuration(main={"size": size_tuple})
-        )
+        self.cam.configure(self.cam.create_video_configuration(main={"size": size_tuple}))
         framerate = self.config.get("FrameRate", 30)
         if isinstance(framerate, (int, float)):
             self.cam.set_controls({"FrameRate": int(framerate)})
@@ -225,9 +221,7 @@ class PiCameraV2(BaseCamera):
             size_tuple = (int(size_config[0]), int(size_config[1]))
         else:
             size_tuple = (640, 480)
-        self.cam.configure(
-            self.cam.create_video_configuration(main={"size": size_tuple})
-        )
+        self.cam.configure(self.cam.create_video_configuration(main={"size": size_tuple}))
         self.cam.set_controls(configs)
 
         # Update frame rate if specified
@@ -241,6 +235,13 @@ class PiCameraV2(BaseCamera):
             self.stop()
             self.cam.close()
             self.cam = None
+
+    def _get_size_value(self, index: int, default: int) -> int:
+        """Get size value from config safely."""
+        size_config = self.config.get("size", [640, 480])
+        if isinstance(size_config, (list, tuple)) and len(size_config) > index:
+            return int(size_config[index])
+        return default
 
     def list_features(self) -> list:
         """
@@ -259,7 +260,7 @@ class PiCameraV2(BaseCamera):
                 "unit": "pixels",
                 "range": (1, 3040),  # HQ Camera max
                 "access_mode": (True, True),
-                "value": int(self.config.get("size", [640, 480])[1]) if isinstance(self.config.get("size", []), (list, tuple)) and len(self.config.get("size", [])) > 1 else 480,
+                "value": self._get_size_value(1, 480),
             },
             {
                 "name": "Width",
@@ -270,7 +271,7 @@ class PiCameraV2(BaseCamera):
                 "unit": "pixels",
                 "range": (1, 4056),  # HQ Camera max
                 "access_mode": (True, True),
-                "value": int(self.config.get("size", [640, 480])[0]) if isinstance(self.config.get("size", []), (list, tuple)) and len(self.config.get("size", [])) > 0 else 640,
+                "value": self._get_size_value(0, 640),
             },
             {
                 "name": "FrameRate",

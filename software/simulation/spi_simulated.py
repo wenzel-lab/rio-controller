@@ -39,7 +39,9 @@ class SimulatedGPIO:
     PUD_DOWN = 21
 
     _mode: Optional[int] = None
-    _pins: dict[int, dict[str, int]] = {}  # pin_number -> {'mode': mode, 'value': value, 'pull': pull}
+    _pins: dict[int, dict[str, int]] = (
+        {}
+    )  # pin_number -> {'mode': mode, 'value': value, 'pull': pull}
 
     @classmethod
     def setmode(cls, mode: int) -> None:

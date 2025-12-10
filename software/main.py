@@ -108,11 +108,41 @@ flow = FlowWeb(PORT_FLOW)
 # Camera needs exit_event and socketio
 cam = Camera(exit_event, socketio)
 
+# Initialize droplet detector controller (after camera is created)
+droplet_controller = None
+droplet_web_controller = None
+try:
+    from controllers.droplet_detector_controller import DropletDetectorController
+
+    droplet_controller = DropletDetectorController(cam, cam.strobe_cam)
+    # Set droplet controller reference in camera for frame feeding
+    cam.droplet_controller = droplet_controller
+    logger.info("Droplet detector controller initialized")
+except ImportError as e:
+    logger.warning(f"Droplet detection not available (missing dependencies): {e}")
+except Exception as e:
+    logger.warning(f"Failed to initialize droplet detector: {e}")
+
 # Initialize controllers
 logger.info("Initializing controllers...")
 camera_controller = CameraController(cam, socketio)
 flow_controller = FlowController(flow, socketio)
 heater_controller = HeaterController(heaters, socketio)
+
+# Initialize droplet web controller if available
+if droplet_controller is not None:
+    try:
+        # Import from rio-webapp/controllers
+        rio_webapp_controllers_dir = os.path.join(software_dir, "rio-webapp", "controllers")
+        if rio_webapp_controllers_dir not in sys.path:
+            sys.path.insert(0, rio_webapp_controllers_dir)
+        from droplet_web_controller import DropletWebController
+
+        droplet_web_controller = DropletWebController(droplet_controller, socketio)
+        logger.info("Droplet web controller initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize droplet web controller: {e}")
+
 view_model = ViewModel(
     flow, cam
 )  # ViewModel now accepts flow and camera for backward compatibility
@@ -121,7 +151,7 @@ view_model = ViewModel(
 # No need to call register_handlers() separately
 
 # Register Flask routes and WebSocket handlers
-register_routes(app, socketio, view_model, heaters, flow, cam, debug_data)
+register_routes(app, socketio, view_model, heaters, flow, cam, debug_data, droplet_controller)
 
 
 if __name__ == "__main__":
@@ -145,7 +175,7 @@ if __name__ == "__main__":
 
     # Start background update thread
     background_task = create_background_update_task(
-        socketio, view_model, heaters, flow, cam, debug_data
+        socketio, view_model, heaters, flow, cam, debug_data, droplet_web_controller
     )
     socketio.start_background_task(background_task)
 

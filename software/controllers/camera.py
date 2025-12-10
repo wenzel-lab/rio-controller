@@ -119,19 +119,23 @@ class Camera:
         optimize_fps_btn_enabled: Whether FPS optimization button is enabled
     """
 
-    def __init__(self, exit_event: threading.Event, socketio: Any) -> None:
+    def __init__(
+        self, exit_event: threading.Event, socketio: Any, droplet_controller: Optional[Any] = None
+    ) -> None:
         """
         Initialize the Camera controller.
 
         Args:
             exit_event: Threading event to signal application shutdown
             socketio: Flask-SocketIO instance for WebSocket communication
+            droplet_controller: Optional DropletDetectorController instance for frame feeding
         """
         logger.info("Initializing Camera controller")
         self.exit_event = exit_event
         self.socketio = socketio
         self.thread: Optional[threading.Thread] = None
         self.frame: Optional[bytes] = None
+        self.droplet_controller = droplet_controller  # Optional droplet detector controller
 
         # Initialize strobe-camera integration
         logger.debug("Creating PiStrobeCam instance")
@@ -168,6 +172,14 @@ class Camera:
 
         # ROI storage: dictionary with keys 'x', 'y', 'width', 'height' or None
         self.roi: Optional[Dict[str, int]] = None
+
+        # Camera calibration for droplet detection
+        # um_per_px: micrometers per pixel (calibration factor)
+        # radius_offset_px: pixel offset to correct for threshold bias
+        self.calibration: Dict[str, float] = {
+            "um_per_px": 1.0,  # Default: 1 um per pixel (no calibration)
+            "radius_offset_px": 0.0,  # Default: no offset correction
+        }
 
         # Register WebSocket event handlers
         self._register_websocket_handlers()
@@ -212,6 +224,9 @@ class Camera:
             return
 
         # Ensure camera is started before starting thread
+        if self.camera is None:
+            logger.error("Camera is None, cannot start thread")
+            return
         if (
             not hasattr(self.camera, "cam_running_event")
             or not self.camera.cam_running_event
@@ -274,6 +289,41 @@ class Camera:
         except Exception as e:
             logger.error(f"Error saving snapshot: {e}")
 
+    def _feed_frame_to_droplet_detector(self) -> None:
+        """
+        Feed current frame to droplet detector if conditions are met.
+
+        This method safely extracts ROI frame and feeds it to the droplet
+        detector without breaking the camera thread on errors.
+        """
+        if (
+            self.droplet_controller is None
+            or self.roi is None
+            or not self.droplet_controller.running
+        ):
+            return
+
+        try:
+            # Get ROI frame as numpy array for droplet detection
+            # Note: We need to get the raw frame array, not JPEG bytes
+            # The camera abstraction provides get_frame_roi() method
+            if not (self.strobe_cam and self.strobe_cam.camera):
+                return
+
+            roi = (
+                self.roi["x"],
+                self.roi["y"],
+                self.roi["width"],
+                self.roi["height"],
+            )
+            roi_frame = self.strobe_cam.get_frame_roi(roi)
+            if roi_frame is not None:
+                # Add frame to droplet detector processing queue
+                self.droplet_controller.add_frame(roi_frame)
+        except Exception as e:
+            # Don't break camera thread if droplet detection fails
+            logger.debug(f"Error feeding frame to droplet detector: {e}")
+
     def _thread(self) -> None:
         """
         Background thread for continuous frame capture.
@@ -287,6 +337,11 @@ class Camera:
         # Only start camera if not set to "none"
         if self.cam_data.get("camera") == CAMERA_TYPE_NONE:
             logger.info("Camera disabled (set to 'none'), thread exiting")
+            self.thread = None
+            return
+
+        if self.camera is None:
+            logger.error("Camera is None, cannot start thread")
             self.thread = None
             return
 
@@ -312,6 +367,9 @@ class Camera:
                 if frame_count == 1:
                     logger.info("First frame received!")
 
+                # Feed frame to droplet detector if available and ROI is set
+                self._feed_frame_to_droplet_detector()
+
                 # Check for exit signal
                 if self.exit_event.is_set():
                     logger.info("Camera thread exiting (exit event set)")
@@ -319,10 +377,11 @@ class Camera:
         except Exception as e:
             logger.error(f"Error in camera thread: {e}")
         finally:
-            try:
-                self.camera.close()
-            except Exception as e:
-                logger.error(f"Error closing camera: {e}")
+            if self.camera is not None:
+                try:
+                    self.camera.close()
+                except Exception as e:
+                    logger.error(f"Error closing camera: {e}")
             self.thread = None
             logger.debug("Camera thread terminated")
 
@@ -430,6 +489,9 @@ class Camera:
 
         # Get framerate from camera config (new abstraction)
         try:
+            if self.strobe_cam.camera is None:
+                self.strobe_framerate = CAMERA_THREAD_FPS
+                return
             config_value = self.strobe_cam.camera.config.get("FrameRate", CAMERA_THREAD_FPS)
             if isinstance(config_value, (int, float)):
                 self.strobe_framerate = int(config_value)
@@ -587,6 +649,30 @@ class Camera:
         if self.socketio:
             self.socketio.emit(WS_EVENT_ROI, {"roi": None})
 
+    def get_calibration(self) -> Dict[str, float]:
+        """
+        Get camera calibration parameters for droplet detection.
+
+        Returns:
+            Dictionary with 'um_per_px' and 'radius_offset_px' keys
+        """
+        return self.calibration.copy()
+
+    def set_calibration(self, um_per_px: Optional[float] = None, radius_offset_px: Optional[float] = None) -> None:
+        """
+        Set camera calibration parameters for droplet detection.
+
+        Args:
+            um_per_px: Micrometers per pixel (calibration factor)
+            radius_offset_px: Pixel offset to correct for threshold bias
+        """
+        if um_per_px is not None:
+            self.calibration["um_per_px"] = float(um_per_px)
+            logger.info(f"Camera calibration updated: um_per_px = {um_per_px}")
+        if radius_offset_px is not None:
+            self.calibration["radius_offset_px"] = float(radius_offset_px)
+            logger.info(f"Camera calibration updated: radius_offset_px = {radius_offset_px}")
+
     def get_roi(self) -> Optional[Tuple[int, int, int, int]]:
         """
         Get current ROI coordinates as a tuple.
@@ -597,3 +683,27 @@ class Camera:
         if self.roi:
             return (self.roi["x"], self.roi["y"], self.roi["width"], self.roi["height"])
         return None
+
+    def close(self) -> None:
+        """
+        Close camera and clean up resources.
+
+        Properly shuts down the camera thread, camera, and strobe,
+        ensuring all resources are released.
+        """
+        try:
+            # Signal thread to exit
+            if self.exit_event:
+                self.exit_event.set()
+
+            # Wait for thread to finish
+            if self.thread is not None and self.thread.is_alive():
+                self.thread.join(timeout=5.0)
+
+            # Close strobe-camera integration
+            if hasattr(self, "strobe_cam") and self.strobe_cam:
+                self.strobe_cam.close()
+
+            logger.info("Camera controller closed")
+        except Exception as e:
+            logger.error(f"Error closing camera controller: {e}")

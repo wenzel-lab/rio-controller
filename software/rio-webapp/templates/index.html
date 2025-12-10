@@ -84,6 +84,11 @@
                             <i class="bi bi-thermometer-half"></i> Heaters
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="droplet-tab" data-bs-toggle="tab" data-bs-target="#droplet-pane" type="button" role="tab">
+                            <i class="bi bi-droplet"></i> Droplet Detection
+                        </button>
+                    </li>
                 </ul>
                 
                 <!-- Tab Content -->
@@ -301,6 +306,55 @@
                         </div>
                         {% endfor %}
                     </div>
+                    
+                    <!-- Droplet Detection Tab -->
+                    <div class="tab-pane fade" id="droplet-pane" role="tabpanel">
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h5 class="mb-0"><i class="bi bi-droplet"></i> Droplet Detection Control</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="droplet_status" class="mb-3">
+                                    <div class="alert alert-secondary">
+                                        <strong>Status:</strong> Not Started
+                                    </div>
+                                </div>
+                                <div class="btn-group mb-3" role="group">
+                                    <button id="droplet_start_btn" type="button" class="btn btn-success">
+                                        <i class="bi bi-play-circle"></i> Start Detection
+                                    </button>
+                                    <button id="droplet_stop_btn" type="button" class="btn btn-danger">
+                                        <i class="bi bi-stop-circle"></i> Stop Detection
+                                    </button>
+                                    <button id="droplet_reset_btn" type="button" class="btn btn-warning">
+                                        <i class="bi bi-arrow-clockwise"></i> Reset
+                                    </button>
+                                    <button id="droplet_status_btn" type="button" class="btn btn-info">
+                                        <i class="bi bi-info-circle"></i> Get Status
+                                    </button>
+                                </div>
+                                <div class="alert alert-info">
+                                    <small>
+                                        <strong>Note:</strong> Set ROI in Camera View tab before starting detection.
+                                        Detection processes frames from the selected ROI region.
+                                        <br>
+                                        <strong>Calibration:</strong> Configure pixel_ratio (um/px) via config API to display sizes in micrometers.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Droplet Histograms</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="droplet_histogram_container" class="row">
+                                    <!-- Histograms will be created by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -310,7 +364,9 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='roi_selector.js') }}"></script>
+    <script src="{{ url_for('static', filename='droplet_histogram.js') }}"></script>
     
     <script type="text/javascript">
         {{ cam_html.js_functions( cam, strobe ) }}
@@ -492,6 +548,30 @@
             socket.on('flows', function(data) {
                 flows = data;
                 flows_update();
+            });
+            
+            // Droplet detection event handlers
+            socket.on('droplet:histogram', function(data) {
+                if (window.dropletHistogram) {
+                    window.dropletHistogram.updateHistograms(data);
+                }
+            });
+            
+            socket.on('droplet:statistics', function(data) {
+                if (window.dropletHistogram) {
+                    window.dropletHistogram.updateStatistics(data);
+                }
+            });
+            
+            socket.on('droplet:status', function(data) {
+                if (window.dropletHistogram) {
+                    window.dropletHistogram.updateStatus(data);
+                }
+            });
+            
+            socket.on('droplet:error', function(data) {
+                console.error('Droplet detection error:', data.message);
+                alert('Droplet Detection Error: ' + data.message);
             });
         });
         
