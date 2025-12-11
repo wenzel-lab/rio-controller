@@ -10,15 +10,37 @@ import logging
 from pathlib import Path
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, software_dir)
 
-from droplet_detection import DropletDetector, DropletDetectionConfig, DropletHistogram
-from droplet_detection.test_data_loader import (
-    find_test_images,
-    load_test_image,
-    extract_roi_from_image,
-    get_default_roi_for_test_image,
-)
+# Import droplet_detection module (directory has hyphen, so use importlib)
+import importlib.util
+
+droplet_detection_path = os.path.join(software_dir, "droplet-detection")
+if os.path.exists(droplet_detection_path):
+    spec = importlib.util.spec_from_file_location(
+        "droplet_detection", os.path.join(droplet_detection_path, "__init__.py")
+    )
+    droplet_detection = importlib.util.module_from_spec(spec)
+    sys.modules["droplet_detection"] = droplet_detection
+    spec.loader.exec_module(droplet_detection)
+
+    DropletDetector = droplet_detection.DropletDetector
+    DropletDetectionConfig = droplet_detection.DropletDetectionConfig
+    DropletHistogram = droplet_detection.DropletHistogram
+
+    # Import test_data_loader directly from file
+    test_data_loader_spec = importlib.util.spec_from_file_location(
+        "test_data_loader", os.path.join(droplet_detection_path, "test_data_loader.py")
+    )
+    test_data_loader = importlib.util.module_from_spec(test_data_loader_spec)
+    test_data_loader_spec.loader.exec_module(test_data_loader)
+    find_test_images = test_data_loader.find_test_images
+    load_test_image = test_data_loader.load_test_image
+    extract_roi_from_image = test_data_loader.extract_roi_from_image
+    get_default_roi_for_test_image = test_data_loader.get_default_roi_for_test_image
+else:
+    raise ImportError("droplet-detection directory not found")
 
 # Configure logging
 logging.basicConfig(

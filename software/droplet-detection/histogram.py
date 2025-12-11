@@ -91,20 +91,21 @@ class DropletHistogram:
         Returns:
             Tuple of (counts, bin_edges)
         """
+        # Get appropriate deque
         if metric == "width":
-            data = list(self.widths)
+            data_deque = self.widths
         elif metric == "height":
-            data = list(self.heights)
+            data_deque = self.heights
         elif metric == "diameter":
-            data = list(self.diameters)
+            data_deque = self.diameters
         elif metric == "area":
-            data = list(self.areas)
+            data_deque = self.areas
         else:
             raise ValueError(
                 f"Unknown metric: {metric}. Use 'width', 'height', 'diameter', or 'area'"
             )
 
-        if not data:
+        if not data_deque:
             # Return empty histogram
             if range:
                 bins_array = np.linspace(range[0], range[1], self.bins + 1)
@@ -112,6 +113,8 @@ class DropletHistogram:
                 bins_array = np.linspace(0, 100, self.bins + 1)
             return np.zeros(self.bins, dtype=np.int64), bins_array
 
+        # Convert deque to numpy array directly (more efficient than list() then array())
+        data = np.array(data_deque, dtype=np.float64)  # Use float64 for histogram input
         return np.histogram(data, bins=self.bins, range=range)
 
     def get_bars(self, metric: str = "width") -> List[Tuple[float, int]]:
@@ -121,49 +124,61 @@ class DropletHistogram:
         Returns sorted list of [(value, count), ...] pairs.
         This format is useful for grouping and interval operations.
 
+        Optimized using numpy operations for better performance.
+
         Args:
             metric: Metric to get bars for ("width", "height", "diameter", or "area")
 
         Returns:
             List of (value, count) tuples, sorted by value
         """
+        # Get appropriate deque
         if metric == "width":
-            data = list(self.widths)
+            data_deque = self.widths
         elif metric == "height":
-            data = list(self.heights)
+            data_deque = self.heights
         elif metric == "diameter":
-            data = list(self.diameters)
+            data_deque = self.diameters
         elif metric == "area":
-            data = list(self.areas)
+            data_deque = self.areas
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
-        if not data:
+        if not data_deque:
             return []
 
-        # Sort and group (similar to sort_and_group in AInalysis)
-        data_sorted = sorted([int(d) for d in data])
-        if not data_sorted:
+        # Convert deque to numpy array directly (more efficient)
+        # Use float32 for memory efficiency on Raspberry Pi
+        data_array = np.array(data_deque, dtype=np.float32)
+        data_int = np.round(data_array).astype(np.int32)
+
+        if data_int.size == 0:
             return []
 
-        bars = []
-        current_value = data_sorted[0]
-        count = 1
+        # Use numpy.bincount for efficient counting (optimized for Raspberry Pi)
+        min_val = int(data_int.min())
+        if min_val < 0:
+            data_int = data_int - min_val
 
-        for value in data_sorted[1:]:
-            if value == current_value:
-                count += 1
-            else:
-                bars.append((float(current_value), count))
-                current_value = value
-                count = 1
-        bars.append((float(current_value), count))
+        counts = np.bincount(data_int)
+
+        # Build result list (only non-zero counts) - use list comprehension for efficiency
+        bars = [
+            (float(idx + min_val if min_val < 0 else idx), int(count))
+            for idx, count in enumerate(counts)
+            if count > 0
+        ]
+
+        # Sort by value (should already be sorted, but ensure it)
+        bars.sort(key=lambda x: x[0])
 
         return bars
 
     def get_statistics(self) -> Dict:
         """
         Get real-time statistics matching AInalysis structure.
+
+        Optimized to use vectorized numpy operations for better performance.
 
         Returns:
             Dictionary of statistics with width, height, diameter, and area metrics
@@ -174,60 +189,44 @@ class DropletHistogram:
             "pixel_ratio": self.pixel_ratio,
         }
 
-        # Width statistics (major axis) - rounded to integers in um
-        if self.widths:
-            stats["width"] = {
-                "mean": int(round(np.mean(self.widths) * self.pixel_ratio)),
-                "std": int(round(np.std(self.widths) * self.pixel_ratio)),
-                "min": int(round(np.min(self.widths) * self.pixel_ratio)),
-                "max": int(round(np.max(self.widths) * self.pixel_ratio)),
-                "mode": int(round(self._get_mode(self.widths))),
+        # Helper function to compute statistics efficiently
+        def _compute_stats(data: deque, ratio: float) -> Dict[str, int]:
+            """Compute statistics for a metric using vectorized operations."""
+            if not data:
+                return {"mean": 0, "std": 0, "min": 0, "max": 0, "mode": 0}
+
+            # Convert to numpy array once (more efficient than multiple list() calls)
+            data_array = np.array(data, dtype=np.float32)
+            scaled = data_array * ratio
+
+            return {
+                "mean": int(round(np.mean(scaled))),
+                "std": int(round(np.std(scaled))),
+                "min": int(round(np.min(scaled))),
+                "max": int(round(np.max(scaled))),
+                "mode": int(round(self._get_mode(data))),
             }
-        else:
-            stats["width"] = {"mean": 0, "std": 0, "min": 0, "max": 0, "mode": 0}
+
+        # Width statistics (major axis) - rounded to integers in um
+        stats["width"] = _compute_stats(self.widths, self.pixel_ratio)
 
         # Height statistics (minor axis) - rounded to integers in um
-        if self.heights:
-            stats["height"] = {
-                "mean": int(round(np.mean(self.heights) * self.pixel_ratio)),
-                "std": int(round(np.std(self.heights) * self.pixel_ratio)),
-                "min": int(round(np.min(self.heights) * self.pixel_ratio)),
-                "max": int(round(np.max(self.heights) * self.pixel_ratio)),
-                "mode": int(round(self._get_mode(self.heights))),
-            }
-        else:
-            stats["height"] = {"mean": 0, "std": 0, "min": 0, "max": 0, "mode": 0}
+        stats["height"] = _compute_stats(self.heights, self.pixel_ratio)
 
         # Diameter statistics - rounded to integers in um
-        if self.diameters:
-            stats["diameter"] = {
-                "mean": int(round(np.mean(self.diameters) * self.pixel_ratio)),
-                "std": int(round(np.std(self.diameters) * self.pixel_ratio)),
-                "min": int(round(np.min(self.diameters) * self.pixel_ratio)),
-                "max": int(round(np.max(self.diameters) * self.pixel_ratio)),
-                "mode": int(round(self._get_mode(self.diameters))),
-            }
-        else:
-            stats["diameter"] = {"mean": 0, "std": 0, "min": 0, "max": 0, "mode": 0}
+        stats["diameter"] = _compute_stats(self.diameters, self.pixel_ratio)
 
         # Area statistics (note: area uses pixel_ratio²) - rounded to integers
-        if self.areas:
-            area_ratio = self.pixel_ratio**2
-            stats["area"] = {
-                "mean": int(round(np.mean(self.areas) * area_ratio)),
-                "std": int(round(np.std(self.areas) * area_ratio)),
-                "min": int(round(np.min(self.areas) * area_ratio)),
-                "max": int(round(np.max(self.areas) * area_ratio)),
-                "mode": int(round(self._get_mode(self.areas))),
-            }
-        else:
-            stats["area"] = {"mean": 0, "std": 0, "min": 0, "max": 0, "mode": 0}
+        area_ratio = self.pixel_ratio**2
+        stats["area"] = _compute_stats(self.areas, area_ratio)
 
         return stats
 
     def _get_mode(self, data: deque) -> float:
         """
         Calculate mode (most frequent value) from data.
+
+        Optimized using numpy.bincount for better performance on Raspberry Pi.
 
         Args:
             data: Deque of values
@@ -238,16 +237,28 @@ class DropletHistogram:
         if not data:
             return 0.0
 
-        # Round to integers for mode calculation
-        rounded = [int(d) for d in data]
-        counts = {}
-        for value in rounded:
-            counts[value] = counts.get(value, 0) + 1
+        # Convert deque to numpy array directly (more efficient than list() then array())
+        # Use float32 for memory efficiency on Raspberry Pi
+        data_array = np.array(data, dtype=np.float32)
+        rounded = np.round(data_array).astype(np.int32)
 
-        if not counts:
+        # Use numpy.bincount for efficient counting (faster than dict on large datasets)
+        # This is optimized for Raspberry Pi (works on both 32-bit and 64-bit)
+        if rounded.size == 0:
             return 0.0
 
-        mode_value = max(counts, key=counts.get)
+        # Handle negative values by shifting (bincount requires non-negative)
+        min_val = int(rounded.min())
+        if min_val < 0:
+            rounded = rounded - min_val
+
+        counts = np.bincount(rounded)
+        if counts.size == 0:
+            return 0.0
+
+        mode_idx = int(np.argmax(counts))
+        mode_value = mode_idx + min_val if min_val < 0 else mode_idx
+
         # Return mode in physical units (will be rounded in get_statistics)
         return float(mode_value * self.pixel_ratio)
 
@@ -266,22 +277,30 @@ class DropletHistogram:
         return {
             "histograms": {
                 "width": {
-                    "counts": [int(c) for c in hist_width.tolist()],  # Integer counts
+                    "counts": hist_width.astype(
+                        np.int32
+                    ).tolist(),  # Integer counts (more efficient)
                     "bins": bins_width.tolist(),
                     "bars": self.get_bars("width"),  # For compatibility with AInalysis format
                 },
                 "height": {
-                    "counts": [int(c) for c in hist_height.tolist()],  # Integer counts
+                    "counts": hist_height.astype(
+                        np.int32
+                    ).tolist(),  # Integer counts (more efficient)
                     "bins": bins_height.tolist(),
                     "bars": self.get_bars("height"),
                 },
                 "area": {
-                    "counts": [int(c) for c in hist_area.tolist()],  # Integer counts
+                    "counts": hist_area.astype(
+                        np.int32
+                    ).tolist(),  # Integer counts (more efficient)
                     "bins": bins_area.tolist(),
                     "bars": self.get_bars("area"),
                 },
                 "diameter": {
-                    "counts": [int(c) for c in hist_diameter.tolist()],  # Integer counts
+                    "counts": hist_diameter.astype(
+                        np.int32
+                    ).tolist(),  # Integer counts (more efficient)
                     "bins": bins_diameter.tolist(),
                     "bars": self.get_bars("diameter"),
                 },

@@ -11,7 +11,7 @@ from .segmenter import Segmenter
 from .measurer import Measurer, DropletMetrics
 from .artifact_rejector import ArtifactRejector
 from .histogram import DropletHistogram
-from .config import DropletDetectionConfig, load_config, save_config
+from .config import DropletDetectionConfig, load_config, save_config, extract_droplet_config
 
 __all__ = [
     "DropletDetector",
@@ -24,6 +24,7 @@ __all__ = [
     "DropletDetectionConfig",
     "load_config",
     "save_config",
+    "extract_droplet_config",
 ]
 
 __version__ = "0.1.0"

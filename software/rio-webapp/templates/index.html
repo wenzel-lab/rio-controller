@@ -84,11 +84,13 @@
                             <i class="bi bi-thermometer-half"></i> Heaters
                         </button>
                     </li>
+                    {% if droplet_analysis_enabled %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="droplet-tab" data-bs-toggle="tab" data-bs-target="#droplet-pane" type="button" role="tab">
                             <i class="bi bi-droplet"></i> Droplet Detection
                         </button>
                     </li>
+                    {% endif %}
                 </ul>
                 
                 <!-- Tab Content -->
@@ -308,6 +310,7 @@
                     </div>
                     
                     <!-- Droplet Detection Tab -->
+                    {% if droplet_analysis_enabled %}
                     <div class="tab-pane fade" id="droplet-pane" role="tabpanel">
                         <div class="card mb-3">
                             <div class="card-header">
@@ -332,6 +335,9 @@
                                     <button id="droplet_status_btn" type="button" class="btn btn-info">
                                         <i class="bi bi-info-circle"></i> Get Status
                                     </button>
+                                    <button id="droplet_export_btn" type="button" class="btn btn-primary">
+                                        <i class="bi bi-download"></i> Export Data
+                                    </button>
                                 </div>
                                 <div class="alert alert-info">
                                     <small>
@@ -355,6 +361,7 @@
                             </div>
                         </div>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

@@ -658,7 +658,9 @@ class Camera:
         """
         return self.calibration.copy()
 
-    def set_calibration(self, um_per_px: Optional[float] = None, radius_offset_px: Optional[float] = None) -> None:
+    def set_calibration(
+        self, um_per_px: Optional[float] = None, radius_offset_px: Optional[float] = None
+    ) -> None:
         """
         Set camera calibration parameters for droplet detection.
 

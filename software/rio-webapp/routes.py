@@ -48,6 +48,9 @@ def register_routes(
         debug_data: Dictionary for debug information (mutated)
         droplet_controller: Optional DropletDetectorController instance
     """
+    # Pass droplet_controller availability to template
+    app.jinja_env.globals["droplet_analysis_enabled"] = droplet_controller is not None
+
     _register_http_routes(app, view_model, heaters, flow, cam, debug_data, droplet_controller)
     _register_websocket_handlers(socketio)
 
@@ -73,6 +76,9 @@ def _register_droplet_status_route(app: Flask, droplet_controller: Any) -> None:
                     "running": droplet_controller.running,
                     "frame_count": droplet_controller.frame_count,
                     "droplet_count_total": droplet_controller.droplet_count_total,
+                    "processing_rate_hz": round(
+                        getattr(droplet_controller, "processing_rate_hz", 0.0), 2
+                    ),
                     "statistics": droplet_controller.get_statistics(),
                 }
             )
@@ -207,11 +213,52 @@ def _register_droplet_config_routes(app: Flask, droplet_controller: Any) -> None
     _register_droplet_profile_route(app, droplet_controller)
 
 
+def _register_droplet_export_route(app: Flask, droplet_controller: Any) -> None:
+    """Register droplet export route."""
+    from flask import Response, request
+
+    @app.route("/api/droplet/export", methods=["GET"])
+    def droplet_export():
+        """Export droplet measurements as CSV or TXT."""
+        try:
+            format_type = request.args.get("format", "csv").lower()
+
+            if format_type not in ["csv", "txt"]:
+                from flask import jsonify
+
+                return jsonify({"error": "Format must be 'csv' or 'txt'"}), 400
+
+            export_data = droplet_controller.export_data(format_type)
+
+            if export_data is None:
+                from flask import jsonify
+
+                return jsonify({"error": "No data available for export"}), 404
+
+            # Generate filename with timestamp
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"droplet_measurements_{timestamp}.{format_type}"
+
+            # Set appropriate MIME type
+            mimetype = "text/csv" if format_type == "csv" else "text/plain"
+
+            return Response(
+                export_data,
+                mimetype=mimetype,
+                headers={"Content-Disposition": f"attachment; filename={filename}"},
+            )
+        except Exception as e:
+            return _handle_route_error(e, "droplet_export")
+
+
 def _register_droplet_api_routes(app: Flask, droplet_controller: Any) -> None:
     """Register all droplet detection API routes."""
     _register_droplet_status_routes(app, droplet_controller)
     _register_droplet_control_routes(app, droplet_controller)
     _register_droplet_config_routes(app, droplet_controller)
+    _register_droplet_export_route(app, droplet_controller)
 
 
 def _register_http_routes(
@@ -355,14 +402,16 @@ def create_background_update_task(
                 socketio.emit("cam", camera_data)
                 socketio.emit("strobe", strobe_data)
                 socketio.emit("debug", debug_formatted)
-                
+
                 # Emit droplet detection updates (if controller available and running)
                 if droplet_web_controller is not None:
                     try:
                         # Only emit if detection is actually running
-                        if (hasattr(droplet_web_controller, 'droplet_controller') and 
-                            hasattr(droplet_web_controller.droplet_controller, 'running') and
-                            droplet_web_controller.droplet_controller.running):
+                        if (
+                            hasattr(droplet_web_controller, "droplet_controller")
+                            and hasattr(droplet_web_controller.droplet_controller, "running")
+                            and droplet_web_controller.droplet_controller.running
+                        ):
                             droplet_web_controller.emit_histogram()
                             droplet_web_controller.emit_statistics()
                     except Exception as e:

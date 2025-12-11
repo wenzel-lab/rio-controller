@@ -12,6 +12,8 @@ from typing import List, Tuple, Optional
 from .config import DropletDetectionConfig
 from .utils import get_contour_centroid
 
+# Performance optimization: Use numpy for vectorized operations
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,29 +69,45 @@ class ArtifactRejector:
             return contours
 
         moving_contours = []
-        current_centroids = []
 
-        for cnt in contours:
-            centroid = get_contour_centroid(cnt)
-            current_centroids.append(centroid)
+        # Pre-calculate all centroids (more efficient than calculating in loop)
+        centroids = [get_contour_centroid(cnt) for cnt in contours]
+        current_centroids = centroids
 
-            # Check if this centroid moved downstream
-            is_moving = False
+        # Optimize: Use numpy for vectorized distance calculations if many centroids
+        if len(self.prev_centroids) > 0 and len(centroids) > 0:
+            # Convert to numpy arrays for vectorized operations
+            prev_array = np.array(self.prev_centroids, dtype=np.float32)
+            curr_array = np.array(centroids, dtype=np.float32)
 
-            for prev_centroid in self.prev_centroids:
-                dx = centroid[0] - prev_centroid[0]  # x-direction (flow direction)
-                dy = abs(centroid[1] - prev_centroid[1])  # y-direction (perpendicular)
+            for i, (cnt, centroid) in enumerate(zip(contours, centroids)):
+                # Check if this centroid moved downstream
+                is_moving = False
+                is_new = True  # Assume new droplet until proven otherwise
 
-                # Movement in flow direction (right, assuming left-to-right flow)
-                # and small perpendicular drift
-                if dx > self.config.min_motion and dy < self.config.max_perp_drift:
+                # Vectorized calculation: compute all distances at once
+                dx = curr_array[i, 0] - prev_array[:, 0]  # x-direction (flow direction)
+                dy = np.abs(curr_array[i, 1] - prev_array[:, 1])  # y-direction (perpendicular)
+
+                # Check if any previous centroid matches motion criteria
+                motion_mask = (dx > self.config.min_motion) & (dy < self.config.max_perp_drift)
+                if np.any(motion_mask):
                     is_moving = True
-                    break
+                    is_new = False
+                else:
+                    # Check if it's close to a previous centroid (same droplet, not moving enough)
+                    close_mask = (np.abs(dx) < self.config.max_perp_drift * 2) & (
+                        dy < self.config.max_perp_drift * 2
+                    )
+                    if np.any(close_mask):
+                        is_new = False  # It's a tracked droplet, just not moving enough
 
-            # If no match found, it might be a new droplet (accept it)
-            # Or if it's the first frame after reset
-            if is_moving or len(self.prev_centroids) == 0:
-                moving_contours.append(cnt)
+                # Accept if moving OR if it's a new droplet entering the frame
+                if is_moving or is_new:
+                    moving_contours.append(cnt)
+        else:
+            # First frame or no previous centroids: accept all
+            moving_contours = contours
 
         # Update state for next frame
         self.prev_centroids = current_centroids

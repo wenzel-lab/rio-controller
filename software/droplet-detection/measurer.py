@@ -59,7 +59,9 @@ class Measurer:
         """
         self.config = config
 
-    def measure(self, contours: List[np.ndarray], radius_offset_px: float = 0.0) -> List[DropletMetrics]:
+    def measure(
+        self, contours: List[np.ndarray], radius_offset_px: float = 0.0
+    ) -> List[DropletMetrics]:
         """
         Calculate metrics for each contour.
 
@@ -101,13 +103,13 @@ class Measurer:
 
                 # Equivalent diameter (before offset correction)
                 equivalent_diameter_raw = np.sqrt(4 * area / np.pi)
-                
+
                 # Apply radius offset correction for threshold bias
                 # Offset is applied to radius, so diameter = 2 * (radius + offset)
                 radius_raw = equivalent_diameter_raw / 2.0
                 corrected_radius = max(0.0, radius_raw + radius_offset_px)  # Ensure non-negative
                 equivalent_diameter = corrected_radius * 2.0
-                
+
                 # Also apply offset to major_axis (treat as diameter)
                 major_axis_radius = major_axis / 2.0
                 corrected_major_radius = max(0.0, major_axis_radius + radius_offset_px)

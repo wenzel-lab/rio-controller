@@ -25,13 +25,12 @@ sys.path.insert(0, software_dir)
 droplet_detection_path = os.path.join(software_dir, "droplet-detection")
 if os.path.exists(droplet_detection_path):
     spec = importlib.util.spec_from_file_location(
-        "droplet_detection",
-        os.path.join(droplet_detection_path, "__init__.py")
+        "droplet_detection", os.path.join(droplet_detection_path, "__init__.py")
     )
     droplet_detection = importlib.util.module_from_spec(spec)
     sys.modules["droplet_detection"] = droplet_detection
     spec.loader.exec_module(droplet_detection)
-    
+
     DropletDetector = droplet_detection.DropletDetector
     DropletDetectionConfig = droplet_detection.DropletDetectionConfig
     DropletHistogram = droplet_detection.DropletHistogram
@@ -180,21 +179,28 @@ class DropletDetectorController:
 
         # Initialize detector (will be set when ROI is available)
         self.detector: Optional[DropletDetector] = None
-        
+
         # Get calibration from camera (camera-specific) or fallback to config
-        camera_calibration = camera.get_calibration() if hasattr(camera, 'get_calibration') else {}
-        um_per_px = camera_calibration.get('um_per_px', getattr(self.config, 'pixel_ratio', 1.0) if self.config else 1.0)
-        self.radius_offset_px = camera_calibration.get('radius_offset_px', 0.0)
-        
+        camera_calibration = camera.get_calibration() if hasattr(camera, "get_calibration") else {}
+        um_per_px = camera_calibration.get(
+            "um_per_px", getattr(self.config, "pixel_ratio", 1.0) if self.config else 1.0
+        )
+        self.radius_offset_px = camera_calibration.get("radius_offset_px", 0.0)
+
         # Store calibration for use in measurements
         self.um_per_px = um_per_px
         unit = "um" if um_per_px != 1.0 else "px"
-        
+
+        # Initialize histogram with configurable window size
+        histogram_window_size = getattr(self.config, "histogram_window_size", 2000)
+        histogram_bins = getattr(self.config, "histogram_bins", 40)
         self.histogram = DropletHistogram(
-            maxlen=2000, bins=40, pixel_ratio=um_per_px, unit=unit
+            maxlen=histogram_window_size, bins=histogram_bins, pixel_ratio=um_per_px, unit=unit
         )
-        
-        logger.info(f"Droplet detector initialized with calibration: um_per_px={um_per_px}, radius_offset_px={self.radius_offset_px}")
+
+        logger.info(
+            f"Droplet detector initialized with calibration: um_per_px={um_per_px}, radius_offset_px={self.radius_offset_px}"
+        )
 
         # Threading
         self.processing_thread: Optional[threading.Thread] = None
@@ -210,6 +216,17 @@ class DropletDetectorController:
         self.frame_count = 0
         self.droplet_count_total = 0
         self.last_update_time = time.time()
+
+        # Processing rate tracking (for FPS display)
+        self.processing_rate_hz = 0.0  # Current processing rate in Hz
+        self.fps_frames_processed = 0  # Frames processed in current FPS window
+        self.fps_window_start = time.time()  # Start time of current FPS window
+        self.fps_update_interval = 1.0  # Update FPS every 1 second
+
+        # Raw measurements storage for export (with timestamps)
+        # Stores list of dictionaries with: timestamp_ms, frame_id, radius_px, radius_um, area_px, area_um2, x_center_px, y_center_px
+        self.raw_measurements: List[Dict[str, Any]] = []
+        self.max_raw_measurements = 10000  # Limit storage to prevent memory issues
 
     def start(self) -> bool:
         """
@@ -227,7 +244,7 @@ class DropletDetectorController:
         if roi is None:
             logger.error("ROI not set in camera. Please set ROI before starting detection.")
             return False
-        
+
         # Log ROI for debugging
         logger.info(f"Starting detection with ROI: {roi}")
 
@@ -244,16 +261,18 @@ class DropletDetectorController:
         # This basic validation catches obvious errors
 
         # Get current calibration from camera (may have changed)
-        camera_calibration = self.camera.get_calibration() if hasattr(self.camera, 'get_calibration') else {}
-        um_per_px = camera_calibration.get('um_per_px', self.um_per_px)
-        self.radius_offset_px = camera_calibration.get('radius_offset_px', self.radius_offset_px)
-        
+        camera_calibration = (
+            self.camera.get_calibration() if hasattr(self.camera, "get_calibration") else {}
+        )
+        um_per_px = camera_calibration.get("um_per_px", self.um_per_px)
+        self.radius_offset_px = camera_calibration.get("radius_offset_px", self.radius_offset_px)
+
         # Update histogram with current calibration
         if um_per_px != self.histogram.pixel_ratio:
             self.histogram.pixel_ratio = um_per_px
             self.histogram.unit = "um" if um_per_px != 1.0 else "px"
             logger.info(f"Updated histogram calibration: um_per_px={um_per_px}")
-        
+
         # Create detector with current calibration (including radius offset)
         self.detector = DropletDetector(roi, self.config, radius_offset_px=self.radius_offset_px)
 
@@ -344,6 +363,31 @@ class DropletDetectorController:
             if len(self.timing.timings["histogram_update"]) > self.timing.max_samples:
                 self.timing.timings["histogram_update"].pop(0)
 
+        # Store raw measurements for export
+        self._store_raw_measurements(metrics)
+
+    def _update_processing_rate(self) -> None:
+        """
+        Update processing rate (FPS) calculation.
+
+        Calculates FPS over a sliding window (default 1 second).
+        Updates self.processing_rate_hz with current rate.
+        """
+        self.fps_frames_processed += 1
+        current_time = time.time()
+        elapsed = current_time - self.fps_window_start
+
+        # Update FPS every update_interval seconds
+        if elapsed >= self.fps_update_interval:
+            if elapsed > 0:
+                self.processing_rate_hz = self.fps_frames_processed / elapsed
+            else:
+                self.processing_rate_hz = 0.0
+
+            # Reset for next window
+            self.fps_frames_processed = 0
+            self.fps_window_start = current_time
+
     def _log_periodic_stats(self, frame_start_time: float) -> None:
         """
         Log periodic statistics if frame count is a multiple of 100.
@@ -357,8 +401,71 @@ class DropletDetectorController:
             logger.debug(
                 f"Processed {self.frame_count} frames, "
                 f"{self.droplet_count_total} droplets total, "
-                f"~{fps:.1f} FPS"
+                f"~{fps:.1f} FPS (current rate: {self.processing_rate_hz:.2f} Hz)"
             )
+
+    def _get_next_frame(self) -> Optional[np.ndarray]:
+        """
+        Get next frame from queue, handling pull-based processing.
+
+        Returns:
+            Next frame to process, or None if no frame available
+        """
+        if self.processing_busy:
+            # Pull-based: clear queue and get only latest frame
+            latest_frame = None
+            while not self.frame_queue.empty():
+                try:
+                    latest_frame = self.frame_queue.get_nowait()
+                except queue.Empty:
+                    break
+            return latest_frame
+        else:
+            # Normal processing: get frame from queue
+            try:
+                return self.frame_queue.get(timeout=0.1)
+            except queue.Empty:
+                return None
+
+    def _process_single_frame(self, frame: np.ndarray) -> List[Any]:
+        """
+        Process a single frame with error handling.
+
+        Args:
+            frame: Frame to process
+
+        Returns:
+            List of droplet metrics
+        """
+        if self.detector is None:
+            logger.warning("Detector not initialized, skipping frame")
+            return []
+
+        # Mark as busy and process frame
+        self.processing_busy = True
+        try:
+            # Process frame with timing
+            metrics = self._process_frame_with_timing(frame)
+            return metrics
+        finally:
+            self.processing_busy = False
+
+    def _update_frame_statistics(self, metrics: List[Any]) -> None:
+        """
+        Update statistics after processing a frame.
+
+        Args:
+            metrics: List of droplet metrics
+        """
+        # Update histogram with timing
+        self._update_histogram_with_timing(metrics)
+
+        # Update statistics
+        self.frame_count += 1
+        self.droplet_count_total += len(metrics)
+
+        # Update processing rate (FPS)
+        self._update_processing_rate()
 
     def _processing_loop(self) -> None:
         """
@@ -372,46 +479,18 @@ class DropletDetectorController:
 
         while self.running and not self.exit_event.is_set():
             try:
-                # Pull-based processing: skip old frames if busy, process only latest
-                if self.processing_busy:
-                    # Clear queue and get only the latest frame
-                    latest_frame = None
-                    while not self.frame_queue.empty():
-                        try:
-                            latest_frame = self.frame_queue.get_nowait()
-                        except queue.Empty:
-                            break
-                    
-                    if latest_frame is None:
-                        # No frames available, wait briefly
-                        time.sleep(0.01)
-                        continue
-                    frame = latest_frame
-                else:
-                    # Normal processing: get frame from queue
-                    try:
-                        frame = self.frame_queue.get(timeout=0.1)
-                    except queue.Empty:
-                        continue
-
-                if self.detector is None:
-                    logger.warning("Detector not initialized, skipping frame")
+                # Get next frame
+                frame = self._get_next_frame()
+                if frame is None:
+                    # No frames available, wait briefly
+                    time.sleep(0.01)
                     continue
 
-                # Mark as busy and process frame
-                self.processing_busy = True
-                try:
-                    # Process frame with timing
-                    metrics = self._process_frame_with_timing(frame)
-                finally:
-                    self.processing_busy = False
-
-                # Update histogram with timing
-                self._update_histogram_with_timing(metrics)
+                # Process frame
+                metrics = self._process_single_frame(frame)
 
                 # Update statistics
-                self.frame_count += 1
-                self.droplet_count_total += len(metrics)
+                self._update_frame_statistics(metrics)
 
                 # Log periodically
                 self._log_periodic_stats(frame_start_time)
@@ -487,13 +566,9 @@ class DropletDetectorController:
         stats = self.histogram.get_statistics()
         stats["frame_count"] = self.frame_count
         stats["droplet_count_total"] = self.droplet_count_total
-
-        # Calculate FPS
-        elapsed = time.time() - self.last_update_time
-        if elapsed > 0:
-            stats["fps"] = self.frame_count / elapsed if self.frame_count > 0 else 0.0
-        else:
-            stats["fps"] = 0.0
+        stats["processing_rate_hz"] = round(
+            self.processing_rate_hz, 2
+        )  # Current processing rate in Hz
 
         return cast(Dict[str, Any], stats)
 
@@ -509,75 +584,68 @@ class DropletDetectorController:
     def update_config(self, config_dict: Dict[str, Any]) -> bool:
         """
         Update detection configuration.
-        
+
         Args:
             config_dict: Dictionary of configuration values to update
-            
+
         Returns:
             True if update successful, False otherwise
         """
         try:
             # Update config
             self.config.update(config_dict)
-            
-            # Update histogram pixel_ratio if changed
-                # Update calibration if provided
-                if 'pixel_ratio' in config_dict or 'um_per_px' in config_dict:
-                    # Support both old 'pixel_ratio' and new 'um_per_px' for backward compatibility
-                    new_um_per_px = config_dict.get('um_per_px', config_dict.get('pixel_ratio', self.um_per_px))
-                    self.um_per_px = new_um_per_px
-                    self.histogram.pixel_ratio = new_um_per_px
-                    self.histogram.unit = "um" if new_um_per_px != 1.0 else "px"
-                    logger.info(f"Updated calibration: um_per_px={new_um_per_px} {self.histogram.unit}/px")
-                
-                if 'radius_offset_px' in config_dict:
-                    self.radius_offset_px = float(config_dict['radius_offset_px'])
-                    logger.info(f"Updated radius offset: radius_offset_px={self.radius_offset_px}")
-                    # Recreate detector with new offset if running
-                    if self.detector is not None:
-                        roi = self.camera.get_roi()
-                        if roi:
-                            self.detector = DropletDetector(roi, self.config, radius_offset_px=self.radius_offset_px)
-            
+
+            # Update calibration if provided
+            if "pixel_ratio" in config_dict or "um_per_px" in config_dict:
+                # Support both old 'pixel_ratio' and new 'um_per_px' for backward compatibility
+                new_um_per_px = config_dict.get(
+                    "um_per_px", config_dict.get("pixel_ratio", self.um_per_px)
+                )
+                self.um_per_px = new_um_per_px
+                self.histogram.pixel_ratio = new_um_per_px
+                self.histogram.unit = "um" if new_um_per_px != 1.0 else "px"
+                logger.info(
+                    f"Updated calibration: um_per_px={new_um_per_px} {self.histogram.unit}/px"
+                )
+
+            if "radius_offset_px" in config_dict:
+                self.radius_offset_px = float(config_dict["radius_offset_px"])
+                logger.info(f"Updated radius offset: radius_offset_px={self.radius_offset_px}")
+
+            # Update histogram window size if changed
+            if "histogram_window_size" in config_dict or "histogram_bins" in config_dict:
+                new_window_size = config_dict.get(
+                    "histogram_window_size", getattr(self.config, "histogram_window_size", 2000)
+                )
+                new_bins = config_dict.get(
+                    "histogram_bins", getattr(self.config, "histogram_bins", 40)
+                )
+                # Note: Histogram window size change requires recreating histogram
+                # This will clear existing data, so we only do it if explicitly requested
+                logger.info(f"Updating histogram: window_size={new_window_size}, bins={new_bins}")
+                # Recreate histogram with new parameters
+                self.histogram = DropletHistogram(
+                    maxlen=new_window_size,
+                    bins=new_bins,
+                    pixel_ratio=self.um_per_px,
+                    unit=self.histogram.unit,
+                )
+
             # Validate
             is_valid, errors = self.config.validate()
             if not is_valid:
                 logger.warning(f"Configuration validation errors: {errors}")
                 return False
-            
+
             # Recreate detector with new config if running
             if self.running and self.detector is not None:
                 roi = self.camera.get_roi()
                 if roi:
-                    # Recreate detector with updated config
-                    self.detector = DropletDetector(config=self.config)
+                    # Recreate detector with updated config and offset
+                    self.detector = DropletDetector(
+                        roi, self.config, radius_offset_px=self.radius_offset_px
+                    )
                     logger.info("Detector recreated with updated configuration")
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error updating configuration: {e}")
-            return False
-        """
-        Update configuration parameters.
-
-        Args:
-            config_dict: Dictionary of configuration values to update
-
-        Returns:
-            True if update successful, False otherwise
-        """
-        try:
-            self.config.update(config_dict)
-            is_valid, errors = self.config.validate()
-            if not is_valid:
-                logger.warning(f"Configuration validation errors: {errors}")
-
-            # Recreate detector with new config if running
-            if self.running and self.detector is not None:
-                roi = self.camera.get_roi()
-                if roi:
-                    self.detector = DropletDetector(roi, self.config)
-                    logger.info("Detector reconfigured")
 
             return True
         except Exception as e:
@@ -597,11 +665,36 @@ class DropletDetectorController:
         try:
             self.config = load_config(profile_path)
 
+            # Update calibration from loaded config
+            if hasattr(self.config, "pixel_ratio"):
+                pixel_ratio = getattr(self.config, "pixel_ratio", 1.0)
+                if pixel_ratio != 1.0:
+                    self.um_per_px = pixel_ratio
+                    self.histogram.pixel_ratio = pixel_ratio
+                    self.histogram.unit = "um"
+
             # Recreate detector with new config if running
             if self.running and self.detector is not None:
                 roi = self.camera.get_roi()
                 if roi:
-                    self.detector = DropletDetector(roi, self.config)
+                    # Get current calibration (may have changed)
+                    camera_calibration = (
+                        self.camera.get_calibration()
+                        if hasattr(self.camera, "get_calibration")
+                        else {}
+                    )
+                    camera_um_per_px = camera_calibration.get("um_per_px", self.um_per_px)
+                    radius_offset_px = camera_calibration.get(
+                        "radius_offset_px", self.radius_offset_px
+                    )
+                    # Use camera calibration if available, otherwise keep existing
+                    if camera_um_per_px != self.um_per_px:
+                        self.um_per_px = camera_um_per_px
+                        self.histogram.pixel_ratio = camera_um_per_px
+                        self.histogram.unit = "um" if camera_um_per_px != 1.0 else "px"
+                    self.detector = DropletDetector(
+                        roi, self.config, radius_offset_px=radius_offset_px
+                    )
                     logger.info(f"Profile loaded: {profile_path}")
 
             return True
@@ -609,19 +702,24 @@ class DropletDetectorController:
             logger.error(f"Error loading profile: {e}")
             return False
 
-    def save_profile(self, profile_path: str) -> bool:
+    def save_profile(
+        self, profile_path: str, nested: bool = False, include_modules: bool = False
+    ) -> bool:
         """
         Save current configuration to JSON file.
 
         Args:
             profile_path: Path to save JSON configuration file
+            nested: If True, save in nested structure. If False, save flat (default, backward compatible)
+            include_modules: If True and nested=True, include modules section
 
         Returns:
             True if saved successfully, False otherwise
         """
         try:
-            save_config(self.config, profile_path)
-            logger.info(f"Profile saved: {profile_path}")
+            save_config(self.config, profile_path, nested=nested, include_modules=include_modules)
+            format_type = "nested" if nested else "flat"
+            logger.info(f"Profile saved ({format_type} format): {profile_path}")
             return True
         except Exception as e:
             logger.error(f"Error saving profile: {e}")
@@ -636,4 +734,112 @@ class DropletDetectorController:
         self.frame_count = 0
         self.droplet_count_total = 0
         self.last_update_time = time.time()
+
+        # Reset processing rate tracking
+        self.processing_rate_hz = 0.0
+        self.fps_frames_processed = 0
+        self.fps_window_start = time.time()
+
+        # Clear raw measurements
+        self.raw_measurements.clear()
+
         logger.info("Detector reset")
+
+    def _store_raw_measurements(self, metrics: List[Any]) -> None:
+        """
+        Store raw droplet measurements with timestamps for export.
+
+        Args:
+            metrics: List of DropletMetrics objects
+        """
+        if not metrics:
+            return
+
+        timestamp_ms = int(time.time() * 1000)  # Milliseconds since epoch
+        frame_id = self.frame_count
+
+        for metric in metrics:
+            # Calculate radius from equivalent diameter
+            radius_px = metric.equivalent_diameter / 2.0
+            radius_um = radius_px * self.um_per_px
+
+            # Calculate area in um²
+            area_um2 = metric.area * (self.um_per_px**2)
+
+            measurement = {
+                "timestamp_ms": timestamp_ms,
+                "frame_id": frame_id,
+                "radius_px": round(radius_px, 2),
+                "radius_um": round(radius_um, 2),
+                "area_px": round(metric.area, 2),
+                "area_um2": round(area_um2, 2),
+                "x_center_px": round(metric.centroid[0], 2),
+                "y_center_px": round(metric.centroid[1], 2),
+                "major_axis_px": round(metric.major_axis, 2),
+                "major_axis_um": round(metric.major_axis * self.um_per_px, 2),
+                "equivalent_diameter_px": round(metric.equivalent_diameter, 2),
+                "equivalent_diameter_um": round(metric.equivalent_diameter * self.um_per_px, 2),
+            }
+
+            self.raw_measurements.append(measurement)
+
+            # Limit storage to prevent memory issues
+            if len(self.raw_measurements) > self.max_raw_measurements:
+                # Remove oldest measurements (keep most recent)
+                self.raw_measurements = self.raw_measurements[-self.max_raw_measurements :]
+
+    def export_data(self, format_type: str = "csv") -> Optional[str]:
+        """
+        Export raw droplet measurements to CSV or TXT format.
+
+        Args:
+            format_type: Export format ("csv" or "txt")
+
+        Returns:
+            String content of exported file, or None if no data
+        """
+        if not self.raw_measurements:
+            return None
+
+        import csv
+        import io
+
+        output = io.StringIO()
+
+        # Define column headers
+        headers = [
+            "timestamp_ms",
+            "frame_id",
+            "radius_px",
+            "radius_um",
+            "area_px",
+            "area_um2",
+            "x_center_px",
+            "y_center_px",
+            "major_axis_px",
+            "major_axis_um",
+            "equivalent_diameter_px",
+            "equivalent_diameter_um",
+        ]
+
+        if format_type.lower() == "csv":
+            # CSV format
+            writer = csv.writer(output)
+            writer.writerow(headers)
+
+            for measurement in self.raw_measurements:
+                row = [measurement.get(header, "") for header in headers]
+                writer.writerow(row)
+
+        elif format_type.lower() == "txt":
+            # Tab-separated text format
+            output.write("\t".join(headers) + "\n")
+
+            for measurement in self.raw_measurements:
+                row = [str(measurement.get(header, "")) for header in headers]
+                output.write("\t".join(row) + "\n")
+
+        else:
+            raise ValueError(f"Unsupported format: {format_type}. Use 'csv' or 'txt'")
+
+        return output.getvalue()

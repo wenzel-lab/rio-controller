@@ -29,7 +29,10 @@ class DropletDetector:
     """
 
     def __init__(
-        self, roi: Tuple[int, int, int, int], config: Optional[DropletDetectionConfig] = None, radius_offset_px: float = 0.0
+        self,
+        roi: Tuple[int, int, int, int],
+        config: Optional[DropletDetectionConfig] = None,
+        radius_offset_px: float = 0.0,
     ):
         """
         Initialize droplet detector.
@@ -121,6 +124,10 @@ class DropletDetector:
                 if self.frame_count <= self.config.background_frames:
                     # Still initializing background
                     self.preprocessor.initialize_background(frame)
+                    if self.frame_count % 10 == 0:  # Log every 10 frames during initialization
+                        logger.debug(
+                            f"Initializing background: frame {self.frame_count}/{self.config.background_frames}"
+                        )
                 return []
 
             # 2. Segment
@@ -139,6 +146,7 @@ class DropletDetector:
                 timing_callback("segmentation", elapsed)
 
             if not contours:
+                # Don't log - too verbose
                 return []
 
             # 3. Filter artifacts (temporal filtering)
@@ -156,6 +164,7 @@ class DropletDetector:
                 timing_callback("artifact_rejection", elapsed)
 
             if not moving_contours:
+                # Don't log - too verbose
                 return []
 
             # 4. Measure
@@ -170,6 +179,9 @@ class DropletDetector:
 
             # Update state for next frame
             self.prev_centroids = [m.centroid for m in metrics]
+
+            # Don't log every frame - too verbose
+            # Logging will be done at histogram refresh intervals in web controller
 
             return metrics
 

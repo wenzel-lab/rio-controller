@@ -38,7 +38,12 @@ class Preprocessor:
         self.background: Optional[np.ndarray] = None
         self.background_frames: deque = deque(maxlen=config.background_frames)
         self.background_initialized: bool = False
-        self.background_shape: Optional[Tuple[int, int]] = None  # Track background size (height, width)
+        self.background_shape: Optional[Tuple[int, int]] = (
+            None  # Track background size (height, width)
+        )
+        self._morph_kernel: Optional[np.ndarray] = (
+            None  # Cached morphological kernel for performance
+        )
 
     def initialize_background(self, frame: np.ndarray) -> None:
         """
@@ -52,7 +57,7 @@ class Preprocessor:
         """
         if self.config.background_method == "static":
             gray = ensure_grayscale(frame)
-            
+
             # Check if frame size changed (ROI changed)
             current_shape: Tuple[int, int] = gray.shape[:2]  # (height, width)
             if self.background_shape is not None and self.background_shape != current_shape:
@@ -60,19 +65,31 @@ class Preprocessor:
                     f"Frame size changed from {self.background_shape} to {current_shape}, resetting background"
                 )
                 self.reset_background()
-            
+
             # Store shape for future comparisons
             if self.background_shape is None:
                 self.background_shape = current_shape
-            
+
+            # Use copy() to avoid reference issues (necessary for background model)
             self.background_frames.append(gray.copy())
 
             # Compute median when we have enough frames
             if len(self.background_frames) >= self.config.background_frames:
-                frames_array = np.array(list(self.background_frames))
-                self.background = np.median(frames_array, axis=0).astype(np.uint8)
-                self.background_initialized = True
-                logger.info(f"Background initialized with {len(self.background_frames)} frames, shape: {self.background_shape}")
+                # Optimized: Convert deque to numpy array more efficiently
+                # Pre-allocate array with known shape for better performance
+                num_frames = len(self.background_frames)
+                if num_frames > 0:
+                    first_frame = self.background_frames[0]
+                    frame_shape = first_frame.shape
+                    frames_array = np.empty((num_frames, *frame_shape), dtype=first_frame.dtype)
+                    for i, frame in enumerate(self.background_frames):
+                        frames_array[i] = frame
+
+                    self.background = np.median(frames_array, axis=0).astype(np.uint8)
+                    self.background_initialized = True
+                    logger.info(
+                        f"Background initialized with {num_frames} frames, shape: {self.background_shape}"
+                    )
         # For high-pass method, no initialization needed
 
     def process(self, frame: np.ndarray) -> np.ndarray:
@@ -121,7 +138,7 @@ class Preprocessor:
             if self.background is None:
                 # Background not ready yet
                 return np.zeros_like(gray, dtype=np.uint8)
-            
+
             gray_corr = cv2.absdiff(gray, self.background)
 
         elif self.config.background_method == "highpass":
@@ -154,13 +171,19 @@ class Preprocessor:
             raise ValueError(f"Unknown threshold method: {self.config.threshold_method}")
 
         # 4. Morphological operations
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.config.morph_kernel_size)
+        # Cache kernel creation (reuse same kernel for performance on Raspberry Pi)
+        if self._morph_kernel is None:
+            self._morph_kernel = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, self.config.morph_kernel_size
+            )
+        kernel = self._morph_kernel
 
         if self.config.morph_operation == "open":
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         elif self.config.morph_operation == "close":
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         elif self.config.morph_operation == "both":
+            # Optimized: combine operations when possible
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         # else: no morphological operation

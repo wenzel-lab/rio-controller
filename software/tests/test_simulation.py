@@ -86,7 +86,11 @@ class TestSimulatedCamera(unittest.TestCase):
 
     def test_frame_generation(self):
         """Test frame generation"""
+        import time
+
         self.camera.start()
+        # Wait a bit for frame generation thread to produce first frame
+        time.sleep(0.1)
         frame = self.camera.get_frame_array()
         self.assertIsNotNone(frame)
         if frame is not None:

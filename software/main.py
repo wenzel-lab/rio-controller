@@ -109,19 +109,28 @@ flow = FlowWeb(PORT_FLOW)
 cam = Camera(exit_event, socketio)
 
 # Initialize droplet detector controller (after camera is created)
+# Check if module is enabled (default: True for backward compatibility)
 droplet_controller = None
 droplet_web_controller = None
-try:
-    from controllers.droplet_detector_controller import DropletDetectorController
 
-    droplet_controller = DropletDetectorController(cam, cam.strobe_cam)
-    # Set droplet controller reference in camera for frame feeding
-    cam.droplet_controller = droplet_controller
-    logger.info("Droplet detector controller initialized")
-except ImportError as e:
-    logger.warning(f"Droplet detection not available (missing dependencies): {e}")
-except Exception as e:
-    logger.warning(f"Failed to initialize droplet detector: {e}")
+# Check module enable flag (can be set via environment variable)
+# Format: RIO_DROPLET_ANALYSIS_ENABLED=true or false
+droplet_analysis_enabled = os.getenv("RIO_DROPLET_ANALYSIS_ENABLED", "true").lower() == "true"
+
+if droplet_analysis_enabled:
+    try:
+        from controllers.droplet_detector_controller import DropletDetectorController
+
+        droplet_controller = DropletDetectorController(cam, cam.strobe_cam)
+        # Set droplet controller reference in camera for frame feeding
+        cam.droplet_controller = droplet_controller
+        logger.info("Droplet detector controller initialized")
+    except ImportError as e:
+        logger.warning(f"Droplet detection not available (missing dependencies): {e}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize droplet detector: {e}")
+else:
+    logger.info("Droplet analysis module disabled (RIO_DROPLET_ANALYSIS_ENABLED=false)")
 
 # Initialize controllers
 logger.info("Initializing controllers...")

@@ -64,6 +64,29 @@ class DropletWebController:
     def _handle_start_command(self) -> None:
         """Handle start command."""
         try:
+            # Check if already running first
+            if self.droplet_controller.running:
+                logger.warning("Detection already running")
+                self.socketio.emit(
+                    "droplet:error",
+                    {"message": "Detection is already running. Stop it first to restart."},
+                )
+                return
+
+            # Check if ROI is set
+            if (
+                not hasattr(self.droplet_controller, "camera")
+                or self.droplet_controller.camera.get_roi() is None
+            ):
+                logger.warning("ROI not set")
+                self.socketio.emit(
+                    "droplet:error",
+                    {
+                        "message": "ROI not set. Please select a region of interest in the Camera View tab first."
+                    },
+                )
+                return
+
             success = self.droplet_controller.start()
             if success:
                 logger.info("Droplet detection started via WebSocket")
@@ -71,7 +94,8 @@ class DropletWebController:
             else:
                 logger.warning("Failed to start droplet detection")
                 self.socketio.emit(
-                    "droplet:error", {"message": "Failed to start detection. Check ROI is set."}
+                    "droplet:error",
+                    {"message": "Failed to start detection. Check ROI is set and valid."},
                 )
         except Exception as e:
             logger.error(f"Error starting droplet detection: {e}", exc_info=True)
@@ -168,14 +192,14 @@ class DropletWebController:
             "running": self.droplet_controller.running,
             "frame_count": self.droplet_controller.frame_count,
             "droplet_count_total": self.droplet_controller.droplet_count_total,
+            "processing_rate_hz": getattr(self.droplet_controller, "processing_rate_hz", 0.0),
         }
         self.socketio.emit("droplet:status", status)
-        
+
         # Also force emit histogram and statistics when status is requested
-        # (only if detection is running)
-        if hasattr(self.droplet_controller, 'running') and self.droplet_controller.running:
-            self.emit_histogram(force=True)
-            self.emit_statistics(force=True)
+        # Always emit (even if not running) so UI shows current state
+        self.emit_histogram(force=True)
+        self.emit_statistics(force=True)
 
     def emit_histogram(self, force: bool = False) -> None:
         """
@@ -184,10 +208,6 @@ class DropletWebController:
         Args:
             force: If True, emit regardless of rate limit
         """
-        # Only emit if detection is running
-        if not hasattr(self.droplet_controller, 'running') or not self.droplet_controller.running:
-            return
-        
         now = time.time()
         last_emit = self.last_emit_time.get("histogram", 0)
         interval = self.emit_intervals["histogram"]
@@ -195,10 +215,21 @@ class DropletWebController:
         if force or (now - last_emit) >= interval:
             try:
                 histogram_data = self.droplet_controller.get_histogram()
-                if histogram_data and histogram_data.get("histograms"):
-                    self.socketio.emit("droplet:histogram", histogram_data)
-                    self.last_emit_time["histogram"] = now
-                    logger.debug(f"Emitted histogram update (frame_count: {self.droplet_controller.frame_count})")
+                # Always emit histogram data (even if empty) when forced (e.g., get_status)
+                # Otherwise only emit if detection is running and has data
+                if force or (
+                    hasattr(self.droplet_controller, "running") and self.droplet_controller.running
+                ):
+                    if histogram_data:
+                        self.socketio.emit("droplet:histogram", histogram_data)
+                        self.last_emit_time["histogram"] = now
+                        # Log once per histogram refresh (every ~2 seconds)
+                        count = histogram_data.get("count", 0)
+                        frame_count = self.droplet_controller.frame_count
+                        droplet_count = self.droplet_controller.droplet_count_total
+                        logger.info(
+                            f"Histogram update: frame={frame_count}, droplets={droplet_count}, histogram_count={count}"
+                        )
             except Exception as e:
                 logger.error(f"Error emitting histogram: {e}", exc_info=True)
 
@@ -209,10 +240,6 @@ class DropletWebController:
         Args:
             force: If True, emit regardless of rate limit
         """
-        # Only emit if detection is running
-        if not hasattr(self.droplet_controller, 'running') or not self.droplet_controller.running:
-            return
-        
         now = time.time()
         last_emit = self.last_emit_time.get("statistics", 0)
         interval = self.emit_intervals["statistics"]
@@ -220,10 +247,15 @@ class DropletWebController:
         if force or (now - last_emit) >= interval:
             try:
                 stats = self.droplet_controller.get_statistics()
-                if stats:
-                    self.socketio.emit("droplet:statistics", stats)
-                    self.last_emit_time["statistics"] = now
-                    logger.debug(f"Emitted statistics update")
+                # Always emit statistics when forced (e.g., get_status)
+                # Otherwise only emit if detection is running
+                if force or (
+                    hasattr(self.droplet_controller, "running") and self.droplet_controller.running
+                ):
+                    if stats:
+                        self.socketio.emit("droplet:statistics", stats)
+                        self.last_emit_time["statistics"] = now
+                        # Don't log statistics separately - already logged with histogram
             except Exception as e:
                 logger.error(f"Error emitting statistics: {e}", exc_info=True)
 

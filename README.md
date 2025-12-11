@@ -32,7 +32,12 @@ Follow us! [#twitter](https://twitter.com/WenzelLab), [#YouTube](https://www.you
         * [Raspberry Pi HAT extension board](hardware-modules/rpi-hat/)
  
 * Software source code
-    * [Microfluidics workstation server](software/) - Modern refactored software running on the built-in Raspberry Pi with web application for the user interface. See [software/README.md](software/README.md) for installation and usage instructions.
+    * [Microfluidics workstation server](software/) - Modern refactored software running on the built-in Raspberry Pi with web application for the user interface. Features include:
+        * Real-time camera control with strobe synchronization
+        * Droplet detection with histogram visualization
+        * Flow and pressure control
+        * Temperature and stirring control
+        * See [software/README.md](software/README.md) for installation and usage instructions.
 
 ### Modules Wish List
 * High-pressure source module to replace large gas bottles with a small soda CO2 bottle, developed in this [sub-repository](https://github.com/wenzel-lab/moldular-microfluidics-workstation-controller/tree/master/module-high-pressure-source)

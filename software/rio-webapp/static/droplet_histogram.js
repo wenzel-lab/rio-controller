@@ -287,14 +287,16 @@ class DropletHistogramVisualizer {
     }
     
     updateStatus(data) {
-        // Update status display (e.g., running indicator, frame count)
+        // Update status display (e.g., running indicator, frame count, processing rate)
         const statusDiv = document.getElementById('droplet_status');
         if (statusDiv) {
+            const processingRate = data.processing_rate_hz !== undefined ? data.processing_rate_hz : 0.0;
             statusDiv.innerHTML = `
                 <div class="alert ${data.running ? 'alert-success' : 'alert-secondary'}">
                     <strong>Status:</strong> ${data.running ? 'Running' : 'Stopped'} | 
-                    <strong>Frames:</strong> ${data.frame_count} | 
-                    <strong>Droplets:</strong> ${data.droplet_count_total}
+                    <strong>Frames:</strong> ${data.frame_count || 0} | 
+                    <strong>Droplets:</strong> ${data.droplet_count_total || 0} | 
+                    <strong>Processing rate:</strong> ${processingRate.toFixed(2)} Hz
                 </div>
             `;
         }
@@ -340,10 +342,39 @@ class DropletDetectionControls {
                 this.socket.emit('droplet', { cmd: 'get_status' });
             });
         }
+        
+        // Export button
+        const exportBtn = document.getElementById('droplet_export_btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => {
+                this.exportData();
+            });
+        }
+    }
+    
+    exportData(format = 'csv') {
+        /**
+         * Export droplet measurements data.
+         * 
+         * Args:
+         *   format: Export format ('csv' or 'txt')
+         */
+        const url = `/api/droplet/export?format=${format}`;
+        
+        // Create temporary link and trigger download
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `droplet_measurements.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log(`Exporting data as ${format.toUpperCase()}...`);
     }
 }
 
 // Initialize when DOM is ready
+// Note: This will only run if the module is enabled (checked in template)
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initDropletVisualization);
 } else {
@@ -351,15 +382,17 @@ if (document.readyState === 'loading') {
 }
 
 function initDropletVisualization() {
+    // Check if droplet histogram container exists (module may be disabled)
+    const histogramContainer = document.getElementById('droplet_histogram_container');
+    if (!histogramContainer) {
+        console.log('Droplet analysis module is disabled (container not found)');
+        return;
+    }
+    
     // Check if socket is available (from main.js)
     if (typeof socket !== 'undefined') {
         // Create histogram visualizer
-        const histogramContainer = document.getElementById('droplet_histogram_container');
-        if (histogramContainer) {
-            window.dropletHistogram = new DropletHistogramVisualizer('droplet_histogram_container', socket);
-        } else {
-            console.warn('Droplet histogram container not found');
-        }
+        window.dropletHistogram = new DropletHistogramVisualizer('droplet_histogram_container', socket);
         
         // Create controls
         window.dropletControls = new DropletDetectionControls(socket);

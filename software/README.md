@@ -38,7 +38,8 @@ software/
 │   ├── flow_web.py        # Flow control device controller
 │   ├── heater_web.py      # Heater control device controller
 │   ├── camera.py          # Camera device controller
-│   └── strobe_cam.py      # Strobe-camera integration controller
+│   ├── strobe_cam.py      # Strobe-camera integration controller
+│   └── droplet_detector_controller.py  # Droplet detection controller
 │
 │   Note: In hardware control systems, "controller" refers to device
 │   control logic (equivalent to "Model" in MVC). See docs/ARCHITECTURE_TERMINOLOGY.md
@@ -172,27 +173,50 @@ This will check all external and internal dependencies. All checks should pass (
 The test suite includes unit tests, integration tests, and simulation tests:
 
 ```bash
-# Run all tests
-python tests/test_all.py
+# Run all tests (recommended: use pytest from mamba environment)
+cd software
+pytest -v
 
 # Run specific test suites
-python tests/test_drivers.py      # Low-level driver tests
-python tests/test_simulation.py  # Simulation layer tests
-python tests/test_controllers.py # Controller tests
-python tests/test_integration.py # Integration tests
+pytest tests/test_drivers.py      # Low-level driver tests
+pytest tests/test_simulation.py   # Simulation layer tests
+pytest tests/test_controllers.py  # Controller tests
+pytest tests/test_integration.py  # Integration tests
+pytest tests/test_droplet_detection.py  # Droplet detection tests
+```
+
+**Code Quality Checks:**
+```bash
+# Format code (black)
+black .
+
+# Type checking (mypy)
+mypy . --exclude droplet-detection
+
+# Linting (flake8)
+flake8 controllers/ rio-webapp/ main.py tests/ --max-line-length=100
 ```
 
 See `tests/README.md` for detailed test documentation.
 
 ### Droplet Detection
 
-The system includes real-time droplet detection capabilities:
+The system includes real-time droplet detection capabilities with a modular pipeline architecture:
 
 **Quick Start:**
 1. Set ROI in Camera View tab
 2. Go to Droplet Detection tab
 3. Click "Start Detection"
 4. View real-time histograms and statistics
+
+**Features:**
+- Real-time processing with configurable frame rate
+- Background subtraction for static artifact removal
+- Contour-based segmentation with filtering
+- Geometric measurements (area, diameter, aspect ratio)
+- Temporal artifact rejection
+- Sliding-window histogram with configurable bins
+- Performance monitoring and timing instrumentation
 
 **Documentation:**
 - User Guide: `docs/droplet_detection_user_guide.md`
@@ -201,6 +225,10 @@ The system includes real-time droplet detection capabilities:
 
 **Testing:**
 ```bash
+# Run all tests (includes droplet detection tests)
+cd software
+pytest -v
+
 # Run integration tests
 python -m droplet_detection.test_integration
 
