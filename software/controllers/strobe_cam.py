@@ -36,6 +36,12 @@ try:
         STROBE_REPLY_PAUSE_S,
         STROBE_PRE_PADDING_NS,
         STROBE_POST_PADDING_NS,
+        STROBE_CONTROL_MODE,
+        STROBE_CONTROL_MODE_STROBE_CENTRIC,
+        STROBE_CONTROL_MODE_CAMERA_CENTRIC,
+    # Backward compatibility (deprecated - use strobe-centric/camera-centric)
+    STROBE_CONTROL_MODE_LEGACY,
+    STROBE_CONTROL_MODE_NEW,
     )
 except ImportError:
     # Fallback values if config module not available
@@ -47,6 +53,11 @@ except ImportError:
     STROBE_REPLY_PAUSE_S = 0.1
     STROBE_PRE_PADDING_NS = 32
     STROBE_POST_PADDING_NS = 20000000
+    STROBE_CONTROL_MODE = "camera-centric"
+    STROBE_CONTROL_MODE_STROBE_CENTRIC = "strobe-centric"
+    STROBE_CONTROL_MODE_CAMERA_CENTRIC = "camera-centric"
+    STROBE_CONTROL_MODE_LEGACY = "strobe-centric"  # Backward compatibility
+    STROBE_CONTROL_MODE_NEW = "camera-centric"  # Backward compatibility
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -62,8 +73,9 @@ class PiStrobeCam:
     Camera-strobe integration controller.
 
     This class integrates camera control with strobe timing synchronization.
-    It uses hardware-triggered mode where the camera frame callback triggers
-    the PIC microcontroller via GPIO, allowing precise strobe timing.
+    Supports two control modes:
+    - Legacy mode (strobe-centric): Software trigger, strobe timing controls camera exposure
+    - New mode (camera trigger-centric): Hardware trigger, camera frame callback triggers strobe via GPIO
 
     Attributes:
         strobe: PiStrobe instance for strobe hardware control
@@ -72,6 +84,8 @@ class PiStrobeCam:
         strobe_wait_ns: Strobe wait time in nanoseconds
         strobe_period_ns: Strobe pulse period in nanoseconds
         framerate_set: Configured framerate in FPS
+        control_mode: Control mode ("legacy" or "new")
+        hardware_trigger_mode: Whether hardware trigger mode is enabled
     """
 
     def __init__(
@@ -89,6 +103,20 @@ class PiStrobeCam:
             trigger_gpio_pin: GPIO pin number for PIC trigger (BCM numbering)
         """
         logger.info(f"Initializing PiStrobeCam (port={port}, trigger_pin={trigger_gpio_pin})")
+
+        # Determine control mode from configuration
+        # Support both new naming (strobe-centric/camera-centric) and old (legacy/new) for backward compatibility
+        mode = STROBE_CONTROL_MODE.lower()
+        if mode in (STROBE_CONTROL_MODE_STROBE_CENTRIC, STROBE_CONTROL_MODE_LEGACY, "legacy", "strobe-centric"):
+            self.control_mode = STROBE_CONTROL_MODE_STROBE_CENTRIC
+        elif mode in (STROBE_CONTROL_MODE_CAMERA_CENTRIC, STROBE_CONTROL_MODE_NEW, "new", "camera-centric"):
+            self.control_mode = STROBE_CONTROL_MODE_CAMERA_CENTRIC
+        else:
+            # Default to camera-centric for strobe-rewrite branch
+            logger.warning(f"Unknown control mode '{mode}', defaulting to camera-centric")
+            self.control_mode = STROBE_CONTROL_MODE_CAMERA_CENTRIC
+        self.hardware_trigger_mode = (self.control_mode == STROBE_CONTROL_MODE_CAMERA_CENTRIC)
+        logger.info(f"Strobe control mode: {self.control_mode} (hardware_trigger={self.hardware_trigger_mode})")
 
         # Initialize strobe controller
         self.strobe = PiStrobe(port, reply_pause_s)
@@ -117,26 +145,29 @@ class PiStrobeCam:
             # In simulation mode, this should work, so raise
             raise
 
-        # Initialize GPIO for PIC trigger (software-triggered mode)
-        try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
-            GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
-            logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
-        except Exception as e:
-            logger.error(f"Error configuring GPIO trigger pin: {e}")
-            raise
+        # Initialize GPIO for PIC trigger (only needed for new mode with hardware trigger)
+        if self.hardware_trigger_mode:
+            try:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
+                GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
+                logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
+            except Exception as e:
+                logger.error(f"Error configuring GPIO trigger pin: {e}")
+                raise
 
-        # Configure strobe for hardware trigger mode (PIC waits for GPIO trigger)
+        # Configure strobe trigger mode based on control mode
         try:
-            self.strobe.set_trigger_mode(True)  # Hardware trigger mode
-            logger.debug("Strobe configured for hardware trigger mode")
+            self.strobe.set_trigger_mode(self.hardware_trigger_mode)
+            mode_str = "hardware trigger" if self.hardware_trigger_mode else "software trigger"
+            logger.debug(f"Strobe configured for {mode_str} mode")
         except Exception as e:
             logger.error(f"Error configuring strobe trigger mode: {e}")
             raise
 
-        # Set frame callback for strobe trigger (if camera is initialized)
-        if self.camera:
+        # Set frame callback for strobe trigger only in new mode (hardware trigger)
+        # Legacy mode doesn't use frame callbacks - strobe timing controls everything
+        if self.camera and self.hardware_trigger_mode:
             self.camera.set_frame_callback(self.frame_callback_trigger)
 
         # Initialize timing state
@@ -191,8 +222,9 @@ class PiStrobeCam:
                     }
                 )
 
-                # Set frame callback for strobe trigger
-                self.camera.set_frame_callback(self.frame_callback_trigger)
+                # Set frame callback for strobe trigger only in new mode (hardware trigger)
+                if self.hardware_trigger_mode:
+                    self.camera.set_frame_callback(self.frame_callback_trigger)
 
             logger.info(f"Camera type set to: {camera_type}")
             return True
@@ -210,7 +242,13 @@ class PiStrobeCam:
         a short pulse on the GPIO pin to trigger the PIC microcontroller.
         Note: Software callback has ~1-5ms jitter, but PIC hardware timing
         remains precise.
+        
+        Only used in new mode (hardware trigger). In legacy mode, this callback
+        is not set.
         """
+        if not self.hardware_trigger_mode:
+            logger.warning("frame_callback_trigger called but hardware trigger mode is disabled")
+            return
         try:
             # Generate short pulse to PIC T1G input (hardware trigger)
             GPIO.output(self.trigger_gpio_pin, GPIO.HIGH)

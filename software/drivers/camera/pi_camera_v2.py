@@ -13,8 +13,11 @@ from typing import Optional, Dict, Tuple, Generator
 import numpy as np
 from queue import Queue
 from threading import Event
+import logging
 
 from .camera_base import BaseCamera
+
+logger = logging.getLogger(__name__)
 
 
 class PiCameraV2(BaseCamera):
@@ -150,6 +153,95 @@ class PiCameraV2(BaseCamera):
         # picamera2 returns BGR, convert to RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return frame
+
+    def capture_frame_at_resolution(self, width: int, height: int) -> bytes:
+        """
+        Capture a single frame at specified resolution (for snapshots).
+        
+        For picamera2, we can capture a still image at any resolution without
+        reconfiguring the video stream. Uses still capture mode.
+        
+        Args:
+            width: Frame width in pixels
+            height: Frame height in pixels
+            
+        Returns:
+            bytes: JPEG-encoded frame data
+        """
+        if self.cam is None:
+            raise RuntimeError("Camera not initialized")
+        
+        try:
+            # Save current configuration state
+            was_started = self.cam.started
+            
+            # Stop camera if it's running (needed for reconfiguration)
+            if was_started:
+                self.cam.stop()
+            
+            # Create a still configuration at the requested resolution
+            still_config = self.cam.create_still_configuration(
+                main={"size": (int(width), int(height))}
+            )
+            self.cam.configure(still_config)
+            self.cam.start()
+            
+            # Wait a bit for camera to stabilize
+            time.sleep(0.1)
+            
+            # Capture still image
+            request = self.cam.capture_request()
+            array = request.make_array("main")
+            request.release()
+            
+            # Convert numpy array to JPEG (picamera2 returns RGB)
+            import io
+            from PIL import Image
+            img = Image.fromarray(array)
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=95)
+            frame_data = buffer.getvalue()
+            
+            # Restore video configuration if camera was running
+            if was_started:
+                self.cam.stop()
+                # Restore video configuration
+                size_config = self.config.get("size", [640, 480])
+                if isinstance(size_config, (list, tuple)) and len(size_config) >= 2:
+                    size_tuple = (int(size_config[0]), int(size_config[1]))
+                else:
+                    size_tuple = (640, 480)
+                video_config = self.cam.create_video_configuration(main={"size": size_tuple})
+                self.cam.configure(video_config)
+                framerate = self.config.get("FrameRate", 30)
+                if isinstance(framerate, (int, float)):
+                    self.cam.set_controls({"FrameRate": int(framerate)})
+                self.cam.start()
+                # Reset running event (if it exists)
+                if hasattr(self, "cam_running_event"):
+                    self.cam_running_event.set()
+            
+            return frame_data
+        except Exception as e:
+            logger.error(f"Error capturing frame at resolution {width}x{height}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            # Fallback: try to capture at current resolution
+            try:
+                if not self.cam.started:
+                    self.cam.start()
+                request = self.cam.capture_request()
+                array = request.make_array("main")
+                request.release()
+                import io
+                from PIL import Image
+                img = Image.fromarray(array)
+                buffer = io.BytesIO()
+                img.save(buffer, format='JPEG', quality=95)
+                return buffer.getvalue()
+            except Exception as e2:
+                logger.error(f"Fallback capture also failed: {e2}")
+                raise
 
     def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> np.ndarray:
         """

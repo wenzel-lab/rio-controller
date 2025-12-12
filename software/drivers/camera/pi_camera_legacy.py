@@ -238,6 +238,52 @@ class PiCameraLegacy(BaseCamera):
         if isinstance(shutter, (int, float)):
             self.cam.shutter_speed = int(shutter)
 
+    def capture_frame_at_resolution(self, width: int, height: int) -> bytes:
+        """
+        Capture a single frame at specified resolution (for snapshots).
+        
+        Temporarily reconfigures camera to specified resolution, captures frame,
+        then restores original configuration.
+        
+        Args:
+            width: Frame width in pixels
+            height: Frame height in pixels
+            
+        Returns:
+            bytes: JPEG-encoded frame data
+        """
+        if self.cam is None:
+            raise RuntimeError("Camera not initialized")
+        
+        import io
+        
+        # Save current configuration
+        original_resolution = self.cam.resolution
+        original_config = self.config.copy()
+        
+        try:
+            # Temporarily set resolution
+            self.cam.resolution = (int(width), int(height))
+            
+            # Capture frame as JPEG
+            stream = io.BytesIO()
+            self.cam.capture(stream, format='jpeg', use_video_port=False)
+            stream.seek(0)
+            frame_data = stream.read()
+            
+            return frame_data
+        finally:
+            # Restore original resolution and config
+            self.cam.resolution = original_resolution
+            self.config = original_config
+            # Re-apply config settings (AWB, exposure, etc.)
+            self.cam.awb_mode = "auto"
+            self.cam.exposure_mode = "off"
+            if "FrameRate" in original_config:
+                self.cam.framerate = int(original_config["FrameRate"])
+            if "ShutterSpeed" in original_config:
+                self.cam.shutter_speed = int(original_config["ShutterSpeed"])
+
     def close(self) -> None:
         """Cleanup and close camera"""
         if self.cam:

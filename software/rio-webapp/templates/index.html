@@ -173,7 +173,7 @@
                     <div class="tab-pane fade" id="camera-config-pane" role="tabpanel">
                         <div class="row">
                             <div class="col-md-6">
-                                <div class="card">
+                                <div class="card mb-3">
                                     <div class="card-body">
                                         <h5 class="card-title">Camera Selection</h5>
                                         <div class="mb-3">
@@ -187,6 +187,41 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Display Resolution</h5>
+                                        <div class="mb-3">
+                                            <label for="select_display_resolution" class="form-label">Resolution for Web Streaming:</label>
+                                            <select id="select_display_resolution" class="form-select" onchange="cam_set_resolution()">
+                                                <option value="640x480"{% if cam.display_width == 640 and cam.display_height == 480 %} selected{%endif%}>640 × 480 (Low - Fast)</option>
+                                                <option value="800x600"{% if cam.display_width == 800 and cam.display_height == 600 %} selected{%endif%}>800 × 600</option>
+                                                <option value="1024x768"{% if cam.display_width == 1024 and cam.display_height == 768 %} selected{%endif%}>1024 × 768 (Default)</option>
+                                                <option value="1280x960"{% if cam.display_width == 1280 and cam.display_height == 960 %} selected{%endif%}>1280 × 960</option>
+                                                <option value="1920x1080"{% if cam.display_width == 1920 and cam.display_height == 1080 %} selected{%endif%}>1920 × 1080 (High Quality)</option>
+                                            </select>
+                                            <small class="form-text text-muted">
+                                                Current: <span id="current_display_resolution">{% if cam.display_width %}{{cam.display_width}} × {{cam.display_height}}{% else %}1024 × 768{% endif %}</span>
+                                                <span id="resolution_change_status" class="text-info" style="display:none;"> (Changing...)</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Snapshot Resolution</h5>
+                                        <div class="mb-3">
+                                            <label for="select_snapshot_resolution" class="form-label">Resolution for Snapshots:</label>
+                                            <select id="select_snapshot_resolution" class="form-select" onchange="cam_set_snapshot_resolution()">
+                                                <option value="display"{% if cam.snapshot_resolution_mode == "display" or not cam.snapshot_resolution_mode %} selected{%endif%}>Use Display Resolution (Fast)</option>
+                                                <option value="full"{% if cam.snapshot_resolution_mode == "full" %} selected{%endif%}>Full Sensor Resolution (High Quality)</option>
+                                            </select>
+                                            <small class="form-text text-muted">
+                                                Full resolution: {% if cam.camera == "rpi_hq" %}4056 × 3040 (HQ Camera){% else %}3280 × 2464 (V2 Camera){% endif %}<br>
+                                                <em>Note: Full resolution snapshots take longer to capture (~100-500ms) but provide maximum image quality.</em>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="card">
@@ -194,6 +229,9 @@
                                         <h5 class="card-title">Debug Information</h5>
                                         <div class="debug-info">
                                             <p>Update Count: <span id="update_count">{{debug.update_count}}</span></p>
+                                            <p>Camera: <span id="cam_type">{{cam.camera or 'None'}}</span></p>
+                                            <p>Display Resolution: <span id="cam_display_res">{% if cam.display_width %}{{cam.display_width}} × {{cam.display_height}}{% else %}1024 × 768{% endif %}</span></p>
+                                            <p>Snapshot Mode: <span id="cam_snapshot_mode">{{cam.snapshot_resolution_mode or 'display'}}</span></p>
                                         </div>
                                     </div>
                                 </div>
@@ -586,6 +624,40 @@
         function cam_select() {
             socket.emit('cam_select', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } });
         }
+        
+        function cam_set_resolution() {
+            var preset = $('#select_display_resolution').val();
+            $('#resolution_change_status').show();
+            socket.emit('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
+        }
+        
+        function cam_set_snapshot_resolution() {
+            var mode = $('#select_snapshot_resolution').val();
+            socket.emit('cam', { cmd: 'set_snapshot_resolution', parameters: { 'mode': mode } });
+        }
+        
+        // Update UI when camera data changes
+        socket.on('cam', function(data) {
+            if (data.display_width && data.display_height) {
+                var resText = data.display_width + ' × ' + data.display_height;
+                $('#current_display_resolution').text(resText);
+                $('#cam_display_res').text(resText);
+                // Update dropdown to match (if preset exists)
+                var preset = data.display_width + 'x' + data.display_height;
+                if ($('#select_display_resolution option[value="' + preset + '"]').length > 0) {
+                    $('#select_display_resolution').val(preset);
+                }
+                // Hide resolution change status
+                $('#resolution_change_status').hide();
+            }
+            if (data.snapshot_resolution_mode) {
+                $('#cam_snapshot_mode').text(data.snapshot_resolution_mode);
+                $('#select_snapshot_resolution').val(data.snapshot_resolution_mode);
+            }
+            if (data.camera) {
+                $('#cam_type').text(data.camera);
+            }
+        });
         
         function heater_temp_c_target(index) {
             socket.emit('heater', { cmd: 'temp_c_target', parameters: { 'index': index, 'temp_c_target': $('#input_heater' + (index + 1) + '_temp_c_target').val() } });

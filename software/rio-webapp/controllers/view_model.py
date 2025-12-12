@@ -174,10 +174,26 @@ class ViewModel:
             Dictionary with formatted camera data
         """
         try:
-            return {
+            data = {
                 "camera": camera.cam_data.get("camera", "none"),
                 "status": camera.cam_data.get("status", ""),
             }
+            # Add resolution information if available
+            if hasattr(camera, "display_resolution"):
+                data["display_width"] = camera.display_resolution[0]
+                data["display_height"] = camera.display_resolution[1]
+            if hasattr(camera, "snapshot_resolution_mode"):
+                data["snapshot_resolution_mode"] = camera.snapshot_resolution_mode
+            if hasattr(camera, "snapshot_resolution") and camera.snapshot_resolution:
+                data["snapshot_width"] = camera.snapshot_resolution[0]
+                data["snapshot_height"] = camera.snapshot_resolution[1]
+            # Also include data from cam_data if it exists (for backward compatibility)
+            if "display_width" in camera.cam_data:
+                data["display_width"] = camera.cam_data["display_width"]
+                data["display_height"] = camera.cam_data["display_height"]
+            if "snapshot_resolution_mode" in camera.cam_data:
+                data["snapshot_resolution_mode"] = camera.cam_data["snapshot_resolution_mode"]
+            return data
         except Exception as e:
             logger.error(f"Error formatting camera data: {e}")
             return {"camera": "none", "status": "Error"}

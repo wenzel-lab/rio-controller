@@ -87,6 +87,30 @@ class BaseCamera(ABC):
         """
         pass
 
+    def capture_frame_at_resolution(self, width: int, height: int) -> bytes:
+        """
+        Capture a single frame at specified resolution (for snapshots).
+        
+        This temporarily changes the camera resolution, captures a frame,
+        and restores the original resolution. Useful for full-resolution snapshots.
+
+        Args:
+            width: Frame width in pixels
+            height: Frame height in pixels
+
+        Returns:
+            bytes: JPEG-encoded frame data
+        """
+        # Default implementation: subclasses should override if they can do this efficiently
+        # For now, fall back to get_frame_array and encode as JPEG
+        import io
+        from PIL import Image
+        frame_array = self.get_frame_array()
+        img = Image.fromarray(frame_array)
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG')
+        return buffer.getvalue()
+
     def set_frame_callback(self, callback: Optional[Callable[[], None]]):
         """
         Set callback function called on each frame capture
