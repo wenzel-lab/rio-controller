@@ -1,20 +1,16 @@
 # Rio Controller Configuration
-# Pre-configuration: Strobe Only (32-bit) with Droplet Detection
+# Pre-configuration: Strobe Only (64-bit) with Droplet Detection
 #
-# This configuration is for a Raspberry Pi running 32-bit Raspberry Pi OS
+# This configuration is for a Raspberry Pi running 64-bit Raspberry Pi OS
 # with only the strobe module and camera connected. Droplet detection is enabled.
-# Uses strobe-centric control mode compatible with firmware that supports
-# software trigger mode.
-#
-# IMPORTANT: This mode works only on 32-bit Raspberry Pi OS because it requires
-# the picamera package, which is 32-bit only.
+# Uses camera-centric control mode with hardware trigger support.
 #
 # Usage:
 #   1. Set environment variables (see below)
 #   2. Run: python main.py
 #
 # Environment Variables (required):
-#   export RIO_STROBE_CONTROL_MODE=strobe-centric
+#   export RIO_STROBE_CONTROL_MODE=camera-centric
 #   export RIO_SIMULATION=false
 #   export RIO_DROPLET_ANALYSIS_ENABLED=true
 
@@ -22,30 +18,33 @@
 # Set to false for hardware operation
 simulation: false
 
-# Camera configuration (32-bit Raspberry Pi Camera V2)
-# Camera sensor: Sony IMX219, 3280 × 2464 pixels (8 megapixels)
-# https://www.raspberrypi.com/documentation/accessories/camera.html#camera-module-2
+# Camera configuration (64-bit Raspberry Pi Camera V2 or HQ Camera)
+# V2 Camera sensor: Sony IMX219, 3280 × 2464 pixels (8 megapixels)
+# HQ Camera sensor: Sony IMX477, ~4056 × 3040 pixels (12.3 megapixels)
 camera:
-  type: rpi              # Use "rpi" for 32-bit Pi Camera V2 (picamera package)
+  type: rpi              # Use "rpi" for V2 Camera on 64-bit (picamera2 package)
+                         # Use "rpi_hq" for HQ Camera on 64-bit
   # NOTE: Display resolution can now be adjusted via the web interface UI
   # Default resolution shown below (1024×768), can be changed in Camera Configuration tab
   # Available presets: 640×480, 800×600, 1024×768, 1280×960, 1920×1080
-  # Full sensor resolution (3280×2464) available for snapshots via UI
+  # Full sensor resolution available for snapshots via UI:
+  #   - V2 Camera: 3280×2464 pixels
+  #   - HQ Camera: ~4056×3040 pixels
   width: 1024            # Default display width (can be changed in UI)
   height: 768            # Default display height (can be changed in UI)
   fps: 30                # Default framerate (automatically optimized via strobe timing)
 
-# Strobe configuration (strobe-centric control mode)
+# Strobe configuration (camera-centric control mode)
 strobe:
   port: 24               # SPI device select port (GPIO pin 24, BOARD numbering)
   reply_pause_s: 0.1     # SPI reply pause time (100ms delay for PIC microcontroller to process commands)
-  control_mode: strobe-centric  # Strobe-centric control (software trigger)
-  trigger_gpio_pin: 18   # GPIO pin for trigger signal (BCM numbering, optional in strobe-centric mode)
+  control_mode: camera-centric  # Camera-centric control (hardware trigger)
+  trigger_gpio_pin: 18   # GPIO pin for camera frame trigger (BCM numbering, required)
   default_period_ns: 100000      # Default strobe pulse period (100 microseconds)
   max_period_ns: 16000000        # Maximum strobe pulse period (16 milliseconds)
   pre_padding_ns: 32             # Pre-padding before strobe pulse
   post_padding_ns: 20000000      # Post-padding after strobe pulse
-  # Strobe-centric mode: Strobe timing controls camera exposure
+  # Camera-centric mode: Camera frame callback triggers strobe via GPIO pin 18
   # Camera framerate is automatically calculated and optimized from strobe timing
   # Use the "Optimize" button in the web interface to fine-tune framerate
 
@@ -70,9 +69,10 @@ spi:
   #   Note: Flow controller and heaters are not used in this configuration
 
 # Notes:
-# - Firmware requirement: Must use firmware compatible with software trigger mode (strobe-centric)
+# - Firmware requirement: Must use new firmware with hardware trigger support
+# - GPIO pin 18 (BCM) must be connected for camera-strobe synchronization
 # - Camera must be enabled: sudo raspi-config -> Interface Options -> Camera -> Enable
-# - Test camera: raspistill -o test.jpg
+# - Test camera: libcamera-hello  # 64-bit camera test command
 # - SPI must be enabled: sudo raspi-config -> Interface Options -> SPI -> Enable
 # - Resolution and framerate:
 #   * Display resolution: Adjustable via web interface (Camera Configuration tab)
