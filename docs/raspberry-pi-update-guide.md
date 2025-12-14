@@ -10,6 +10,8 @@
 
 This guide explains how to update your Raspberry Pi system from the old installation (master branch) to the new `strobe-rewrite` branch while maintaining compatibility with existing firmware. The new code includes a configuration option to switch between:
 
+**For careful updates without breaking existing setup**: See [Careful Update Guide](raspberry-pi-careful-update-guide.md) for using a virtual environment approach.
+
 1. **Strobe-centric mode**: Compatible with firmware that uses software trigger mode. Works on 32-bit Raspberry Pi OS only (requires picamera package). This mode works perfectly fine if you already have a working 32-bit system.
 
 2. **Camera-centric mode**: Uses new firmware with hardware trigger support. Provides better synchronization. Requires new strobe chip firmware with hardware trigger capability.
@@ -460,3 +462,5 @@ If you encounter problems not covered in this guide:
 3. Ensure firmware compatibility with selected mode
 4. Review repository issues or documentation
 5. Check example configuration files for your platform type
+
+
