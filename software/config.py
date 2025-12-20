@@ -14,6 +14,7 @@ CAMERA_DEFAULT_FPS = 30
 CAMERA_THREAD_WIDTH = 1024
 CAMERA_THREAD_HEIGHT = 768
 CAMERA_THREAD_FPS = 30
+CAMERA_DISPLAY_FPS = 10  # Display frame rate (for web streaming, lower to reduce Pi load)
 CAMERA_INIT_TIMEOUT_S = 5.0  # Timeout for camera initialization
 CAMERA_FRAME_WAIT_SLEEP_S = 0.01  # Sleep interval while waiting for first frame
 
@@ -113,6 +114,22 @@ SNAPSHOT_FILENAME_SUFFIX = ".jpg"
 FPS_OPTIMIZATION_MAX_TRIES = 10
 FPS_OPTIMIZATION_CONVERGENCE_THRESHOLD_US = 1000  # Convergence threshold in microseconds
 FPS_OPTIMIZATION_POST_PADDING_OFFSET_US = 100  # Additional padding offset
+
+# Image Quality Configuration
+# Different quality settings for streaming (lower) vs snapshots (higher)
+# Lower streaming quality reduces bandwidth and CPU usage significantly
+# Quality range: 1-100 (1=lowest quality/smallest file, 100=highest quality/largest file)
+_streaming_quality_raw = int(os.getenv("RIO_JPEG_QUALITY_STREAMING", "75"))
+CAMERA_STREAMING_JPEG_QUALITY = max(1, min(100, _streaming_quality_raw))  # Clamp to valid range [1, 100]
+
+_snapshot_quality_raw = int(os.getenv("RIO_JPEG_QUALITY_SNAPSHOT", "95"))
+CAMERA_SNAPSHOT_JPEG_QUALITY = max(1, min(100, _snapshot_quality_raw))  # Clamp to valid range [1, 100]
+
+# Logging Configuration
+# Production should use WARNING level to reduce I/O overhead
+# Development can use INFO or DEBUG for more verbose output
+# Set via environment variable: RIO_LOG_LEVEL (INFO, DEBUG, WARNING, ERROR)
+RIO_LOG_LEVEL = os.getenv("RIO_LOG_LEVEL", "WARNING").upper()  # Default: WARNING for production
 
 # WebSocket Events
 WS_EVENT_CAM = "cam"

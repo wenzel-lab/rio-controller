@@ -27,7 +27,7 @@ Your Pi already has:
   - `MarkupSafe==1.1.0` → needs `>=2.0.0`
 
 - ❌ **Missing packages**:
-  - `opencv-python` (for droplet detection)
+  - `opencv-python-headless` (recommended) or `opencv-python` (for droplet detection)
   - `PyYAML` (for configuration files)
 
 ## Step-by-Step Update Process
@@ -113,7 +113,7 @@ pip install "itsdangerous>=2.0.0"
 pip install "python-socketio>=5.0.0"
 
 # Missing packages
-pip install "opencv-python>=4.5.0,<5.0.0"
+pip install "opencv-python-headless>=4.5.0,<5.0.0"  # Use headless version (faster installation on Pi)
 pip install "PyYAML>=6.0"
 ```
 

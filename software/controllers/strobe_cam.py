@@ -39,9 +39,9 @@ try:
         STROBE_CONTROL_MODE,
         STROBE_CONTROL_MODE_STROBE_CENTRIC,
         STROBE_CONTROL_MODE_CAMERA_CENTRIC,
-    # Backward compatibility (deprecated - use strobe-centric/camera-centric)
-    STROBE_CONTROL_MODE_LEGACY,
-    STROBE_CONTROL_MODE_NEW,
+        # Backward compatibility (deprecated - use strobe-centric/camera-centric)
+        STROBE_CONTROL_MODE_LEGACY,
+        STROBE_CONTROL_MODE_NEW,
     )
 except ImportError:
     # Fallback values if config module not available
@@ -107,16 +107,28 @@ class PiStrobeCam:
         # Determine control mode from configuration
         # Support both new naming (strobe-centric/camera-centric) and old (legacy/new) for backward compatibility
         mode = STROBE_CONTROL_MODE.lower()
-        if mode in (STROBE_CONTROL_MODE_STROBE_CENTRIC, STROBE_CONTROL_MODE_LEGACY, "legacy", "strobe-centric"):
+        if mode in (
+            STROBE_CONTROL_MODE_STROBE_CENTRIC,
+            STROBE_CONTROL_MODE_LEGACY,
+            "legacy",
+            "strobe-centric",
+        ):
             self.control_mode = STROBE_CONTROL_MODE_STROBE_CENTRIC
-        elif mode in (STROBE_CONTROL_MODE_CAMERA_CENTRIC, STROBE_CONTROL_MODE_NEW, "new", "camera-centric"):
+        elif mode in (
+            STROBE_CONTROL_MODE_CAMERA_CENTRIC,
+            STROBE_CONTROL_MODE_NEW,
+            "new",
+            "camera-centric",
+        ):
             self.control_mode = STROBE_CONTROL_MODE_CAMERA_CENTRIC
         else:
             # Default to camera-centric for strobe-rewrite branch
             logger.warning(f"Unknown control mode '{mode}', defaulting to camera-centric")
             self.control_mode = STROBE_CONTROL_MODE_CAMERA_CENTRIC
-        self.hardware_trigger_mode = (self.control_mode == STROBE_CONTROL_MODE_CAMERA_CENTRIC)
-        logger.info(f"Strobe control mode: {self.control_mode} (hardware_trigger={self.hardware_trigger_mode})")
+        self.hardware_trigger_mode = self.control_mode == STROBE_CONTROL_MODE_CAMERA_CENTRIC
+        logger.info(
+            f"Strobe control mode: {self.control_mode} (hardware_trigger={self.hardware_trigger_mode})"
+        )
 
         # Initialize strobe controller
         self.strobe = PiStrobe(port, reply_pause_s)
@@ -133,17 +145,29 @@ class PiStrobeCam:
 
             # Configure camera with default settings
             if self.camera is not None:
-                self.camera.set_config(
-                    {
-                        "Width": CAMERA_DEFAULT_WIDTH,
-                        "Height": CAMERA_DEFAULT_HEIGHT,
-                        "FrameRate": CAMERA_DEFAULT_FPS,
-                    }
-                )
+                # Check if camera is actually initialized (some implementations may fail silently)
+                try:
+                    self.camera.set_config(
+                        {
+                            "Width": CAMERA_DEFAULT_WIDTH,
+                            "Height": CAMERA_DEFAULT_HEIGHT,
+                            "FrameRate": CAMERA_DEFAULT_FPS,
+                        }
+                    )
+                except RuntimeError as e:
+                    if "not initialized" in str(e).lower():
+                        logger.warning(
+                            f"Camera hardware not available: {e}. Continuing without camera."
+                        )
+                        self.camera = None
+                        self._camera_type = None
+                    else:
+                        raise
         except Exception as e:
             logger.error(f"Error creating/configuring camera: {e}")
-            # In simulation mode, this should work, so raise
-            raise
+            logger.warning("Continuing without camera hardware. Some features will be unavailable.")
+            self.camera = None
+            self._camera_type = None
 
         # Initialize GPIO for PIC trigger (only needed for new mode with hardware trigger)
         if self.hardware_trigger_mode:
@@ -156,14 +180,17 @@ class PiStrobeCam:
                 logger.error(f"Error configuring GPIO trigger pin: {e}")
                 raise
 
-        # Configure strobe trigger mode based on control mode
-        try:
-            self.strobe.set_trigger_mode(self.hardware_trigger_mode)
-            mode_str = "hardware trigger" if self.hardware_trigger_mode else "software trigger"
-            logger.debug(f"Strobe configured for {mode_str} mode")
-        except Exception as e:
-            logger.error(f"Error configuring strobe trigger mode: {e}")
-            raise
+        # Configure strobe trigger mode only for hardware trigger mode (camera-centric)
+        # Old firmware may not support set_trigger_mode command, so only call it when needed
+        if self.hardware_trigger_mode:
+            try:
+                self.strobe.set_trigger_mode(True)
+                logger.debug("Strobe configured for hardware trigger mode")
+            except Exception as e:
+                logger.error(f"Error configuring strobe trigger mode: {e}")
+                raise
+        else:
+            logger.debug("Strobe-centric mode: trigger mode configuration skipped (not needed)")
 
         # Set frame callback for strobe trigger only in new mode (hardware trigger)
         # Legacy mode doesn't use frame callbacks - strobe timing controls everything
@@ -214,17 +241,34 @@ class PiStrobeCam:
 
             # Configure camera with default settings
             if self.camera is not None:
-                self.camera.set_config(
-                    {
-                        "Width": CAMERA_DEFAULT_WIDTH,
-                        "Height": CAMERA_DEFAULT_HEIGHT,
-                        "FrameRate": CAMERA_DEFAULT_FPS,
-                    }
-                )
+                try:
+                    self.camera.set_config(
+                        {
+                            "Width": CAMERA_DEFAULT_WIDTH,
+                            "Height": CAMERA_DEFAULT_HEIGHT,
+                            "FrameRate": CAMERA_DEFAULT_FPS,
+                        }
+                    )
 
-                # Set frame callback for strobe trigger only in new mode (hardware trigger)
-                if self.hardware_trigger_mode:
-                    self.camera.set_frame_callback(self.frame_callback_trigger)
+                    # Set frame callback for strobe trigger only in new mode (hardware trigger)
+                    if self.hardware_trigger_mode:
+                        self.camera.set_frame_callback(self.frame_callback_trigger)
+
+                    logger.info(f"Camera type set to: {camera_type}")
+                    return True
+                except RuntimeError as e:
+                    if "not initialized" in str(e).lower():
+                        logger.error(f"Camera created but not properly initialized: {e}")
+                        # Camera object exists but internal camera is None - cleanup
+                        try:
+                            self.camera.close()
+                        except Exception:
+                            pass
+                        self.camera = None
+                        self._camera_type = None
+                        return False
+                    else:
+                        raise  # Re-raise if it's a different RuntimeError
 
             logger.info(f"Camera type set to: {camera_type}")
             return True
@@ -242,7 +286,7 @@ class PiStrobeCam:
         a short pulse on the GPIO pin to trigger the PIC microcontroller.
         Note: Software callback has ~1-5ms jitter, but PIC hardware timing
         remains precise.
-        
+
         Only used in new mode (hardware trigger). In legacy mode, this callback
         is not set.
         """
@@ -261,10 +305,15 @@ class PiStrobeCam:
         """
         Set strobe timing parameters.
 
-        For hardware trigger mode, timing is simpler:
+        For hardware trigger mode (camera-centric):
         - Camera runs at configured framerate
         - Frame callback triggers PIC via GPIO
         - PIC generates strobe pulse with specified timing
+
+        For software trigger mode (strobe-centric):
+        - Strobe timing controls camera exposure
+        - Camera framerate/shutter adjusted to match strobe timing
+        - Pre-padding is adjusted to account for dead time between frames
 
         Args:
             pre_padding_ns: Delay after trigger before strobe fires (nanoseconds)
@@ -275,24 +324,65 @@ class PiStrobeCam:
             True if timing was set successfully, False otherwise
         """
         try:
-            if not self._set_strobe_timing(pre_padding_ns, strobe_period_ns):
-                return False
+            if self.hardware_trigger_mode:
+                # Hardware trigger mode: camera timing is independent, strobe waits for trigger
+                if not self._set_strobe_timing(pre_padding_ns, strobe_period_ns):
+                    return False
 
-            framerate, shutter_speed_us = self._calculate_camera_timing(
-                strobe_period_ns, pre_padding_ns, post_padding_ns
-            )
+                framerate, shutter_speed_us = self._calculate_camera_timing(
+                    strobe_period_ns, pre_padding_ns, post_padding_ns
+                )
 
-            if not self._update_camera_config(framerate, shutter_speed_us):
-                return False
+                if not self._update_camera_config(framerate, shutter_speed_us):
+                    return False
 
+                self.framerate_set = framerate
+                logger.debug(
+                    f"Strobe timing set (hardware trigger): period={strobe_period_ns}ns, "
+                    f"framerate={framerate}fps, shutter={shutter_speed_us}us"
+                )
+            else:
+                # Software trigger mode (strobe-centric): camera timing calculated from strobe timing
+                # This matches the old working implementation
+                # Calculate initial camera timing
+                framerate, shutter_speed_us = self._calculate_camera_timing(
+                    strobe_period_ns, pre_padding_ns, post_padding_ns
+                )
+
+                # Update camera configuration first
+                if not self._update_camera_config(framerate, shutter_speed_us):
+                    return False
+
+                # Read back actual framerate and shutter speed from camera hardware
+                # This matches old implementation which uses self.camera.framerate and self.camera.shutter_speed
+                actual_framerate = self._get_actual_framerate(framerate)
+                actual_shutter_speed_us = self._get_actual_shutter_speed(shutter_speed_us)
+
+                # Calculate inter-frame period using actual framerate (matches old implementation)
+                frame_rate_period_us = int(1000000 / float(actual_framerate))
+                # Use actual shutter speed for dead time calculation (matches old implementation)
+                strobe_pre_wait_us = frame_rate_period_us - actual_shutter_speed_us
+
+                # Adjust pre-padding to account for dead time between frames
+                adjusted_pre_padding_ns = pre_padding_ns + (NS_TO_US * strobe_pre_wait_us)
+
+                # Set strobe timing with adjusted pre-padding
+                if not self._set_strobe_timing(adjusted_pre_padding_ns, strobe_period_ns):
+                    return False
+
+                self.framerate_set = actual_framerate
+                logger.debug(
+                    f"Strobe timing set (software trigger): period={strobe_period_ns}ns, "
+                    f"framerate={actual_framerate}fps (requested {framerate}), "
+                    f"shutter={actual_shutter_speed_us}us (requested {shutter_speed_us}), "
+                    f"dead_time={strobe_pre_wait_us}us, adjusted_wait={adjusted_pre_padding_ns}ns"
+                )
+
+            # Ensure camera is started (strobe enable is controlled separately by user)
+            # This matches old working implementation - user enables strobe via UI after timing is set
             if not self._ensure_camera_started():
                 return False
 
-            self.framerate_set = framerate
-            logger.debug(
-                f"Strobe timing set: period={strobe_period_ns}ns, "
-                f"framerate={framerate}fps, shutter={shutter_speed_us}us"
-            )
             return True
         except Exception as e:
             logger.error(f"Error in set_timing: {e}")
@@ -305,7 +395,13 @@ class PiStrobeCam:
             wait_ns, strobe_period_ns
         )
         if not valid:
-            logger.warning("Failed to set strobe timing")
+            logger.error(
+                f"⚠️ CRITICAL: Failed to set strobe timing (wait={wait_ns}ns, period={strobe_period_ns}ns) - check hardware connection"
+            )
+        else:
+            logger.debug(
+                f"Strobe timing set successfully: wait={self.strobe_wait_ns}ns, period={self.strobe_period_ns}ns"
+            )
         return cast(bool, valid)
 
     def _calculate_camera_timing(
@@ -316,11 +412,57 @@ class PiStrobeCam:
         shutter_speed_us = int(total_exposure_ns / NS_TO_US)
         framerate = int(1000000 / shutter_speed_us)
 
+        # If framerate exceeds maximum, clamp it and recalculate shutter to match
         if framerate > MAX_FRAMERATE:
             framerate = MAX_FRAMERATE
-            logger.warning(f"Framerate clamped to {MAX_FRAMERATE} FPS")
+            shutter_speed_us = int(1000000 / framerate)
+            logger.debug(
+                f"Framerate clamped to {MAX_FRAMERATE} FPS, shutter adjusted to {shutter_speed_us}us"
+            )
 
         return framerate, shutter_speed_us
+
+    def _get_actual_framerate(self, expected_framerate: int) -> int:
+        """
+        Get actual framerate from camera hardware (may differ if camera rounds it).
+
+        Matches old implementation which reads self.camera.framerate after setting it.
+        """
+        actual_framerate = expected_framerate
+        if self.camera and hasattr(self.camera, "get_actual_framerate"):
+            try:
+                actual_framerate = int(self.camera.get_actual_framerate())
+            except Exception:
+                # Fallback to config value if readback method not available
+                try:
+                    config_framerate = self.camera.config.get("FrameRate", expected_framerate)
+                    if isinstance(config_framerate, (int, float)):
+                        actual_framerate = int(config_framerate)
+                except Exception:
+                    pass  # Use expected framerate if all readback fails
+        return actual_framerate
+
+    def _get_actual_shutter_speed(self, expected_shutter_speed_us: int) -> int:
+        """
+        Get actual shutter speed from camera hardware (may differ due to hardware limitations).
+
+        Matches old implementation which reads self.camera.shutter_speed after setting it.
+        """
+        actual_shutter_speed_us = expected_shutter_speed_us
+        if self.camera and hasattr(self.camera, "get_actual_shutter_speed"):
+            try:
+                actual_shutter_speed_us = int(self.camera.get_actual_shutter_speed())
+            except Exception:
+                # Fallback to config value if readback method not available
+                try:
+                    config_shutter = self.camera.config.get(
+                        "ShutterSpeed", expected_shutter_speed_us
+                    )
+                    if isinstance(config_shutter, (int, float)):
+                        actual_shutter_speed_us = int(config_shutter)
+                except Exception:
+                    pass  # Use expected shutter speed if all readback fails
+        return actual_shutter_speed_us
 
     def _update_camera_config(self, framerate: int, shutter_speed_us: int) -> bool:
         """Update camera configuration."""
@@ -335,23 +477,21 @@ class PiStrobeCam:
             return False
 
     def _ensure_camera_started(self) -> bool:
-        """Ensure camera is started and strobe is enabled."""
+        """
+        Ensure camera is started (strobe enable is controlled separately by user).
+
+        In strobe-centric mode, strobe should be enabled explicitly by the user
+        after timing is set. This matches the old working implementation behavior.
+        """
         if self.camera is None:
             logger.error("Camera is None, cannot start")
             return False
         try:
             self.camera.start()
+            return True
         except Exception as e:
             logger.error(f"Error starting camera: {e}")
             return False
-
-        try:
-            self.strobe.set_enable(True)
-        except Exception as e:
-            logger.error(f"Error enabling strobe: {e}")
-            return False
-
-        return True
 
     def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> Optional[Any]:
         """

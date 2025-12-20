@@ -49,8 +49,26 @@ Example:
 export RIO_STROBE_CONTROL_MODE=camera-centric
 export RIO_SIMULATION=false
 export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false      # Hide flow control tab (for strobe-only configs)
+export RIO_HEATER_ENABLED=false    # Hide heater tab (for strobe-only configs)
 python main.py
 ```
+
+## Tab Visibility Control
+
+The web interface automatically shows/hides tabs based on configuration:
+
+- **Flow Control Tab**: Shown if `RIO_FLOW_ENABLED=true` or if flow controller is initialized and has data
+- **Heater Tab**: Shown if `RIO_HEATER_ENABLED=true` or if heaters are initialized and have data
+- **Droplet Detection Tab**: Shown if `RIO_DROPLET_ANALYSIS_ENABLED=true` and droplet controller is available
+
+For strobe-only configurations, set:
+```bash
+export RIO_FLOW_ENABLED=false
+export RIO_HEATER_ENABLED=false
+```
+
+This will hide the unused tabs in the web interface.
 
 ## Important Notes
 

@@ -289,6 +289,30 @@ def _register_http_routes(
             strobe_data = view_model.format_strobe_data(cam)
             debug_formatted = view_model.format_debug_data(debug_data["update_count"])
 
+            # Determine if flow and heater tabs should be shown
+            # Check if controllers exist and have data
+            # Also check environment variables for explicit enable/disable
+            import os
+            flow_enabled_env = os.getenv("RIO_FLOW_ENABLED", "").lower()
+            heater_enabled_env = os.getenv("RIO_HEATER_ENABLED", "").lower()
+            
+            # If environment variable is explicitly set, use it
+            if flow_enabled_env == "false":
+                flow_enabled = False
+            elif flow_enabled_env == "true":
+                flow_enabled = True
+            else:
+                # Default: check if controllers exist and have data
+                flow_enabled = flow is not None and len(flows_data) > 0
+            
+            if heater_enabled_env == "false":
+                heater_enabled = False
+            elif heater_enabled_env == "true":
+                heater_enabled = True
+            else:
+                # Default: check if controllers exist and have data
+                heater_enabled = heaters is not None and len(heaters) > 0 and len(heaters_data) > 0
+
             return render_template(
                 "index.html",
                 debug=debug_formatted,
@@ -296,6 +320,8 @@ def _register_http_routes(
                 heaters=heaters_data,
                 flows=flows_data,
                 cam=camera_data,
+                flow_enabled=flow_enabled,
+                heater_enabled=heater_enabled,
             )
         except Exception as e:
             logger.error(f"Error rendering template: {e}")
@@ -310,20 +336,51 @@ def _register_http_routes(
         Video stream route handler.
 
         Returns MJPEG stream of camera feed, or 404 if camera is disabled.
+        Implements frame rate limiting for display to reduce Pi load.
+        Lazy initialization: starts camera thread only when first client connects.
         """
         if cam.cam_data.get("camera") == "none":
             return Response("Camera disabled", status=404, mimetype="text/plain")
+        
+        # Lazy initialization: start camera thread only when first client connects
+        # This reduces startup overhead and CPU usage when no clients are viewing
+        if cam.thread is None or not cam.thread.is_alive():
+            cam.initialize()
+
+        # Get display FPS from config (default 10 fps to reduce Pi load)
+        from config import CAMERA_DISPLAY_FPS
+
+        display_fps = cam.cam_data.get("display_fps", CAMERA_DISPLAY_FPS)
+        frame_interval = 1.0 / float(display_fps) if display_fps > 0 else 0.1
 
         def generate_frames():
-            """Generator for MJPEG frames."""
-            while True:
-                frame = cam.get_frame()
-                if frame:
-                    yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-                else:
-                    time.sleep(0.1)
+            """Generator for MJPEG frames with frame rate limiting."""
+            import time
 
-        return Response(generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+            last_frame_time = 0.0
+            while True:
+                current_time = time.time()
+                # Only yield frame if enough time has passed (frame rate limiting)
+                if current_time - last_frame_time >= frame_interval:
+                    frame = cam.get_frame()
+                    if frame:
+                        yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+                        last_frame_time = current_time
+                    else:
+                        time.sleep(0.1)
+                else:
+                    # Sleep briefly to avoid busy waiting
+                    time.sleep(0.01)
+
+        response = Response(generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        # Add headers to prevent caching of live video stream and allow CORS
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        # CORS header - allow cross-origin access if needed (can be made more restrictive)
+        # For local network use, '*' is acceptable; for production, consider restricting
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
 
     # Droplet detection API routes
     if droplet_controller is not None:

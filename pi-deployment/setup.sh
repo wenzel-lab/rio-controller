@@ -35,7 +35,8 @@ else
     pip install "MarkupSafe>=2.0.0"
     pip install "itsdangerous>=2.0.0"
     pip install "python-socketio>=5.0.0"
-    pip install "opencv-python>=4.5.0,<5.0.0"
+    pip install "eventlet>=0.33.0"
+    pip install "opencv-python-headless>=4.5.0,<5.0.0"
     pip install "PyYAML>=6.0"
 fi
 

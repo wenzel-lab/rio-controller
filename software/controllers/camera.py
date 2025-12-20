@@ -45,9 +45,13 @@ try:
         SNAPSHOT_FOLDER,
         SNAPSHOT_FILENAME_PREFIX,
         SNAPSHOT_FILENAME_SUFFIX,
+        SNAPSHOT_RESOLUTION_DISPLAY,
+        SNAPSHOT_RESOLUTION_FULL,
+        SNAPSHOT_RESOLUTION_CUSTOM,
         FPS_OPTIMIZATION_MAX_TRIES,
         FPS_OPTIMIZATION_CONVERGENCE_THRESHOLD_US,
         FPS_OPTIMIZATION_POST_PADDING_OFFSET_US,
+        CAMERA_SNAPSHOT_JPEG_QUALITY,
         WS_EVENT_CAM,
         WS_EVENT_STROBE,
         WS_EVENT_ROI,
@@ -141,7 +145,7 @@ class Camera:
             socketio: Flask-SocketIO instance for WebSocket communication
             droplet_controller: Optional DropletDetectorController instance for frame feeding
         """
-        logger.info("Initializing Camera controller")
+        logger.debug("Initializing Camera controller")
         self.exit_event = exit_event
         self.socketio = socketio
         self.thread: Optional[threading.Thread] = None
@@ -186,13 +190,21 @@ class Camera:
 
         # Resolution settings
         self.display_resolution: Tuple[int, int] = (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
-        self.snapshot_resolution_mode: str = SNAPSHOT_RESOLUTION_DISPLAY  # "display", "full", or "custom"
+        self.snapshot_resolution_mode: str = (
+            SNAPSHOT_RESOLUTION_DISPLAY  # "display", "full", or "custom"
+        )
         self.snapshot_resolution: Optional[Tuple[int, int]] = None  # Used if mode is "custom"
-        
+
+        # Display FPS (separate from capture FPS to reduce Pi load)
+        from config import CAMERA_DISPLAY_FPS
+
+        self.display_fps: float = float(CAMERA_DISPLAY_FPS)
+
         # Initialize cam_data with resolution info
         self.cam_data["display_width"] = self.display_resolution[0]
         self.cam_data["display_height"] = self.display_resolution[1]
         self.cam_data["snapshot_resolution_mode"] = self.snapshot_resolution_mode
+        self.cam_data["display_fps"] = self.display_fps
 
         # Camera calibration for droplet detection
         # um_per_px: micrometers per pixel (calibration factor)
@@ -205,12 +217,12 @@ class Camera:
         # Register WebSocket event handlers
         self._register_websocket_handlers()
 
-        logger.info("Camera initialization complete")
-    
+        logger.debug("Camera initialization complete")
+
     def _get_snapshot_resolution(self) -> Tuple[int, int]:
         """
         Get the resolution to use for snapshots based on current settings.
-        
+
         Returns:
             Tuple[int, int]: (width, height) for snapshot
         """
@@ -230,11 +242,11 @@ class Camera:
                 return self.display_resolution
         else:
             return self.display_resolution
-    
+
     def _handle_set_resolution(self, params: Dict[str, Any]) -> None:
         """
         Handle set_resolution command.
-        
+
         Args:
             params: Dictionary with 'preset' (str) or 'width' and 'height' (int)
         """
@@ -259,77 +271,100 @@ class Camera:
             else:
                 logger.warning("set_resolution requires 'preset' or 'width' and 'height'")
                 return
-            
+
             # Validate against camera limits (if camera is available)
             if self.camera is not None and new_resolution:
                 camera_type = self.cam_data.get("camera", CAMERA_TYPE_RPI)
-                max_width = CAMERA_HQ_MAX_WIDTH if camera_type == CAMERA_TYPE_RPI_HQ else CAMERA_V2_MAX_WIDTH
-                max_height = CAMERA_HQ_MAX_HEIGHT if camera_type == CAMERA_TYPE_RPI_HQ else CAMERA_V2_MAX_HEIGHT
-                
+                max_width = (
+                    CAMERA_HQ_MAX_WIDTH
+                    if camera_type == CAMERA_TYPE_RPI_HQ
+                    else CAMERA_V2_MAX_WIDTH
+                )
+                max_height = (
+                    CAMERA_HQ_MAX_HEIGHT
+                    if camera_type == CAMERA_TYPE_RPI_HQ
+                    else CAMERA_V2_MAX_HEIGHT
+                )
+
                 if new_resolution[0] > max_width or new_resolution[1] > max_height:
                     logger.warning(
                         f"Resolution {new_resolution[0]}x{new_resolution[1]} exceeds camera maximum "
                         f"({max_width}x{max_height}), clamping to maximum"
                     )
-                    new_resolution = (min(new_resolution[0], max_width), min(new_resolution[1], max_height))
-            
+                    new_resolution = (
+                        min(new_resolution[0], max_width),
+                        min(new_resolution[1], max_height),
+                    )
+
             self.display_resolution = new_resolution
-            logger.info(f"Setting display resolution to {self.display_resolution[0]}x{self.display_resolution[1]}")
-            
+            logger.info(
+                f"Setting display resolution to {self.display_resolution[0]}x{self.display_resolution[1]}"
+            )
+
             # Update cam_data (so UI can show the change immediately)
             self.cam_data["display_width"] = self.display_resolution[0]
             self.cam_data["display_height"] = self.display_resolution[1]
-            
+
             # Emit update immediately so UI reflects the change
             if self.socketio:
                 self.socketio.emit(WS_EVENT_CAM, self.cam_data)
-            
+
             # Update camera configuration if camera is available
             if self.camera is not None:
                 try:
-                    self.camera.set_config({
-                        "Width": self.display_resolution[0],
-                        "Height": self.display_resolution[1],
-                    })
-                    
+                    self.camera.set_config(
+                        {
+                            "Width": self.display_resolution[0],
+                            "Height": self.display_resolution[1],
+                        }
+                    )
+
                     # Restart camera thread to apply new resolution
                     self._restart_camera_thread()
                 except Exception as e:
                     logger.error(f"Error applying resolution change: {e}")
             else:
-                logger.warning("Camera not available, resolution setting will apply when camera starts")
-            
+                logger.warning(
+                    "Camera not available, resolution setting will apply when camera starts"
+                )
+
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Error setting resolution: {e}")
             logger.debug(f"Parameters: {params}")
-    
+
     def _handle_set_snapshot_resolution(self, params: Dict[str, Any]) -> None:
         """
         Handle set_snapshot_resolution command.
-        
+
         Args:
             params: Dictionary with 'mode' (str: "display", "full", "custom")
                     and optionally 'width' and 'height' (int) for custom mode
         """
         try:
             mode = params.get("mode", SNAPSHOT_RESOLUTION_DISPLAY)
-            if mode not in (SNAPSHOT_RESOLUTION_DISPLAY, SNAPSHOT_RESOLUTION_FULL, SNAPSHOT_RESOLUTION_CUSTOM):
+            if mode not in (
+                SNAPSHOT_RESOLUTION_DISPLAY,
+                SNAPSHOT_RESOLUTION_FULL,
+                SNAPSHOT_RESOLUTION_CUSTOM,
+            ):
                 logger.warning(f"Unknown snapshot resolution mode: {mode}")
                 return
-            
+
             self.snapshot_resolution_mode = mode
-            
+
             if mode == SNAPSHOT_RESOLUTION_CUSTOM:
                 if "width" in params and "height" in params:
                     self.snapshot_resolution = (int(params["width"]), int(params["height"]))
                 else:
                     logger.warning("Custom snapshot resolution requires 'width' and 'height'")
                     self.snapshot_resolution_mode = SNAPSHOT_RESOLUTION_DISPLAY
-            
-            logger.info(f"Snapshot resolution mode set to: {mode}")
+
+            logger.debug(f"Snapshot resolution mode set to: {mode}")
             if self.snapshot_resolution:
-                logger.info(f"Custom snapshot resolution: {self.snapshot_resolution[0]}x{self.snapshot_resolution[1]}")
-            
+                logger.info(
+                    f"Custom snapshot resolution: {self.snapshot_resolution[0]}x{self.snapshot_resolution[1]}"
+                )
+
             # Update cam_data
             self.cam_data["snapshot_resolution_mode"] = self.snapshot_resolution_mode
             if self.snapshot_resolution:
@@ -339,15 +374,15 @@ class Camera:
                 # Clear custom snapshot resolution if not set
                 self.cam_data.pop("snapshot_width", None)
                 self.cam_data.pop("snapshot_height", None)
-            
+
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Error setting snapshot resolution: {e}")
             logger.debug(f"Parameters: {params}")
-    
+
     def _restart_camera_thread(self) -> None:
         """
         Restart the camera thread to apply new resolution settings.
-        
+
         This method safely stops the current camera thread, clears the exit event,
         and restarts the camera with new settings. Uses proper synchronization
         to avoid race conditions.
@@ -356,12 +391,12 @@ class Camera:
             # Stop current thread if running
             if self.thread is not None and self.thread.is_alive():
                 logger.debug("Stopping camera thread for resolution change")
-                
+
                 # Set exit event to signal camera thread loop to exit
                 # Note: exit_event is shared with app shutdown, but we'll clear it after thread stops
                 if hasattr(self, "exit_event"):
                     self.exit_event.set()
-                
+
                 # Wait for thread to finish (with timeout)
                 try:
                     self.thread.join(timeout=2.0)
@@ -369,22 +404,22 @@ class Camera:
                         logger.warning("Camera thread did not stop within timeout")
                 except Exception as e:
                     logger.warning(f"Error waiting for thread to stop: {e}")
-                
+
                 # Clear thread reference
                 self.thread = None
-            
+
             # Clear exit event before restarting (important for resolution changes)
             # Note: This is safe because if the app is shutting down, close() will set exit_event again
             if hasattr(self, "exit_event"):
                 self.exit_event.clear()
-            
+
             # Stop camera hardware to allow reconfiguration
             if self.camera is not None and hasattr(self.camera, "stop"):
                 try:
                     self.camera.stop()
                 except Exception as e:
                     logger.warning(f"Error stopping camera hardware: {e}")
-            
+
             # Restart camera if needed
             if self.camera and self.cam_data.get("camera") != CAMERA_TYPE_NONE:
                 try:
@@ -396,6 +431,7 @@ class Camera:
         except Exception as e:
             logger.error(f"Error in _restart_camera_thread: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
 
     def _register_websocket_handlers(self) -> None:
@@ -472,7 +508,9 @@ class Camera:
         Returns:
             Current frame as JPEG bytes, or None if no frame is available
         """
-        self.initialize()
+        # Only initialize if camera thread is not running to avoid repeated starts
+        if self.thread is None or not self.thread.is_alive():
+            self.initialize()
         return self.frame
 
     def save(self) -> None:
@@ -481,27 +519,28 @@ class Camera:
 
         The image is saved to the snapshot folder with a timestamped filename.
         Creates the snapshot folder if it doesn't exist.
-        
+
         If snapshot resolution mode is "full" or "custom", captures at that resolution.
         Otherwise, uses the current display frame.
         """
         try:
             import os
+
             os.makedirs(SNAPSHOT_FOLDER, exist_ok=True)
-            
+
             # Determine snapshot resolution
             snapshot_width, snapshot_height = self._get_snapshot_resolution()
-            
+
             # Determine if we can use current frame or need to capture at resolution
             use_current_frame = (
-                snapshot_width == self.display_resolution[0] and
-                snapshot_height == self.display_resolution[1] and
-                self.frame is not None
+                snapshot_width == self.display_resolution[0]
+                and snapshot_height == self.display_resolution[1]
+                and self.frame is not None
             )
-            
+
             img = None
             frame_data = None
-            
+
             if use_current_frame:
                 # Use current frame (fast path - no camera capture needed)
                 frame_data = self.frame
@@ -510,15 +549,21 @@ class Camera:
                 if self.camera is None:
                     logger.warning("Camera not available for snapshot")
                     if self.frame is None:
-                        logger.error("No frame available and camera not available - cannot save snapshot")
+                        logger.error(
+                            "No frame available and camera not available - cannot save snapshot"
+                        )
                         return
                     # Fallback to current frame even if resolution doesn't match
-                    logger.info(f"Using current frame for snapshot (requested {snapshot_width}x{snapshot_height})")
+                    logger.info(
+                        f"Using current frame for snapshot (requested {snapshot_width}x{snapshot_height})"
+                    )
                     frame_data = self.frame
                 else:
                     try:
-                        logger.info(f"Capturing snapshot at {snapshot_width}x{snapshot_height}")
-                        frame_data = self.camera.capture_frame_at_resolution(snapshot_width, snapshot_height)
+                        logger.debug(f"Capturing snapshot at {snapshot_width}x{snapshot_height}")
+                        frame_data = self.camera.capture_frame_at_resolution(
+                            snapshot_width, snapshot_height
+                        )
                     except Exception as e:
                         logger.error(f"Error capturing at {snapshot_width}x{snapshot_height}: {e}")
                         # Fallback to current frame if available
@@ -526,29 +571,34 @@ class Camera:
                             logger.info("Falling back to current frame")
                             frame_data = self.frame
                         else:
-                            logger.error("No frame available and capture failed - cannot save snapshot")
+                            logger.error(
+                                "No frame available and capture failed - cannot save snapshot"
+                            )
                             return
-            
+
             # Convert frame data to PIL Image (single conversion)
             if frame_data is None:
                 logger.error("No image data available for snapshot")
                 return
-            
+
             try:
                 img = Image.open(io.BytesIO(frame_data))
             except Exception as e:
                 logger.error(f"Error reading image data: {e}")
                 return
-            
+
             current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"{SNAPSHOT_FILENAME_PREFIX}{current_time}{SNAPSHOT_FILENAME_SUFFIX}"
             filepath = f"{SNAPSHOT_FOLDER}/{filename}"
 
-            img.save(filepath, "JPEG", quality=95)
-            logger.info(f"Snapshot saved: {filepath} ({snapshot_width}x{snapshot_height}, size: {img.size[0]}x{img.size[1]})")
+            img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
+            logger.info(
+                f"Snapshot saved: {filepath} ({snapshot_width}x{snapshot_height}, size: {img.size[0]}x{img.size[1]})"
+            )
         except Exception as e:
             logger.error(f"Error saving snapshot: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
 
     def _feed_frame_to_droplet_detector(self) -> None:
@@ -557,7 +607,11 @@ class Camera:
 
         This method safely extracts ROI frame and feeds it to the droplet
         detector without breaking the camera thread on errors.
+        Only feeds frames when detection is actively running (needed for data collection).
         """
+        # Conditional processing: only feed frames when detection is actively running
+        # This prevents unnecessary processing when detection is stopped, but ensures
+        # all frames are processed when running (no frame skipping - we need the data)
         if (
             self.droplet_controller is None
             or self.roi is None
@@ -628,7 +682,7 @@ class Camera:
                 self.frame = frame_data
                 frame_count += 1
                 if frame_count == 1:
-                    logger.info("First frame received!")
+                    logger.debug("First frame received")
 
                 # Feed frame to droplet detector if available and ROI is set
                 self._feed_frame_to_droplet_detector()
@@ -795,27 +849,39 @@ class Camera:
             if cmd == CMD_HOLD:
                 hold_on = 1 if params.get("on", 0) != 0 else 0
                 valid = self.strobe_cam.strobe.set_hold(hold_on)
+                # Always update strobe_data to match user intent (matches old implementation)
+                self.strobe_data["hold"] = hold_on
                 if valid:
-                    self.strobe_data["hold"] = hold_on
-                    logger.debug(f"Strobe hold set to: {hold_on}")
+                    logger.info(f"Strobe hold set to: {hold_on}")
                 else:
-                    logger.warning("Failed to set strobe hold")
+                    logger.warning(
+                        f"Failed to set strobe hold to {hold_on} - check hardware connection"
+                    )
 
             elif cmd == CMD_ENABLE:
                 enabled = params.get("on", 0) != 0
                 valid = self.strobe_cam.strobe.set_enable(enabled)
+                # Always update strobe_data to match user intent (matches old implementation)
+                # This ensures UI reflects what user tried to set, even if hardware call failed
+                self.strobe_data["enable"] = enabled
                 if valid:
-                    self.strobe_data["enable"] = enabled
-                    logger.debug(f"Strobe enabled: {enabled}")
+                    logger.info(f"✅ Strobe {'ENABLED' if enabled else 'DISABLED'} successfully")
                 else:
-                    logger.warning("Failed to set strobe enable")
+                    logger.error(
+                        f"⚠️ CRITICAL: Failed to set strobe enable to {enabled} - hardware may not be responding! Check SPI connection and strobe hardware power."
+                    )
 
             elif cmd == CMD_TIMING:
                 period_ns = int(params.get("period_ns", self.strobe_period_ns))
+                wait_ns = int(params.get("wait_ns", STROBE_PRE_PADDING_NS))
                 self.strobe_period_ns = period_ns
-                valid = self.set_timing()
+                # Set timing with both wait and period
+                # Note: Don't automatically enable strobe here - let user control it explicitly
+                valid = self.strobe_cam.set_timing(wait_ns, period_ns, STROBE_POST_PADDING_NS)
                 if not valid:
                     logger.warning("Failed to set strobe timing")
+                else:
+                    logger.debug(f"Strobe timing set: period={period_ns}ns, wait={wait_ns}ns")
             else:
                 logger.warning(f"Unknown strobe command: {cmd}")
 
@@ -890,14 +956,45 @@ class Camera:
             logger.debug(f"Command data: {data}")
 
     def _handle_roi_set(self, data: Dict[str, Any]) -> None:
-        """Handle ROI set command."""
+        """Handle ROI set command with validation and hardware ROI for Mako."""
         params = data.get("parameters", {})
+        roi_tuple = (
+            int(params.get("x", 0)),
+            int(params.get("y", 0)),
+            int(params.get("width", 0)),
+            int(params.get("height", 0)),
+        )
+
+        # Validate and snap ROI if camera supports constraint validation
+        if self.camera and hasattr(self.camera, "validate_and_snap_roi"):
+            try:
+                roi_tuple = self.camera.validate_and_snap_roi(roi_tuple)
+                logger.debug("ROI validated and snapped to camera constraints")
+            except Exception as e:
+                logger.warning(f"ROI validation failed, using raw values: {e}")
+
         self.roi = {
-            "x": int(params.get("x", 0)),
-            "y": int(params.get("y", 0)),
-            "width": int(params.get("width", 0)),
-            "height": int(params.get("height", 0)),
+            "x": roi_tuple[0],
+            "y": roi_tuple[1],
+            "width": roi_tuple[2],
+            "height": roi_tuple[3],
         }
+
+        # Set hardware ROI for cameras that support it (Mako, Pi cameras)
+        if self.camera and hasattr(self.camera, "set_roi_hardware"):
+            try:
+                success = self.camera.set_roi_hardware(roi_tuple)
+                camera_type = self.cam_data.get("camera", "unknown")
+                if success:
+                    logger.info(f"Hardware ROI set on {camera_type} camera: {roi_tuple}")
+                    logger.info("Camera will now capture only ROI region for increased frame rate")
+                else:
+                    logger.warning(
+                        f"Failed to set hardware ROI on {camera_type} camera, using software cropping"
+                    )
+            except Exception as e:
+                logger.warning(f"Error setting hardware ROI: {e}, using software cropping")
+
         logger.info(
             f"ROI set: ({self.roi['x']}, {self.roi['y']}) "
             f"{self.roi['width']}×{self.roi['height']}"
@@ -909,12 +1006,39 @@ class Camera:
         """Handle ROI get command."""
         if self.socketio:
             roi_data = self.roi if self.roi else None
-            self.socketio.emit(WS_EVENT_ROI, {"roi": roi_data})
+
+            # Include camera constraints if available (for Mako cameras)
+            constraints = None
+            if self.camera and hasattr(self.camera, "get_roi_constraints"):
+                try:
+                    constraints = self.camera.get_roi_constraints()
+                except Exception as e:
+                    logger.debug(f"Could not get ROI constraints: {e}")
+
+            response = {"roi": roi_data}
+            if constraints:
+                response["constraints"] = constraints
+
+            self.socketio.emit(WS_EVENT_ROI, response)
 
     def _handle_roi_clear(self) -> None:
-        """Handle ROI clear command."""
+        """Handle ROI clear command. Reset hardware ROI for Mako if applicable."""
         if self.roi is not None:
             logger.info("ROI cleared")
+
+            # Reset hardware ROI to full frame for cameras that support it
+            if self.camera and hasattr(self.camera, "get_max_resolution"):
+                try:
+                    max_width, max_height = self.camera.get_max_resolution()
+                    if hasattr(self.camera, "set_roi_hardware"):
+                        self.camera.set_roi_hardware((0, 0, max_width, max_height))
+                        camera_type = self.cam_data.get("camera", "unknown")
+                        logger.info(
+                            f"Hardware ROI reset to full frame on {camera_type}: {max_width}×{max_height}"
+                        )
+                except Exception as e:
+                    logger.debug(f"Could not reset hardware ROI: {e}")
+
         self.roi = None
         if self.socketio:
             self.socketio.emit(WS_EVENT_ROI, {"roi": None})

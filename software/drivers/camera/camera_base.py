@@ -90,7 +90,7 @@ class BaseCamera(ABC):
     def capture_frame_at_resolution(self, width: int, height: int) -> bytes:
         """
         Capture a single frame at specified resolution (for snapshots).
-        
+
         This temporarily changes the camera resolution, captures a frame,
         and restores the original resolution. Useful for full-resolution snapshots.
 
@@ -105,10 +105,11 @@ class BaseCamera(ABC):
         # For now, fall back to get_frame_array and encode as JPEG
         import io
         from PIL import Image
+
         frame_array = self.get_frame_array()
         img = Image.fromarray(frame_array)
         buffer = io.BytesIO()
-        img.save(buffer, format='JPEG')
+        img.save(buffer, format="JPEG")
         return buffer.getvalue()
 
     def set_frame_callback(self, callback: Optional[Callable[[], None]]):
@@ -150,6 +151,36 @@ class BaseCamera(ABC):
     def close(self):
         """Cleanup and close camera"""
         self.stop()
+
+    def get_actual_framerate(self) -> float:
+        """
+        Get actual framerate from camera hardware.
+
+        Returns the actual framerate that the camera is using, which may differ
+        from the configured value due to hardware limitations or rounding.
+
+        This is a default implementation that returns the config value.
+        Subclasses should override to read from actual hardware.
+
+        Returns:
+            float: Actual framerate in FPS
+        """
+        return float(self.config.get("FrameRate", 30))
+
+    def get_actual_shutter_speed(self) -> int:
+        """
+        Get actual shutter speed from camera hardware.
+
+        Returns the actual shutter speed that the camera is using (in microseconds),
+        which may differ from the configured value due to hardware limitations.
+
+        This is a default implementation that returns the config value.
+        Subclasses should override to read from actual hardware.
+
+        Returns:
+            int: Actual shutter speed in microseconds
+        """
+        return int(self.config.get("ShutterSpeed", 10000))
 
     def list_features(self) -> list:
         """

@@ -43,9 +43,10 @@ The new codebase requires additional packages compared to the old installation. 
    - Purpose: Droplet detection and image processing
    - Install: `pip install "numpy>=1.19.0,<2.0.0"`
 
-3. **opencv-python** (>=4.5.0,<5.0.0)
+3. **opencv-python-headless** (>=4.5.0,<5.0.0) - **Recommended for Pi**
    - Purpose: Droplet detection algorithms
-   - Install: `pip install "opencv-python>=4.5.0,<5.0.0"`
+   - Install: `pip install "opencv-python-headless>=4.5.0,<5.0.0"`
+   - Note: Use headless version on Raspberry Pi - it has pre-built wheels and installs much faster (minutes vs hours). Regular `opencv-python` works but compiles from source.
 
 4. **python-socketio** (>=5.0.0)
    - Purpose: Enhanced WebSocket support
@@ -109,7 +110,7 @@ pip install -r software/requirements_32bit.txt
 # OR install specific new packages manually
 pip install PyYAML>=6.0
 pip install "numpy>=1.19.0,<2.0.0"
-pip install "opencv-python>=4.5.0,<5.0.0"
+pip install "opencv-python-headless>=4.5.0,<5.0.0"  # Use headless version (faster installation on Pi)
 pip install python-socketio>=5.0.0
 
 # Upgrade existing packages (optional, will happen automatically with requirements.txt)
@@ -387,7 +388,7 @@ sudo -H -u pi python3 /home/pi/webapp/pi_webapp.py &
 
 ## Summary of Changes
 
-1. **New packages:** PyYAML, numpy, opencv-python, python-socketio
+1. **New packages:** PyYAML, numpy, opencv-python-headless (recommended) or opencv-python, python-socketio
 2. **Updated packages:** Flask, Flask-SocketIO, Werkzeug, Jinja2, MarkupSafe, itsdangerous
 3. **Configuration:** New environment variable `RIO_STROBE_CONTROL_MODE`:
    - Use `"strobe-centric"` for firmware with software trigger support (32-bit only)

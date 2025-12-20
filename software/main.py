@@ -73,8 +73,16 @@ from routes import register_routes, create_background_update_task  # noqa: E402
 eventlet.monkey_patch(os=True, select=True, socket=True, thread=False, time=True, psycopg=True)
 
 # Configure logging
+# Use configurable log level (default: WARNING for production, can override with RIO_LOG_LEVEL)
+try:
+    from config import RIO_LOG_LEVEL
+    log_level = getattr(logging, RIO_LOG_LEVEL, logging.WARNING)
+except (ImportError, AttributeError):
+    # Fallback to WARNING if config not available or invalid level
+    log_level = logging.WARNING
+
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 

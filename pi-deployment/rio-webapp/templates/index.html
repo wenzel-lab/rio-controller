@@ -113,15 +113,62 @@
                                         <div class="d-flex justify-content-center mb-3">
                                             <div class="camera-container">
                                                 <img id="camera_image" src="{{ url_for('video') }}" alt="Camera feed" class="img-fluid">
-                                                <canvas id="roi_canvas"></canvas>
+                                                <!-- ROI preview canvas (read-only visual overlay) -->
                                             </div>
                                         </div>
                                         
-                                        <div class="mb-3">
-                                            <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary btn-sm me-2">
-                                                <span style="font-size: 1.2em;">✕</span> Clear ROI
-                                            </button>
-                                            <span id="roi_info" class="badge bg-info">No ROI selected</span>
+                                        <div class="card mb-3">
+                                            <div class="card-body">
+                                                <h6 class="card-subtitle mb-3">Region of Interest (ROI) Selection</h6>
+                                                <p class="text-muted small mb-3">
+                                                    Adjust sliders to select ROI. Values are in image pixels. 
+                                                    {% if cam.camera == "mako" %}
+                                                    <strong>Mako camera:</strong> ROI will use hardware ROI for increased frame rate.
+                                                    {% elif cam.camera in ["rpi", "rpi_hq"] %}
+                                                    <strong>Pi camera:</strong> ROI will use hardware ROI for increased frame rate and reduced Pi load.
+                                                    {% endif %}
+                                                </p>
+                                                <div class="row g-3">
+                                                    <div class="col-md-3">
+                                                        <label for="roi_x" class="form-label">X Position (px)</label>
+                                                        <div class="input-group input-group-sm mb-2">
+                                                            <input type="number" id="roi_x" class="form-control" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
+                                                            <span class="input-group-text">px</span>
+                                                        </div>
+                                                        <input type="range" class="form-range" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" id="roi_x_slider">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label for="roi_y" class="form-label">Y Position (px)</label>
+                                                        <div class="input-group input-group-sm mb-2">
+                                                            <input type="number" id="roi_y" class="form-control" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
+                                                            <span class="input-group-text">px</span>
+                                                        </div>
+                                                        <input type="range" class="form-range" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" id="roi_y_slider">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label for="roi_width" class="form-label">Width (px)</label>
+                                                        <div class="input-group input-group-sm mb-2">
+                                                            <input type="number" id="roi_width" class="form-control" min="10" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
+                                                            <span class="input-group-text">px</span>
+                                                        </div>
+                                                        <input type="range" class="form-range" min="10" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" id="roi_width_slider">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label for="roi_height" class="form-label">Height (px)</label>
+                                                        <div class="input-group input-group-sm mb-2">
+                                                            <input type="number" id="roi_height" class="form-control" min="10" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
+                                                            <span class="input-group-text">px</span>
+                                                        </div>
+                                                        <input type="range" class="form-range" min="10" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" id="roi_height_slider">
+                                                    </div>
+                                                </div>
+                                                <div class="mt-3">
+                                                    <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary btn-sm me-2">
+                                                        <span style="font-size: 1.2em;">✕</span> Clear ROI
+                                                    </button>
+                                                    <span id="roi_info" class="badge bg-info">No ROI selected</span>
+                                                </div>
+                                            </div>
                                         </div>
                                         
                                         <div class="mt-3">
@@ -410,7 +457,8 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='roi_selector.js') }}"></script>
+    <!-- ROI Selector - Simple slider-based (reliable, no canvas coordinate issues) -->
+    <script src="{{ url_for('static', filename='roi_selector_simple.js') }}"></script>
     <script src="{{ url_for('static', filename='droplet_histogram.js') }}"></script>
     
     <script type="text/javascript">
@@ -420,21 +468,14 @@
         var heaters = {{heaters|tojson}};
         var flows = {{flows|tojson}};
         
-        // ROI update function - only called when ROI actually changes
+        // ROI update function
         function updateROIInfo() {
             var roiInfo = document.getElementById('roi_info');
-            if (roiInfo && typeof roiSelector !== 'undefined' && roiSelector) {
-                var roi = roiSelector.getROI();
+            if (roiInfo && typeof roiSelectorSimple !== 'undefined' && roiSelectorSimple) {
+                var roi = roiSelectorSimple.getROI();
                 if (roi) {
-                    // Convert from canvas coordinates to image coordinates
-                    var scaleX = roiSelector.imgWidth / roiSelector.canvas.width;
-                    var scaleY = roiSelector.imgHeight / roiSelector.canvas.height;
-                    var imgX = Math.round(roi.x * scaleX);
-                    var imgY = Math.round(roi.y * scaleY);
-                    var imgW = Math.round(roi.width * scaleX);
-                    var imgH = Math.round(roi.height * scaleY);
                     roiInfo.textContent = 
-                        'ROI: (' + imgX + ', ' + imgY + ') ' + imgW + '×' + imgH + ' px';
+                        'ROI: (' + roi.x + ', ' + roi.y + ') ' + roi.width + '×' + roi.height + ' px';
                     roiInfo.className = 'badge bg-success';
                 } else {
                     roiInfo.textContent = 'No ROI selected';
@@ -446,64 +487,43 @@
         // Make updateROIInfo globally accessible
         window.updateROIInfo = updateROIInfo;
         
-        // Listen for ROI changes from server (only update when server sends update)
-        socket.on('roi', function(data) {
-            if (typeof roiSelector !== 'undefined' && roiSelector) {
-                if (data.roi) {
-                    // Scale ROI from image coordinates to canvas coordinates
-                    const scaleX = roiSelector.canvas.width / roiSelector.imgWidth;
-                    const scaleY = roiSelector.canvas.height / roiSelector.imgHeight;
-                    const scaledROI = {
-                        x: data.roi.x * scaleX,
-                        y: data.roi.y * scaleY,
-                        width: data.roi.width * scaleX,
-                        height: data.roi.height * scaleY
-                    };
-                    roiSelector.setROI(scaledROI);
-                } else {
-                    roiSelector.clearROI(false); // false = don't send to server (avoid loop)
-                }
-                updateROIInfo();
-            }
-        });
-        
-        // Initialize ROI selector when page loads
-        var roiSelector = null;
+        // Initialize simple slider-based ROI selector
+        var roiSelectorSimple = null;
         var cameraImg = document.getElementById('camera_image');
-        var roiCanvas = document.getElementById('roi_canvas');
         
-        function initROISelector() {
-            if (!cameraImg || !roiCanvas) {
-                setTimeout(initROISelector, 100);
+        function initROISelectorSimple() {
+            if (!cameraImg) {
+                setTimeout(initROISelectorSimple, 100);
                 return;
             }
             
-            if (roiSelector) {
+            if (roiSelectorSimple) {
                 return; // Already initialized
             }
             
-            roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
-            window.roiSelector = roiSelector; // Make globally accessible
+            // Get max dimensions from camera data
+            const maxWidth = {% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %};
+            const maxHeight = {% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %};
             
-            // Request current ROI from server
-            socket.emit('roi', {cmd: 'get'});
+            roiSelectorSimple = new ROISelectorSimple(cameraImg, socket, maxWidth, maxHeight);
+            window.roiSelectorSimple = roiSelectorSimple; // Make globally accessible
         }
         
         // Wait for image to load
         if (cameraImg) {
             if (cameraImg.complete) {
-                initROISelector();
+                initROISelectorSimple();
             } else {
-                cameraImg.addEventListener('load', initROISelector);
+                cameraImg.addEventListener('load', initROISelectorSimple);
             }
         } else {
-            setTimeout(initROISelector, 500);
+            setTimeout(initROISelectorSimple, 500);
         }
         
         // Clear ROI function (for button)
         function clearROI() {
-            if (roiSelector) {
-                roiSelector.clearROI();
+            if (roiSelectorSimple) {
+                roiSelectorSimple.clearROI();
             }
         }
         window.clearROI = clearROI;
