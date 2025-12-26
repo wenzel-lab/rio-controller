@@ -444,17 +444,22 @@ class Camera:
             logger.warning("Cannot register WebSocket handlers: socketio is None")
             return
 
+        logger.info(f"🔌 Registering WebSocket handlers: {WS_EVENT_CAM}, {WS_EVENT_STROBE}, {WS_EVENT_ROI}")
+
         @self.socketio.on(WS_EVENT_CAM)
         def on_cam(data: Dict[str, Any]) -> None:
             self.on_cam(data)
 
         @self.socketio.on(WS_EVENT_STROBE)
         def on_strobe(data: Dict[str, Any]) -> None:
+            logger.info(f"🔔 WebSocket handler received strobe event: {data}")
             self.on_strobe(data)
 
         @self.socketio.on(WS_EVENT_ROI)
         def on_roi(data: Dict[str, Any]) -> None:
             self.on_roi(data)
+
+        logger.info("✅ WebSocket handlers registered successfully")
 
     def initialize(self) -> None:
         """
@@ -508,6 +513,10 @@ class Camera:
         Returns:
             Current frame as JPEG bytes, or None if no frame is available
         """
+        # Don't try to initialize if camera is None (prevents error spam)
+        if self.camera is None:
+            return None
+        
         # Only initialize if camera thread is not running to avoid repeated starts
         if self.thread is None or not self.thread.is_alive():
             self.initialize()
@@ -657,7 +666,8 @@ class Camera:
             return
 
         if self.camera is None:
-            logger.error("Camera is None, cannot start thread")
+            # Log once (not repeatedly) and exit thread gracefully
+            logger.error("Camera is None, camera thread exiting (check camera hardware connection)")
             self.thread = None
             return
 
@@ -842,6 +852,7 @@ class Camera:
         Args:
             data: Dictionary containing 'cmd' and 'parameters' keys
         """
+        logger.info(f"🔔 on_strobe() called with data: {data}")  # Debug: verify handler is called
         try:
             cmd = data.get("cmd")
             params = data.get("parameters", {})

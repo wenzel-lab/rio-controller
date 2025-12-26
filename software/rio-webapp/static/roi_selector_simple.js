@@ -36,6 +36,9 @@ class ROISelectorSimple {
         this.canvas = null;
         this.ctx = null;
         
+        // Flag to prevent recursive event loops when programmatically updating inputs
+        this._updatingInputs = false;
+        
         this.setupCanvas();
         this.setupEventListeners();
         this.loadROI();
@@ -233,6 +236,9 @@ class ROISelectorSimple {
     }
     
     updateInputs() {
+        // Set flag to prevent recursive calls from input event handlers
+        this._updatingInputs = true;
+        
         // Update both sliders and numeric inputs
         const updatePair = (sliderId, inputId, value) => {
             const slider = document.getElementById(sliderId);
@@ -252,9 +258,19 @@ class ROISelectorSimple {
             updatePair('roi_width_slider', 'roi_width', 0);
             updatePair('roi_height_slider', 'roi_height', 0);
         }
+        
+        // Clear flag after updating (use setTimeout to ensure DOM updates complete)
+        setTimeout(() => {
+            this._updatingInputs = false;
+        }, 0);
     }
     
     updateFromInputs() {
+        // Prevent recursive calls when we're programmatically updating inputs
+        if (this._updatingInputs) {
+            return;
+        }
+        
         const xInput = document.getElementById('roi_x');
         const yInput = document.getElementById('roi_y');
         const widthInput = document.getElementById('roi_width');

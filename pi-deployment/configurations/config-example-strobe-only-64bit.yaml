@@ -13,6 +13,8 @@
 #   export RIO_STROBE_CONTROL_MODE=camera-centric
 #   export RIO_SIMULATION=false
 #   export RIO_DROPLET_ANALYSIS_ENABLED=true
+#   export RIO_FLOW_ENABLED=false      # Hide flow control tab (not used in this config)
+#   export RIO_HEATER_ENABLED=false    # Hide heater tab (not used in this config)
 
 # Global simulation mode
 # Set to false for hardware operation

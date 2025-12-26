@@ -19,10 +19,11 @@ from .camera_base import BaseCamera
 
 # Import JPEG quality configuration
 try:
-    from config import CAMERA_STREAMING_JPEG_QUALITY
+    from config import CAMERA_STREAMING_JPEG_QUALITY, CAMERA_SNAPSHOT_JPEG_QUALITY
 except ImportError:
     # Fallback if config not available
     CAMERA_STREAMING_JPEG_QUALITY = 75
+    CAMERA_SNAPSHOT_JPEG_QUALITY = 95
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +45,14 @@ class PiCameraLegacy(BaseCamera):
         self.capture_queue: Queue[bytes] = Queue(1)
 
         # Initialize camera (from tested code pattern)
+        # Initialize camera - removed WERKZEUG_RUN_MAIN check as it prevents initialization
+        # when running python main.py directly (not through Werkzeug reloader)
         self.cam: Optional[PiCamera] = None
-        if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-            try:
-                self.cam = PiCamera()
-            except Exception as e:
-                print(f"Failed to initialize PiCamera: {e}")
-                self.cam = None
+        try:
+            self.cam = PiCamera()
+        except Exception as e:
+            logger.error(f"Failed to initialize PiCamera: {e}")
+            self.cam = None
 
         # Default configuration (from tested code)
         self.config: Dict[str, Any] = {
@@ -86,8 +88,7 @@ class PiCameraLegacy(BaseCamera):
             self.cam.shutter_speed = int(shutter)
         self.cam.awb_mode = "auto"
         self.cam.exposure_mode = "off"
-        # Set JPEG quality for streaming (lower quality reduces bandwidth/CPU)
-        self.cam.quality = CAMERA_STREAMING_JPEG_QUALITY
+        # Note: JPEG quality is set in capture_continuous() call, not as camera attribute
 
     def stop(self) -> None:
         """Stop camera recording"""
@@ -114,8 +115,9 @@ class PiCameraLegacy(BaseCamera):
 
         # Use capture_continuous properly - create stream once and reuse
         # This is more efficient than creating new streams in a loop
+        # Set JPEG quality for streaming (lower quality reduces bandwidth/CPU)
         stream = io.BytesIO()
-        for frame in self.cam.capture_continuous(stream, format="jpeg", use_video_port=True):
+        for frame in self.cam.capture_continuous(stream, format="jpeg", use_video_port=True, quality=CAMERA_STREAMING_JPEG_QUALITY):
             if not self.cam_running_event.is_set():
                 break
 
@@ -482,7 +484,7 @@ class PiCameraLegacy(BaseCamera):
 
             # Capture frame as JPEG
             stream = io.BytesIO()
-            self.cam.capture(stream, format="jpeg", use_video_port=False)
+            self.cam.capture(stream, format="jpeg", use_video_port=False, quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
             stream.seek(0)
             frame_data = stream.read()
 

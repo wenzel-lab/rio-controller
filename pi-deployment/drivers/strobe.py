@@ -106,12 +106,43 @@ class PiStrobe:
     def set_enable(self, enable):
         enabled = 1 if enable else 0
         valid, data = self.packet_query(1, [enabled])
-        return valid and (data[0] == 0)
+        # Match old implementation: if valid is True, assume data has at least one element
+        # Response should have data[0] == 0 for success
+        if not valid:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"SPI communication failed for set_enable({enable}) - check hardware connection"
+            )
+            return False
+        # Check if data has elements before accessing (safety check)
+        if len(data) == 0:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Empty response from strobe hardware for set_enable({enable}) - hardware may not be responding"
+            )
+            return False
+        success = data[0] == 0
+        if not success:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Strobe hardware rejected set_enable({enable}) - response code: {data[0]}"
+            )
+        return success
 
     def set_timing(self, wait_ns, period_ns):
         wait_ns_bytes = list(wait_ns.to_bytes(4, "little", signed=False))
         period_ns_bytes = list(period_ns.to_bytes(4, "little", signed=False))
         valid, data = self.packet_query(2, wait_ns_bytes + period_ns_bytes)
+        # Match old implementation behavior
+        if not valid or len(data) < 9:
+            # Return failure with default values
+            return (False, wait_ns, period_ns)
         actual_wait_ns = int.from_bytes(data[1:5], byteorder="little", signed=False)
         actual_period_ns = int.from_bytes(data[5:9], byteorder="little", signed=False)
         # print( "data={}, wait={}, period={}, wait_bytes={}".format( data, actual_wait_ns, actual_period_ns, data[1:5] ) )
@@ -119,10 +150,19 @@ class PiStrobe:
 
     def set_hold(self, hold):
         valid, data = self.packet_query(3, [1 if hold else 0])
-        return valid and (data[0] == 0)
+        # Match old implementation: if valid is True, assume data has at least one element
+        # Response should have data[0] == 0 for success
+        if not valid:
+            return False
+        # Check if data has elements before accessing (safety check)
+        if len(data) == 0:
+            return False
+        return data[0] == 0
 
     def get_cam_read_time(self):
         valid, data = self.packet_query(4, [])
+        if not valid or len(data) < 3:
+            return (False, 0)
         cam_read_time_us = int.from_bytes(data[1:3], byteorder="little", signed=False)
         return (valid and (data[0] == 0), cam_read_time_us)
 

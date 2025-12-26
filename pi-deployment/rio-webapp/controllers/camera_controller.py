@@ -46,10 +46,13 @@ class CameraController:
 
     def _register_handlers(self) -> None:
         """Register WebSocket event handlers."""
+        logger.info("🔌 CameraController registering WebSocket handler: cam_select")
 
         @self.socketio.on("cam_select")
         def on_cam_select(data: Dict[str, Any]) -> None:
             self.handle_camera_select(data)
+
+        logger.info("✅ CameraController WebSocket handler registered successfully")
 
     def _stop_camera_thread(self) -> None:
         """Stop the current camera thread if it's running."""

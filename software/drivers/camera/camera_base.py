@@ -10,6 +10,9 @@ Based on tested code from flow-microscopy-platform repository:
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Tuple, Dict, Generator, TYPE_CHECKING, Any
 import platform
+import logging
+
+logger = logging.getLogger(__name__)
 
 # numpy is only needed for type hints and actual camera implementations
 # Make it optional so the base class can be imported without numpy
@@ -294,6 +297,24 @@ def _create_mako_camera() -> BaseCamera:
 
 def _create_pi_camera() -> BaseCamera:
     """Create Raspberry Pi camera instance (auto-detect 32/64-bit)."""
+    # Check strobe control mode: strobe-centric mode REQUIRES picamera (32-bit legacy)
+    # Don't try picamera2 first if we're in strobe-centric mode
+    import os
+    strobe_mode = os.getenv("RIO_STROBE_CONTROL_MODE", "").lower()
+    if strobe_mode in ("strobe-centric", "legacy"):
+        # Strobe-centric mode requires picamera (legacy), skip picamera2 entirely
+        logger.info("Strobe-centric mode detected: using picamera (legacy) only, skipping picamera2")
+        try:
+            import picamera  # noqa: F401
+            from .pi_camera_legacy import PiCameraLegacy
+            return PiCameraLegacy()
+        except ImportError:
+            raise RuntimeError(
+                "Strobe-centric mode requires picamera library (32-bit). "
+                "Install with: sudo apt-get install python3-picamera"
+            )
+    
+    # For camera-centric or auto-detect, check architecture
     machine = platform.machine()
     is_64bit = machine == "aarch64" or machine == "arm64"
 

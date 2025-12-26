@@ -63,8 +63,9 @@ cp "$SOURCE_DIR/requirements-webapp-only-32bit.txt" "$DEPLOY_DIR/"
 # Create setup script for Pi
 cat > "$DEPLOY_DIR/setup.sh" << 'EOF'
 #!/bin/bash
-# Setup script for Raspberry Pi
+# Setup script for Raspberry Pi (First time only)
 # Run this after copying the deployment package to the Pi
+# Installs packages to system Python (no virtual environment)
 
 set -e
 
@@ -78,16 +79,10 @@ if [ ! -f "main.py" ]; then
     exit 1
 fi
 
-echo "Step 1: Creating virtual environment..."
-python3 -m venv venv-rio
+echo "Step 1: Upgrading pip..."
+python3 -m pip install --upgrade pip
 
-echo "Step 2: Activating virtual environment..."
-source venv-rio/bin/activate
-
-echo "Step 3: Upgrading pip..."
-pip install --upgrade pip
-
-echo "Step 4: Installing packages..."
+echo "Step 2: Installing packages to system Python..."
 if [ -f "requirements-webapp-only-32bit.txt" ]; then
     pip install -r requirements-webapp-only-32bit.txt
 else
@@ -105,20 +100,21 @@ else
 fi
 
 echo ""
-echo "Step 5: Verifying installation..."
+echo "Step 3: Verifying installation..."
 pip list | grep -E "Flask|SocketIO|Werkzeug|Jinja2|MarkupSafe|opencv|PyYAML" || echo "Warning: Some packages may not be installed correctly"
 
 echo ""
 echo "Setup complete!"
 echo ""
 echo "To run the application:"
-echo "  1. source venv-rio/bin/activate"
-echo "  2. export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric"
-echo "  3. export RIO_SIMULATION=false"
-echo "  4. export RIO_DROPLET_ANALYSIS_ENABLED=true"
-echo "  5. python main.py"
+echo "  1. export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric"
+echo "  2. export RIO_SIMULATION=false"
+echo "  3. export RIO_DROPLET_ANALYSIS_ENABLED=true"
+echo "  4. python main.py"
 echo ""
 echo "Or use the run.sh script after setting environment variables."
+echo ""
+echo "Note: Packages are installed to system Python. No virtual environment is used."
 EOF
 
 chmod +x "$DEPLOY_DIR/setup.sh"
@@ -127,21 +123,16 @@ chmod +x "$DEPLOY_DIR/setup.sh"
 cat > "$DEPLOY_DIR/run.sh" << 'EOF'
 #!/bin/bash
 # Run script for Raspberry Pi
-# Activates venv and runs the application
+# Uses system Python (no virtual environment)
 
 cd "$(dirname "$0")"
-
-if [ ! -d "venv-rio" ]; then
-    echo "Error: Virtual environment not found. Please run ./setup.sh first."
-    exit 1
-fi
-
-source venv-rio/bin/activate
 
 # Set default environment variables if not set
 export RIO_STROBE_CONTROL_MODE=${RIO_STROBE_CONTROL_MODE:-strobe-centric}
 export RIO_SIMULATION=${RIO_SIMULATION:-false}
 export RIO_DROPLET_ANALYSIS_ENABLED=${RIO_DROPLET_ANALYSIS_ENABLED:-true}
+export RIO_FLOW_ENABLED=${RIO_FLOW_ENABLED:-false}
+export RIO_HEATER_ENABLED=${RIO_HEATER_ENABLED:-false}
 
 echo "Starting Rio microfluidics controller..."
 echo "Control mode: $RIO_STROBE_CONTROL_MODE"
@@ -169,9 +160,11 @@ This is a minimal deployment package containing only the essential files needed 
 ```
 
 This will:
-- Create a Python virtual environment (`venv-rio`)
-- Install required packages
+- Upgrade pip
+- Install required packages to system Python
 - Verify installation
+
+**Note:** Packages are installed to system Python. No virtual environment is used.
 
 ### 2. Run
 
@@ -182,10 +175,11 @@ This will:
 Or manually:
 
 ```bash
-source venv-rio/bin/activate
 export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric
 export RIO_SIMULATION=false
 export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false      # Hide flow tab if not used
+export RIO_HEATER_ENABLED=false    # Hide heater tab if not used
 python main.py
 ```
 

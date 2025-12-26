@@ -44,13 +44,14 @@ class PiCameraV2(BaseCamera):
         self.capture_queue: Queue[bytes] = Queue(1)
 
         # Initialize camera (from tested code pattern)
+        # Initialize camera - removed WERKZEUG_RUN_MAIN check as it prevents initialization
+        # when running python main.py directly (not through Werkzeug reloader)
         self.cam: Optional[Picamera2] = None
-        if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-            try:
-                self.cam = Picamera2()
-            except Exception as e:
-                print(f"Failed to initialize Picamera2: {e}")
-                self.cam = None
+        try:
+            self.cam = Picamera2()
+        except Exception as e:
+            logger.error(f"Failed to initialize Picamera2: {e}")
+            self.cam = None
 
         # Default configuration (from tested code)
         self.config = {

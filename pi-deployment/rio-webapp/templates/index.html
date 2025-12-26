@@ -74,16 +74,20 @@
                             <i class="bi bi-gear"></i> Camera Config
                         </button>
                     </li>
+                    {% if flow_enabled %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="flow-tab" data-bs-toggle="tab" data-bs-target="#flow-pane" type="button" role="tab">
                             <i class="bi bi-water"></i> Flow Control
                         </button>
                     </li>
+                    {% endif %}
+                    {% if heater_enabled %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="heater-tab" data-bs-toggle="tab" data-bs-target="#heater-pane" type="button" role="tab">
                             <i class="bi bi-thermometer-half"></i> Heaters
                         </button>
                     </li>
+                    {% endif %}
                     {% if droplet_analysis_enabled %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="droplet-tab" data-bs-toggle="tab" data-bs-target="#droplet-pane" type="button" role="tab">
@@ -287,6 +291,7 @@
                     </div>
                     
                     <!-- Flow Control Tab -->
+                    {% if flow_enabled %}
                     <div class="tab-pane fade" id="flow-pane" role="tabpanel">
                         {% for flow in flows %}
                         <div class="card mb-3">
@@ -337,8 +342,10 @@
                         </div>
                         {% endfor %}
                     </div>
+                    {% endif %}
                     
                     <!-- Heaters Tab -->
+                    {% if heater_enabled %}
                     <div class="tab-pane fade" id="heater-pane" role="tabpanel">
                         {% for heater in heaters %}
                         <div class="card mb-3">
@@ -393,6 +400,7 @@
                         </div>
                         {% endfor %}
                     </div>
+                    {% endif %}
                     
                     <!-- Droplet Detection Tab -->
                     {% if droplet_analysis_enabled %}
@@ -455,7 +463,7 @@
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/5.0.0/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- ROI Selector - Simple slider-based (reliable, no canvas coordinate issues) -->
     <script src="{{ url_for('static', filename='roi_selector_simple.js') }}"></script>

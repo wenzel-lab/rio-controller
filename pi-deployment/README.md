@@ -11,9 +11,11 @@ This is a minimal deployment package containing only the essential files needed 
 ```
 
 This will:
-- Create a Python virtual environment (`venv-rio`)
-- Install required packages
+- Upgrade pip
+- Install required packages to system Python
 - Verify installation
+
+**Note:** Packages are installed to system Python. No virtual environment is used.
 
 ### 2. Run
 
@@ -24,10 +26,11 @@ This will:
 Or manually:
 
 ```bash
-source venv-rio/bin/activate
 export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric
 export RIO_SIMULATION=false
 export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false      # Hide flow tab if not used
+export RIO_HEATER_ENABLED=false    # Hide heater tab if not used
 python main.py
 ```
 

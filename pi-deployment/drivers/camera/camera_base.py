@@ -10,6 +10,9 @@ Based on tested code from flow-microscopy-platform repository:
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Tuple, Dict, Generator, TYPE_CHECKING, Any
 import platform
+import logging
+
+logger = logging.getLogger(__name__)
 
 # numpy is only needed for type hints and actual camera implementations
 # Make it optional so the base class can be imported without numpy
@@ -90,7 +93,7 @@ class BaseCamera(ABC):
     def capture_frame_at_resolution(self, width: int, height: int) -> bytes:
         """
         Capture a single frame at specified resolution (for snapshots).
-        
+
         This temporarily changes the camera resolution, captures a frame,
         and restores the original resolution. Useful for full-resolution snapshots.
 
@@ -105,10 +108,11 @@ class BaseCamera(ABC):
         # For now, fall back to get_frame_array and encode as JPEG
         import io
         from PIL import Image
+
         frame_array = self.get_frame_array()
         img = Image.fromarray(frame_array)
         buffer = io.BytesIO()
-        img.save(buffer, format='JPEG')
+        img.save(buffer, format="JPEG")
         return buffer.getvalue()
 
     def set_frame_callback(self, callback: Optional[Callable[[], None]]):
@@ -150,6 +154,36 @@ class BaseCamera(ABC):
     def close(self):
         """Cleanup and close camera"""
         self.stop()
+
+    def get_actual_framerate(self) -> float:
+        """
+        Get actual framerate from camera hardware.
+
+        Returns the actual framerate that the camera is using, which may differ
+        from the configured value due to hardware limitations or rounding.
+
+        This is a default implementation that returns the config value.
+        Subclasses should override to read from actual hardware.
+
+        Returns:
+            float: Actual framerate in FPS
+        """
+        return float(self.config.get("FrameRate", 30))
+
+    def get_actual_shutter_speed(self) -> int:
+        """
+        Get actual shutter speed from camera hardware.
+
+        Returns the actual shutter speed that the camera is using (in microseconds),
+        which may differ from the configured value due to hardware limitations.
+
+        This is a default implementation that returns the config value.
+        Subclasses should override to read from actual hardware.
+
+        Returns:
+            int: Actual shutter speed in microseconds
+        """
+        return int(self.config.get("ShutterSpeed", 10000))
 
     def list_features(self) -> list:
         """
@@ -263,6 +297,24 @@ def _create_mako_camera() -> BaseCamera:
 
 def _create_pi_camera() -> BaseCamera:
     """Create Raspberry Pi camera instance (auto-detect 32/64-bit)."""
+    # Check strobe control mode: strobe-centric mode REQUIRES picamera (32-bit legacy)
+    # Don't try picamera2 first if we're in strobe-centric mode
+    import os
+    strobe_mode = os.getenv("RIO_STROBE_CONTROL_MODE", "").lower()
+    if strobe_mode in ("strobe-centric", "legacy"):
+        # Strobe-centric mode requires picamera (legacy), skip picamera2 entirely
+        logger.info("Strobe-centric mode detected: using picamera (legacy) only, skipping picamera2")
+        try:
+            import picamera  # noqa: F401
+            from .pi_camera_legacy import PiCameraLegacy
+            return PiCameraLegacy()
+        except ImportError:
+            raise RuntimeError(
+                "Strobe-centric mode requires picamera library (32-bit). "
+                "Install with: sudo apt-get install python3-picamera"
+            )
+    
+    # For camera-centric or auto-detect, check architecture
     machine = platform.machine()
     is_64bit = machine == "aarch64" or machine == "arm64"
 
