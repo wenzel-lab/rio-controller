@@ -10,6 +10,8 @@
 12,R1-R10;R12-R13,1k Resistor 0603,Electronics,,,
 1,R11,10k Resistor 0603,Electronics,,,
 8,X1-X8,Connectors,Electronics,Picoblade 53047-0410,Molex,
+,,Digital liquid flow sensor,Sensor,LG16-0431D,Sensirion,https://sensirion.com/products/catalog/LG16-0431D
+,,Compact electroneumatic regulator,Actuator,ITV0031-2MN,SMC Pneumatics,https://www.smcpneumatics.com/ITV0031-2MN.html
 8,,Picoblade 1.25mm 4-way,Cables,51021-0400,Molex,
 4,,Picoblade 1.25mm 5-way,Cables,51021-0500,Molex,
 52,,Picoblade 26-28 AWG Crimps,Cables,50079-8000,Molex,

@@ -1,1 +1,15 @@
-﻿Item #,Ref Des,Full Name/Description,Category,Part/Catalog Number,Manufacturer/Supplier,Notes
+﻿Count,Ref Des,Full Name/Description,Category,Part/Catalog Number,Manufacturer/Supplier,Notes
+1,C1,Capacitor - 100nf 1206,Controller,C1206C104M5RACTU,Kemet,https://uk.rs-online.com/web/p/mlccs-multilayer-ceramic-capacitors/2053277
+1,C2,Capacitor - 1uf 1206,Controller,C1206C105K4RACTU,Kemet,https://uk.rs-online.com/web/p/mlccs-multilayer-ceramic-capacitors/6480733
+2,IC1,"Header - 1x14 Pin (Male 0.1"")",Controller,TSW-114-07-T-S,Samtec,https://uk.rs-online.com/web/p/pcb-headers/1801881
+1,IC2,PIC Microcontroller IC 8-Bit 32MHz 28KB (16K x 14) FLASH 28-SOIC,Controller,PIC16F18856-I/SO,Microchip Technology,https://uk.rs-online.com/web/p/microcontrollers/1115557
+1,Q1,60V LOGIC N-Channel MOSFET,Controller,FQP30N06L,Onsemi,https://uk.farnell.com/onsemi/fqp30n06l/mosfet-n-ch-60v-32a-to-220ab-3/dp/2453442
+1,R1,Resistor - 1K 1206,Controller,RC1206JR-071KL,Yageo,https://uk.rs-online.com/web/p/surface-mount-resistors/1988477
+1,R2,Resistor - 510 Ohm 1206,Controller,RC1206FR-07510RL,Yageo,https://uk.rs-online.com/web/p/surface-mount-resistors/1988417
+1,R3,Resistor - 10K 1206,Controller,MCR18EZPF1002,ROHM,https://uk.rs-online.com/web/p/surface-mount-resistors/9013733
+,,Raspberry Pi camera V2,Sensor,MCI02368,Raspberry Pi,https://mcielectronics.cl/shop/product/camara-v2-para-raspberry-pi-raspberry-pi-21481/
+,,"LED Module, OSLON Square, Board + LED, Neutral White, 4000 K, 270 lm",Actuator,ILH-OG01-NUWH-SC221-WIR200,Intelligent LED Solutions,https://uk.farnell.com/intelligent-led-solutions/ilh-og01-nuwh-sc221-wir200/led-mod-neutral-wht-4000k-270lm/dp/3583050
+,,8.7° 20 mm Circular Beam Optic,Actuator,10193,Carclo Optics,https://luxeonstar.com/product/10193/
+,,20 mm Black Round Optic Holder – Flat Bottom,Actuator,10235,Carclo Optics,https://luxeonstar.com/product/10235/
+,,20 mm Hex Thermally Conductive Tape,Actuator,LXT-S-12,Quadica Developments,https://luxeonstar.com/product/lxt-s-12/
+,,Mounting Tape for 20 mm Round Optic Holders,Actuator,LT-01,Quadica Developments,https://luxeonstar.com/product/lt-01/

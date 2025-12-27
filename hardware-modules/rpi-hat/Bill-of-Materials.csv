@@ -1,1 +1,8 @@
-﻿Item #,Ref Des,Full Name/Description,Category,Part/Catalog Number,Manufacturer/Supplier,Notes
+﻿Count,Ref Des,Full Name/Description,Category,Part/Catalog Number,Manufacturer/Supplier,Notes
+1,R1,"Resistor - 1K, 1206",HAT,RC1206JR-071KL,Yageo,https://uk.rs-online.com/web/p/surface-mount-resistors/1988477
+2,"JP1, JP2","Header - 2x5 Pin (Male, 0.1"")",HAT,251-8143,RS Pro,https://uk.rs-online.com/web/p/pcb-headers/2518143
+3,"JP3, JP4, JP10","Header - 1x5 Pin (Male 0.1"")",HAT,251-8121,RS Pro,https://uk.rs-online.com/web/p/pcb-headers/2518121
+4,"JP5, JP6, JP7, JP8","Header - 2x3 (Male, 0.1"")",HAT,251-8137,RS Pro,https://uk.rs-online.com/web/p/pcb-headers/2518137
+1,JP9,"Header - 1x4 Pin (Male 0.1"")",HAT,251-8115,RS Pro,https://uk.rs-online.com/web/p/pcb-headers/2518115
+1,K1,"Header - 2x20-Pin (Female 0.1"")",HAT,A-BL254-DG-G40D,ASSMANN WSW,https://uk.rs-online.com/web/p/pcb-sockets/6742369
+4,"X1, X2, X3, X4","Header - 1x14 Pin (Female, 0.1"")",HAT,SSW-114-01-T-S,Samtec,https://uk.rs-online.com/web/p/pcb-sockets/1557926
