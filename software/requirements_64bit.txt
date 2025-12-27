@@ -1,0 +1,28 @@
+# Requirements for Rio Microfluidics Controller - 64-bit Raspberry Pi
+# Use this file for Raspberry Pi OS 64-bit (Modern)
+
+# Web framework
+Flask>=3.0.0,<4.0.0
+Flask-SocketIO>=5.4.0,<6.0.0
+Werkzeug>=3.0.0,<4.0.0
+Jinja2>=3.1.0
+MarkupSafe>=3.0.0
+itsdangerous>=2.2.0
+eventlet>=0.38.0
+
+# Image processing
+Pillow>=11.0.0
+numpy>=2.0.0
+opencv-python>=4.10.0
+
+# Raspberry Pi hardware (64-bit)
+spidev==3.6
+RPi.GPIO==0.7.1
+picamera2>=0.3.0  # Modern camera library for 64-bit
+
+# WebSocket support
+python-socketio>=5.11.0
+
+# Configuration file support
+PyYAML>=6.0
+

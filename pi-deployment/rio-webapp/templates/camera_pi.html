@@ -1,0 +1,181 @@
+{% macro js_functions( cam, strobe ) %}
+  var strobe = {{strobe|tojson}}
+  var cam = {{cam|tojson}}
+  
+  function strobe_update_init()
+  {
+    $('#input_strobe_period_us').val( strobe.period_ns / 1000 );
+    $('#input_strobe_wait_us').val( strobe.wait_ns / 1000 );
+  }
+  
+  function cam_update()
+  {
+    // Initialize strobe buttons with default text if data not available
+    if (typeof strobe !== 'undefined' && strobe !== null) {
+      // Toggle button for Enable - shows CURRENT state (not next state when clicked)
+      $('#btn_strobe_enable').html( strobe.enable ? 'ENABLED' : 'DISABLED' );
+      $('#btn_strobe_enable').removeClass('btn-primary btn-danger');
+      $('#btn_strobe_enable').addClass( strobe.enable ? 'btn-primary' : 'btn-secondary' );
+      
+      // Toggle button for Hold (Continuous Light) - shows CURRENT state
+      $('#btn_strobe_hold').html( strobe.hold ? 'ON' : 'OFF' );
+      $('#btn_strobe_hold').removeClass('btn-secondary btn-success');
+      $('#btn_strobe_hold').addClass( strobe.hold ? 'btn-success' : 'btn-secondary' );
+      
+      // Update period input
+      if (strobe.period_ns) {
+        $('#input_strobe_period_us').val( (strobe.period_ns / 1000).toFixed(0) );
+      }
+      
+      // Update info displays
+      $('#strobe_cam_time_us').html( strobe.cam_read_time_us || '0' );
+      $('#strobe_framerate').html( strobe.framerate || '0' );
+    } else {
+      // Default values if strobe data not loaded yet
+      $('#btn_strobe_enable').html( 'DISABLED' );
+      $('#btn_strobe_enable').removeClass('btn-primary').addClass('btn-secondary');
+      $('#btn_strobe_hold').html( 'OFF' );
+      $('#btn_strobe_hold').removeClass('btn-success').addClass('btn-secondary');
+      $('#input_strobe_period_us').val( '0' );
+      $('#strobe_cam_time_us').html( '0' );
+      $('#strobe_framerate').html( '0' );
+    }
+    $('#btn_cam_snapshot').html( "📸 SNAPSHOT" );
+    $('#btn_cam_optimize').html( "Optimize" );
+  }
+  
+  function cam_select() {
+    socket.emit( 'cam', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } } );
+  }
+  function strobe_enable() {
+    console.log('strobe_enable() called, socket:', socket);
+    if (!socket || !socket.emit) {
+      console.error('socket is not available or socket.emit is not a function!');
+      return;
+    }
+    var data = { cmd: 'enable', parameters: { 'on': strobe.enable ? 0 : 1 } };
+    console.log('Emitting strobe event:', data);
+    socket.emit( 'strobe', data );
+    console.log('strobe event emitted');
+  }
+  function strobe_hold() {
+    console.log('strobe_hold() called, socket:', socket);
+    if (!socket || !socket.emit) {
+      console.error('socket is not available or socket.emit is not a function!');
+      return;
+    }
+    var data = { cmd: 'hold', parameters: { 'on': strobe.hold ? 0 : 1 } };
+    console.log('Emitting strobe event:', data);
+    socket.emit( 'strobe', data );
+    console.log('strobe event emitted');
+  }
+  function strobe_wait() {
+    socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': ( $('#input_strobe_wait_us').val() * 1000 ), 'period_ns': strobe.period_ns } } );
+  }
+  function strobe_period() {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for strobe_period!');
+      return;
+    }
+    socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': strobe.wait_ns, 'period_ns': ( $('#input_strobe_period_us').val() * 1000 ) } } );
+  }
+  function cam_optimize()
+  {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for cam_optimize!');
+      return;
+    }
+    socket.emit( 'cam', { cmd: 'optimize', parameters: {} } );
+  }
+  function cam_snapshot()
+  {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for cam_snapshot!');
+      return;
+    }
+    socket.emit( 'cam', { cmd: 'snapshot', parameters: {} } );
+  }
+  
+  // Make functions globally accessible (for onclick handlers)
+  window.strobe_enable = strobe_enable;
+  window.strobe_hold = strobe_hold;
+  window.strobe_period = strobe_period;
+  window.cam_optimize = cam_optimize;
+  window.cam_snapshot = cam_snapshot;
+{% endmacro %}
+
+{% macro js_doc_ready() %}
+  strobe_update_init();
+  cam_update();
+  
+  // NOTE: ROI selector is now handled by roi_selector_simple.js in index.html
+  // The old freehand canvas-based selector code has been removed
+  // ROI initialization happens in index.html's initROISelectorSimple()
+  
+  socket.on( 'strobe', function( data ) {
+    strobe = data;
+    cam_update();
+  });
+  socket.on( 'cam', function( data ) {
+    cam = data;
+    cam_update();
+  });
+{% endmacro %}
+
+{% macro html() %}
+  <!-- Camera feed with ROI selector -->
+  <div style="position: relative; display: inline-block;">
+    <img id="camera_image" src="{{ url_for('video') }}" style="display: block; max-width: 100%; height: auto;">
+    <canvas id="roi_canvas" style="position: absolute; top: 0; left: 0; pointer-events: auto; cursor: crosshair;"></canvas>
+  </div>
+  <div style="margin: 10px 0;">
+    <button id="btn_roi_clear" onclick="clearROI()" style="width: 100px; margin-right: 10px;">Clear ROI</button>
+    <span id="roi_info" style="margin-left: 20px; font-weight: bold;"></span>
+  </div>
+  <table style="border: 1px solid black; padding: 10px" cellpadding="2px">
+      <tr>
+        <td width=150>Enabled</td>
+        <td width=100><p id='strobe_enable'></p></td>
+        <td></td>
+        <td><button id='btn_strobe_enable', onclick="strobe_enable()", style="width: 100px"></button></td>
+      </tr>
+      <tr>
+        <td>Hold</td>
+        <td><p id='strobe_hold'></p></td>
+        <td></td>
+        <td><button id='btn_strobe_hold', onclick="strobe_hold()", style="width: 100px"></button></td>
+      </tr>
+<!--
+      <tr>
+        <td>Wait (us)</td>
+        <td><p id='strobe_wait_us'></p></td>
+        <td><input type="number" id="input_strobe_wait_us" min="0" max="10000"></td>
+        <td><button id='btn_strobe_wait_us', onclick="strobe_wait()", style="width: 100px">Set</button></td>
+      </tr>
+-->
+      <tr>
+        <td>Period (us)</td>
+        <td><p id='strobe_period_us'></p></td>
+        <td><input type="number" id="input_strobe_period_us" min="1" max="10000"></td>
+        <td><button id='btn_strobe_period_us', onclick="strobe_period()", style="width: 100px">Set</button></td>
+      </tr>
+      <tr>
+        <td>Cam Read Time (us)</td>
+        <td><p id='strobe_cam_time_us'></p></td>
+        <td></td>
+        <td></td>
+      </tr>
+    <tr>
+      <td>Framerate</td>
+      <td><p id='strobe_framerate'></p></td>
+      <td></td>
+      <td><button id='btn_cam_optimize', onclick="cam_optimize()", style="width: 100px"></button></td>
+    </tr>
+    <tr>
+      <td>Snapshot</td>
+      <td></td>
+      <td></td>
+      <td><button id='btn_cam_snapshot', onclick="cam_snapshot()", style="width: 100px"></button></td>
+    </tr>
+  </table>
+{% endmacro %}

@@ -1,0 +1,26 @@
+# Code Quality and Testing Tools
+# Install in simulation/testing environment only (NOT in base Python)
+
+# Testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0  # Coverage reporting
+
+# Code formatting
+black>=23.0.0
+
+# Linting
+flake8>=6.0.0
+flake8-docstrings>=1.7.0  # Docstring checking
+
+# Type checking
+mypy>=1.0.0
+types-PyYAML>=6.0.0  # Type stubs for PyYAML
+
+# Additional code quality
+pylint>=2.15.0  # Optional: more comprehensive linting
+bandit>=1.7.0  # Security linting
+
+# Note: These are development/testing tools only
+# Do NOT install in production or on Raspberry Pi
+
+

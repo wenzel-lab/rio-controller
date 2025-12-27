@@ -45,5 +45,5 @@ development-stage: "Prototype"
 made: true
 made-independently: false
 software:
-  - path: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller/tree/master/user-interface-software"
-    title: "User Interface Software for Modular Microfluidics Workstation Controller"
+  - path: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller/tree/master/software"
+    title: "Rio Microfluidics Controller Software"

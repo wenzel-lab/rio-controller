@@ -1,0 +1,33 @@
+# Requirements for Rio Microfluidics Controller - Hardware Mode
+# For Raspberry Pi (32-bit or 64-bit)
+
+# Web framework - compatible versions for both 32-bit and 64-bit
+Flask>=2.0.0,<4.0.0
+Flask-SocketIO>=5.0.0,<6.0.0
+Werkzeug>=2.0.0,<4.0.0
+Jinja2>=3.1.3
+MarkupSafe>=2.0.0
+itsdangerous>=2.0.0
+eventlet>=0.33.0
+
+# Image processing
+Pillow>=10.3.0
+
+# Raspberry Pi hardware (32-bit and 64-bit compatible)
+spidev==3.6
+RPi.GPIO==0.7.1
+
+# Camera support
+# For 32-bit: picamera (legacy)
+# For 64-bit: picamera2 (modern)
+# For MAKO cameras: vimba-python
+# Note: Only install the ones needed for your system
+# picamera==1.13  # Uncomment for 32-bit Raspberry Pi
+# picamera2>=0.3.0  # Uncomment for 64-bit Raspberry Pi
+# vimba-python>=0.2.0  # Uncomment for MAKO camera support
+
+# WebSocket support
+python-socketio>=5.0.0
+
+# Configuration file support
+PyYAML>=6.0

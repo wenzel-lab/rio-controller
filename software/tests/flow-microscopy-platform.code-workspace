@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../../../flow-microscopy-platform"
+		},
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../droplet_AInalysis"
+		},
+		{
+			"path": "../../../repository-template"
+		}
+	],
+	"settings": {}
+}
