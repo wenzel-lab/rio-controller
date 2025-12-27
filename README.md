@@ -119,9 +119,9 @@ For interactions in our team and with the community applies the [GOSH Code of Co
 
 ## License
 
-**Hardware:** All source files located in the `hardware-modules` and `firmware` directories are released under the [CERN-OHL-W-2.0](https://ohwr.org/cern_ohl_w_v2.txt) license.
+**Hardware:** All source files located in the `hardware-modules` directories (including firmware, PCB designs, and documentation) are released under the [CERN-OHL-W-2.0](https://ohwr.org/cern_ohl_w_v2.txt) license.
 
-**Software:** The source codes located in the `software` and `firmware` directories are released under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
+**Software:** The source codes located in the `software` directory are released under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
 
 **Other materials:** All other materials, including instructions and pictures, are released under the [Creative Commons CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) license.
 
