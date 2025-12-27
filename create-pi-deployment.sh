@@ -88,12 +88,12 @@ if [ -f "requirements-webapp-only-32bit.txt" ]; then
 else
     echo "Warning: requirements file not found, installing manually..."
     pip install "Flask>=2.0.0,<4.0.0"
-    pip install "Flask-SocketIO>=5.0.0,<6.0.0"
+    pip install "Flask-SocketIO==4.3.2"
     pip install "Werkzeug>=2.0.0,<4.0.0"
     pip install "Jinja2>=3.0.0"
     pip install "MarkupSafe>=2.0.0"
     pip install "itsdangerous>=2.0.0"
-    pip install "python-socketio>=5.0.0"
+    pip install "python-socketio==4.7.1" "python-engineio==3.13.2"
     pip install "eventlet>=0.33.0"
     pip install "opencv-python-headless>=4.5.0,<5.0.0"
     pip install "PyYAML>=6.0"
@@ -207,9 +207,99 @@ If hardware packages are missing:
 sudo apt-get install python3-spidev python3-rpi.gpio python3-picamera
 ```
 
+## Development Workflow
+
+### Connect to Pi
+
+```bash
+ssh pi@raspberrypi.local
+# Or: ssh pi@<IP_ADDRESS>
+```
+
+### Stop Application
+
+```bash
+# Stop running instance
+pkill -f "python.*main.py"
+
+# Or find and kill manually:
+ps aux | grep "python.*main.py"
+kill <PID>
+```
+
+### Start Application
+
+```bash
+cd ~/rio-controller
+export RIO_STROBE_CONTROL_MODE=strobe-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+python main.py
+```
+
+### Sync Code (from Mac/PC)
+
+```bash
+cd /Users/twenzel/Documents/GitHub/open-microfluidics-workstation
+./create-pi-deployment.sh
+rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' pi-deployment/ pi@raspberrypi.local:~/rio-controller/
+```
+
 ## Troubleshooting
 
-See the full documentation in the main repository for troubleshooting steps.
+### Enable Debug Logging
+
+For troubleshooting, you can enable more verbose logging by setting the `RIO_LOG_LEVEL` environment variable:
+
+```bash
+export RIO_LOG_LEVEL=DEBUG  # Most verbose - shows all debug messages
+export RIO_LOG_LEVEL=INFO   # Shows informational messages (recommended for troubleshooting)
+export RIO_LOG_LEVEL=WARNING  # Default - only warnings and errors (production mode)
+export RIO_LOG_LEVEL=ERROR    # Only errors
+```
+
+**Log Levels:**
+- **DEBUG**: All messages including detailed debug info (high volume, use only when troubleshooting)
+- **INFO**: Important operational messages (recommended for troubleshooting - shows strobe events, camera status, etc.)
+- **WARNING**: Warnings and errors only (default, minimal bandwidth/IO overhead)
+- **ERROR**: Errors only (minimal logging)
+
+**Example with debug logging:**
+```bash
+export RIO_LOG_LEVEL=INFO
+export RIO_STROBE_CONTROL_MODE=strobe-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+python main.py
+```
+
+**Note:** Logging doesn't consume significant bandwidth when set to WARNING or ERROR. DEBUG and INFO levels are designed for troubleshooting and provide detailed operational information without impacting performance when disabled.
+
+### Application Hangs on Startup
+
+If `python main.py` produces no output and hangs:
+
+**Check for multiple Socket.IO installations:**
+```bash
+python3 -c "import socketio; print(f'Version: {socketio.__version__}'); print(f'Location: {socketio.__file__}')"
+pip list | grep socketio
+```
+
+**Fix:** Uninstall from all locations:
+```bash
+pip uninstall Flask-SocketIO python-socketio python-engineio -y
+sudo pip uninstall Flask-SocketIO python-socketio python-engineio -y 2>/dev/null || true
+pip install python-engineio==3.13.2
+pip install Flask-SocketIO==4.3.2
+```
+
+**If still hanging:**
+```bash
+sudo lsof -i :5000  # Check if port is in use
+python3 -v main.py 2>&1 | head -50  # Verbose mode to see where it hangs
+```
+
+See the full documentation in the main repository for detailed troubleshooting steps.
 EOF
 
 # Create .gitignore for deployment (if it gets version controlled)

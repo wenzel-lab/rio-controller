@@ -4,14 +4,16 @@
 
 # Web framework (upgrades from existing versions)
 Flask>=2.0.0,<4.0.0
-Flask-SocketIO>=5.0.0,<6.0.0
+Flask-SocketIO==4.3.2  # Pin to exact old working version for compatibility
 Werkzeug>=2.0.0,<4.0.0
 Jinja2>=3.0.0
 MarkupSafe>=2.0.0
 itsdangerous>=2.0.0
 
-# WebSocket support (upgrade)
-python-socketio>=5.0.0
+# WebSocket support (compatible with Socket.IO client v4)
+# Pin to versions compatible with Flask-SocketIO 4.3.2
+python-socketio==4.7.1
+python-engineio==3.13.2  # Critical: must be 3.x for Socket.IO v4 compatibility
 
 # Eventlet for async support (required for Flask-SocketIO)
 eventlet>=0.33.0

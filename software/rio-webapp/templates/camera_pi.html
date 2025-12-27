@@ -12,29 +12,35 @@
   {
     // Initialize strobe buttons with default text if data not available
     if (typeof strobe !== 'undefined' && strobe !== null) {
-      $('#strobe_enable').html( strobe.enable ? 'Enabled' : 'Disabled' );
-      $('#btn_strobe_enable').html( strobe.enable ? 'Disable' : 'Enable' );
+      // Toggle button for Enable - shows CURRENT state (not next state when clicked)
+      $('#btn_strobe_enable').html( strobe.enable ? 'ENABLED' : 'DISABLED' );
+      $('#btn_strobe_enable').removeClass('btn-primary btn-danger');
+      $('#btn_strobe_enable').addClass( strobe.enable ? 'btn-primary' : 'btn-secondary' );
       
-      $('#strobe_hold').html( strobe.hold ? 'On' : 'Off' );
-      $('#btn_strobe_hold').html( strobe.hold ? 'Hold Off' : 'Hold On' );
+      // Toggle button for Hold (Continuous Light) - shows CURRENT state
+      $('#btn_strobe_hold').html( strobe.hold ? 'ON' : 'OFF' );
+      $('#btn_strobe_hold').removeClass('btn-secondary btn-success');
+      $('#btn_strobe_hold').addClass( strobe.hold ? 'btn-success' : 'btn-secondary' );
       
-      $('#strobe_period_us').html( strobe.period_ns ? (strobe.period_ns / 1000).toFixed(2) : '0' );
-      $('#strobe_wait_us').html( strobe.wait_ns ? (strobe.wait_ns / 1000).toFixed(2) : '0' );
+      // Update period input
+      if (strobe.period_ns) {
+        $('#input_strobe_period_us').val( (strobe.period_ns / 1000).toFixed(0) );
+      }
+      
+      // Update info displays
       $('#strobe_cam_time_us').html( strobe.cam_read_time_us || '0' );
-      
       $('#strobe_framerate').html( strobe.framerate || '0' );
     } else {
       // Default values if strobe data not loaded yet
-      $('#strobe_enable').html( 'Disabled' );
-      $('#btn_strobe_enable').html( 'Enable' );
-      $('#strobe_hold').html( 'Off' );
-      $('#btn_strobe_hold').html( 'Hold On' );
-      $('#strobe_period_us').html( '0' );
-      $('#strobe_wait_us').html( '0' );
+      $('#btn_strobe_enable').html( 'DISABLED' );
+      $('#btn_strobe_enable').removeClass('btn-primary').addClass('btn-secondary');
+      $('#btn_strobe_hold').html( 'OFF' );
+      $('#btn_strobe_hold').removeClass('btn-success').addClass('btn-secondary');
+      $('#input_strobe_period_us').val( '0' );
       $('#strobe_cam_time_us').html( '0' );
       $('#strobe_framerate').html( '0' );
     }
-    $('#btn_cam_snapshot').html( "Snapshot" );
+    $('#btn_cam_snapshot').html( "📸 SNAPSHOT" );
     $('#btn_cam_optimize').html( "Optimize" );
   }
   
@@ -42,110 +48,69 @@
     socket.emit( 'cam', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } } );
   }
   function strobe_enable() {
-    socket.emit( 'strobe', { cmd: 'enable', parameters: { 'on': strobe.enable ? 0 : 1 } } );
+    console.log('strobe_enable() called, socket:', socket);
+    if (!socket || !socket.emit) {
+      console.error('socket is not available or socket.emit is not a function!');
+      return;
+    }
+    var data = { cmd: 'enable', parameters: { 'on': strobe.enable ? 0 : 1 } };
+    console.log('Emitting strobe event:', data);
+    socket.emit( 'strobe', data );
+    console.log('strobe event emitted');
   }
   function strobe_hold() {
-    socket.emit( 'strobe', { cmd: 'hold', parameters: { 'on': strobe.hold ? 0 : 1 } } );
+    console.log('strobe_hold() called, socket:', socket);
+    if (!socket || !socket.emit) {
+      console.error('socket is not available or socket.emit is not a function!');
+      return;
+    }
+    var data = { cmd: 'hold', parameters: { 'on': strobe.hold ? 0 : 1 } };
+    console.log('Emitting strobe event:', data);
+    socket.emit( 'strobe', data );
+    console.log('strobe event emitted');
   }
   function strobe_wait() {
     socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': ( $('#input_strobe_wait_us').val() * 1000 ), 'period_ns': strobe.period_ns } } );
   }
   function strobe_period() {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for strobe_period!');
+      return;
+    }
     socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': strobe.wait_ns, 'period_ns': ( $('#input_strobe_period_us').val() * 1000 ) } } );
   }
   function cam_optimize()
   {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for cam_optimize!');
+      return;
+    }
     socket.emit( 'cam', { cmd: 'optimize', parameters: {} } );
   }
   function cam_snapshot()
   {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for cam_snapshot!');
+      return;
+    }
     socket.emit( 'cam', { cmd: 'snapshot', parameters: {} } );
   }
+  
+  // Make functions globally accessible (for onclick handlers)
+  window.strobe_enable = strobe_enable;
+  window.strobe_hold = strobe_hold;
+  window.strobe_period = strobe_period;
+  window.cam_optimize = cam_optimize;
+  window.cam_snapshot = cam_snapshot;
 {% endmacro %}
 
 {% macro js_doc_ready() %}
   strobe_update_init();
   cam_update();
   
-  // Initialize ROI selector
-  var roiSelector = null;
-  var cameraImg = document.getElementById('camera_image');
-  var roiCanvas = document.getElementById('roi_canvas');
-  
-  function initROISelector() {
-    if (!cameraImg || !roiCanvas) {
-      console.log('ROI selector: waiting for elements...');
-      setTimeout(initROISelector, 100);
-      return;
-    }
-    
-    if (roiSelector) {
-      return; // Already initialized
-    }
-    
-    console.log('Initializing ROI selector...');
-    roiSelector = new ROISelector(cameraImg, roiCanvas, socket);
-    
-    // Listen for ROI updates from server
-    socket.on('roi', function(data) {
-      if (data.roi) {
-        // Scale ROI from image coordinates to canvas coordinates
-        const scaleX = roiCanvas.width / cameraImg.naturalWidth;
-        const scaleY = roiCanvas.height / cameraImg.naturalHeight;
-        const scaledROI = {
-          x: data.roi.x * scaleX,
-          y: data.roi.y * scaleY,
-          width: data.roi.width * scaleX,
-          height: data.roi.height * scaleY
-        };
-        roiSelector.setROI(scaledROI);
-        updateROIInfo();
-      } else {
-        // Clear ROI locally without sending command back to server
-        // (to avoid infinite loop)
-        roiSelector.clearROI(false); // false = don't send to server
-        updateROIInfo();
-      }
-    });
-    
-    // Request current ROI from server
-    socket.emit('roi', {cmd: 'get'});
-  }
-  
-  // Wait for image to load
-  if (cameraImg) {
-    if (cameraImg.complete) {
-      initROISelector();
-    } else {
-      cameraImg.addEventListener('load', initROISelector);
-    }
-  } else {
-    // Try again after a short delay
-    setTimeout(initROISelector, 500);
-  }
-  
-  function updateROIInfo() {
-    if (roiSelector && roiSelector.getROI()) {
-      var roi = roiSelector.getROI();
-      document.getElementById('roi_info').textContent = 
-        'ROI: (' + Math.round(roi.x) + ', ' + Math.round(roi.y) + ') ' + 
-        Math.round(roi.width) + '×' + Math.round(roi.height) + ' px';
-    } else {
-      document.getElementById('roi_info').textContent = 'No ROI selected';
-    }
-  }
-  
-  function clearROI() {
-    if (roiSelector) {
-      roiSelector.clearROI();
-      // Send clear command to backend
-      socket.emit('roi', {cmd: 'clear'});
-      updateROIInfo();
-    }
-  }
-  
-  // Make function globally accessible
-  window.clearROI = clearROI;
+  // NOTE: ROI selector is now handled by roi_selector_simple.js in index.html
+  // The old freehand canvas-based selector code has been removed
+  // ROI initialization happens in index.html's initROISelectorSimple()
   
   socket.on( 'strobe', function( data ) {
     strobe = data;
@@ -155,9 +120,6 @@
     cam = data;
     cam_update();
   });
-  
-  // Update ROI info periodically
-  setInterval(updateROIInfo, 500);
 {% endmacro %}
 
 {% macro html() %}

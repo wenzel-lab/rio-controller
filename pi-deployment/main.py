@@ -74,6 +74,7 @@ eventlet.monkey_patch(os=True, select=True, socket=True, thread=False, time=True
 
 # Configure logging
 # Use configurable log level (default: WARNING for production, can override with RIO_LOG_LEVEL)
+# But use INFO at startup to catch initialization issues
 try:
     from config import RIO_LOG_LEVEL
     log_level = getattr(logging, RIO_LOG_LEVEL, logging.WARNING)
@@ -86,25 +87,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Reduce Socket.IO and Engine.IO logging verbosity (too noisy at INFO level)
+logging.getLogger("socketio.server").setLevel(logging.WARNING)
+logging.getLogger("engineio.server").setLevel(logging.WARNING)
+
+# Log startup immediately to verify logging works
+logger.info("=" * 60)
+logger.info("Rio Microfluidics Controller - Starting up")
+logger.info("=" * 60)
+
 # Global state
 exit_event = Event()
 debug_data = {"update_count": 0}
 
 # Initialize hardware communication
-logger.info("Initializing SPI communication...")
-spi_init(0, 2, 30000)
+logger.info("Step 1: Initializing SPI communication...")
+try:
+    spi_init(0, 2, 30000)
+    logger.info("Step 1: SPI communication initialized successfully")
+except Exception as e:
+    logger.error(f"Step 1: SPI initialization failed: {e}")
+    raise
 
 # Create Flask app and SocketIO first (needed for Camera initialization)
-app = Flask(
-    __name__,
-    template_folder=os.path.join(software_dir, "rio-webapp", "templates"),
-    static_folder=os.path.join(software_dir, "rio-webapp", "static"),
-    static_url_path="/static",
-)
-socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+logger.info("Step 2: Creating Flask application...")
+try:
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(software_dir, "rio-webapp", "templates"),
+        static_folder=os.path.join(software_dir, "rio-webapp", "static"),
+        static_url_path="/static",
+    )
+    logger.info("Step 2: Flask application created")
+except Exception as e:
+    logger.error(f"Step 2: Flask app creation failed: {e}")
+    raise
+
+logger.info("Step 3: Creating SocketIO instance...")
+try:
+    # Check Socket.IO versions before initialization
+    try:
+        import socketio
+        import engineio
+        logger.info(f"Socket.IO versions: python-socketio={socketio.__version__}, python-engineio={engineio.__version__}")
+        logger.info(f"python-socketio location: {socketio.__file__}")
+        logger.info(f"python-engineio location: {engineio.__file__}")
+    except Exception as e:
+        logger.warning(f"Could not check Socket.IO versions: {e}")
+    
+    socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+    logger.info("Step 3: SocketIO instance created successfully")
+except Exception as e:
+    logger.error(f"Step 3: SocketIO creation failed: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
+    raise
 
 # Initialize hardware models (after SPI init and Flask/SocketIO setup)
-logger.info("Initializing hardware models...")
+logger.info("Step 4: Initializing hardware models...")
 heater1 = heater_web(1, PORT_HEATER1)
 heater2 = heater_web(2, PORT_HEATER2)
 heater3 = heater_web(3, PORT_HEATER3)
@@ -114,7 +154,15 @@ heaters = [heater1, heater2, heater3, heater4]
 flow = FlowWeb(PORT_FLOW)
 
 # Camera needs exit_event and socketio
-cam = Camera(exit_event, socketio)
+logger.info("Step 5: Initializing camera controller...")
+try:
+    cam = Camera(exit_event, socketio)
+    logger.info("Step 5: Camera controller initialized")
+except Exception as e:
+    logger.error(f"Step 5: Camera initialization failed: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
+    raise
 
 # Initialize droplet detector controller (after camera is created)
 # Check if module is enabled (default: True for backward compatibility)
@@ -141,10 +189,17 @@ else:
     logger.info("Droplet analysis module disabled (RIO_DROPLET_ANALYSIS_ENABLED=false)")
 
 # Initialize controllers
-logger.info("Initializing controllers...")
-camera_controller = CameraController(cam, socketio)
-flow_controller = FlowController(flow, socketio)
-heater_controller = HeaterController(heaters, socketio)
+logger.info("Step 6: Initializing web controllers...")
+try:
+    camera_controller = CameraController(cam, socketio)
+    flow_controller = FlowController(flow, socketio)
+    heater_controller = HeaterController(heaters, socketio)
+    logger.info("Step 6: Web controllers initialized")
+except Exception as e:
+    logger.error(f"Step 6: Web controller initialization failed: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
+    raise
 
 # Initialize droplet web controller if available
 if droplet_controller is not None:
@@ -168,7 +223,19 @@ view_model = ViewModel(
 # No need to call register_handlers() separately
 
 # Register Flask routes and WebSocket handlers
-register_routes(app, socketio, view_model, heaters, flow, cam, debug_data, droplet_controller)
+logger.info("Step 7: Registering routes and WebSocket handlers...")
+try:
+    register_routes(app, socketio, view_model, heaters, flow, cam, debug_data, droplet_controller)
+    logger.info("Step 7: Routes and handlers registered")
+except Exception as e:
+    logger.error(f"Step 7: Route registration failed: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
+    raise
+
+logger.info("=" * 60)
+logger.info("All initialization steps completed successfully")
+logger.info("=" * 60)
 
 
 if __name__ == "__main__":

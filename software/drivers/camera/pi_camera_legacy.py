@@ -9,10 +9,11 @@ from picamera import PiCamera
 import os
 import io
 import time
+import threading
 from typing import Optional, Dict, Tuple, Generator, Any
 import numpy as np
 from queue import Queue
-from threading import Event
+from threading import Event, Lock
 import logging
 
 from .camera_base import BaseCamera
@@ -43,6 +44,10 @@ class PiCameraLegacy(BaseCamera):
         self.cam_running_event: Event = Event()
         self.capture_flag: Event = Event()
         self.capture_queue: Queue[bytes] = Queue(1)
+        
+        # Store last decoded frame for ROI access (updated during generate_frames)
+        self._last_frame_array: Optional[np.ndarray] = None
+        self._last_frame_lock = threading.Lock()
 
         # Initialize camera (from tested code pattern)
         # Initialize camera - removed WERKZEUG_RUN_MAIN check as it prevents initialization
@@ -133,6 +138,19 @@ class PiCameraLegacy(BaseCamera):
             stream.seek(0)
             stream.truncate()
 
+            # Decode JPEG frame for ROI access (needed for droplet detection)
+            # If hardware ROI is active, the frame is already at ROI resolution (crop applied at sensor)
+            # This allows get_frame_roi() to work even while capture_continuous is running
+            try:
+                from PIL import Image
+                import io as io_module
+                img = Image.open(io_module.BytesIO(data))
+                frame_array = np.array(img.convert('RGB'))
+                with self._last_frame_lock:
+                    self._last_frame_array = frame_array
+            except Exception as e:
+                logger.debug(f"Could not decode frame for ROI access: {e}")
+
             # Return bytes directly (not numpy array) for web streaming
             buffer = data
 
@@ -169,8 +187,9 @@ class PiCameraLegacy(BaseCamera):
 
     def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> np.ndarray:
         """
-        Get ROI frame. If hardware ROI is set, returns full frame (which is already ROI).
-        Otherwise uses picamera's hardware crop feature temporarily.
+        Get ROI frame. When hardware ROI is set and matches the requested ROI,
+        the camera is already capturing at ROI resolution, so we return the full frame.
+        Otherwise, we use software cropping from the decoded frame.
 
         Args:
             roi: (x, y, width, height) tuple
@@ -178,47 +197,65 @@ class PiCameraLegacy(BaseCamera):
         Returns:
             numpy.ndarray: ROI frame as RGB numpy array
 
-        Note: If hardware ROI was set via set_roi_hardware(), the camera is already
-        capturing only the ROI region, so we return the full frame (which is the ROI).
-        Otherwise, we temporarily set crop for this capture.
+        Note: If hardware ROI is active and matches the requested ROI, the full frame
+        is already the ROI region (no cropping needed). Otherwise, software cropping
+        is applied to the last decoded frame from the streaming loop.
         """
         if self.cam is None:
             raise RuntimeError("Camera not initialized")
 
         x, y, width, height = roi
 
-        # Check if hardware ROI is already set
-        if hasattr(self, "hardware_roi") and self.hardware_roi == roi:
-            # Hardware ROI is active, return full frame (which is already ROI)
-            frame = self.cam.capture_array()
-            return frame
+        # Check if capture_continuous is running (cam_running_event is set)
+        is_capturing = self.cam_running_event.is_set() if self.cam_running_event else False
 
-        # Otherwise, use temporary crop (picamera's hardware crop feature)
-        # Save current crop if not already saved
-        if self._original_crop is None:
-            self._original_crop = self.cam.crop
+        try:
+            # Software ROI cropping only (hardware ROI disabled for stability)
+            if is_capturing:
+                # Hardware ROI not matching - use software cropping from decoded frame
+                with self._last_frame_lock:
+                    if self._last_frame_array is None:
+                        logger.warning("No decoded frame available for ROI, returning black frame")
+                        return np.zeros((height, width, 3), dtype=np.uint8)
+                    frame = self._last_frame_array.copy()
+                
+                # Apply software cropping to ROI region
+                frame_height, frame_width = frame.shape[:2]
+                
+                # Check bounds
+                if x + width > frame_width or y + height > frame_height:
+                    logger.warning(f"ROI bounds ({x}, {y}, {width}, {height}) exceed frame size ({frame_width}, {frame_height})")
+                    # Clamp to frame bounds
+                    x = max(0, min(x, frame_width - 1))
+                    y = max(0, min(y, frame_height - 1))
+                    width = min(width, frame_width - x)
+                    height = min(height, frame_height - y)
+                
+                roi_frame = frame[y:y+height, x:x+width]
+                return roi_frame
+            else:
+                # Not capturing continuously - use software cropping on captured frame
+                frame = self.cam.capture_array()
+                frame_height, frame_width = frame.shape[:2]
+                
+                # Check bounds
+                if x + width > frame_width or y + height > frame_height:
+                    logger.warning(f"ROI bounds ({x}, {y}, {width}, {height}) exceed frame size ({frame_width}, {frame_height})")
+                    # Clamp to frame bounds
+                    x = max(0, min(x, frame_width - 1))
+                    y = max(0, min(y, frame_height - 1))
+                    width = min(width, frame_width - x)
+                    height = min(height, frame_height - y)
+                
+                roi_frame = frame[y:y+height, x:x+width]
+                return roi_frame
 
-        # Set ROI crop (picamera uses normalized coordinates 0.0-1.0)
-        # Get current resolution for normalization
-        current_res = self.cam.resolution
-        norm_x = x / current_res[0]
-        norm_y = y / current_res[1]
-        norm_w = width / current_res[0]
-        norm_h = height / current_res[1]
-
-        # Set crop (picamera expects (x, y, width, height) in normalized coords)
-        self.cam.crop = (norm_x, norm_y, norm_w, norm_h)
-
-        # Capture ROI frame
-        frame = self.cam.capture_array()
-
-        # Restore original crop
-        if self._original_crop:
-            self.cam.crop = self._original_crop
-        else:
-            self.cam.crop = (0.0, 0.0, 1.0, 1.0)  # Full frame
-
-        return frame
+        except Exception as e:
+            logger.error(f"Error in get_frame_roi: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            # Fallback: return a black frame of correct size
+            return np.zeros((height, width, 3), dtype=np.uint8)
 
     def set_roi_hardware(self, roi: Tuple[int, int, int, int]) -> bool:
         """
@@ -374,11 +411,14 @@ class PiCameraLegacy(BaseCamera):
         Update camera configuration
 
         Based on tested implementation from flow-microscopy-platform
+        
+        Note: For picamera, framerate and shutter_speed can be safely modified
+        while capture_continuous is running (they take effect on next frame).
+        However, we avoid clearing cam_running_event here to prevent interrupting
+        the capture loop unnecessarily.
         """
         if self.cam is None:
             raise RuntimeError("Camera not initialized")
-
-        self.cam_running_event.clear()
 
         # Configure AWB and exposure (from tested code)
         self.cam.awb_mode = "auto"
@@ -404,7 +444,7 @@ class PiCameraLegacy(BaseCamera):
         else:
             self.cam.resolution = (640, 480)
 
-        # Update framerate
+        # Update framerate (safe to set while capture_continuous is running)
         if "FrameRate" in configs and configs["FrameRate"]:
             self.config["FrameRate"] = int(configs["FrameRate"])
             self.frame_rate = int(configs["FrameRate"])
@@ -413,7 +453,7 @@ class PiCameraLegacy(BaseCamera):
         if isinstance(framerate, (int, float)):
             self.cam.framerate = int(framerate)
 
-        # Update shutter speed
+        # Update shutter speed (safe to set while capture_continuous is running)
         if "ShutterSpeed" in configs and configs["ShutterSpeed"]:
             self.config["ShutterSpeed"] = int(configs["ShutterSpeed"])
             del configs["ShutterSpeed"]

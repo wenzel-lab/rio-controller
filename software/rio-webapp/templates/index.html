@@ -133,37 +133,25 @@
                                                     {% endif %}
                                                 </p>
                                                 <div class="row g-3">
-                                                    <div class="col-md-3">
-                                                        <label for="roi_x" class="form-label">X Position (px)</label>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">X Range (px)</label>
                                                         <div class="input-group input-group-sm mb-2">
-                                                            <input type="number" id="roi_x" class="form-control" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
+                                                            <input type="number" id="roi_x_min" class="form-control" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
+                                                            <span class="input-group-text">to</span>
+                                                            <input type="number" id="roi_x_max" class="form-control" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
                                                             <span class="input-group-text">px</span>
                                                         </div>
-                                                        <input type="range" class="form-range" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" id="roi_x_slider">
+                                                        <div id="roi_x_range_slider" style="margin: 10px 0;"></div>
                                                     </div>
-                                                    <div class="col-md-3">
-                                                        <label for="roi_y" class="form-label">Y Position (px)</label>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Y Range (px)</label>
                                                         <div class="input-group input-group-sm mb-2">
-                                                            <input type="number" id="roi_y" class="form-control" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
+                                                            <input type="number" id="roi_y_min" class="form-control" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
+                                                            <span class="input-group-text">to</span>
+                                                            <input type="number" id="roi_y_max" class="form-control" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
                                                             <span class="input-group-text">px</span>
                                                         </div>
-                                                        <input type="range" class="form-range" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" id="roi_y_slider">
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <label for="roi_width" class="form-label">Width (px)</label>
-                                                        <div class="input-group input-group-sm mb-2">
-                                                            <input type="number" id="roi_width" class="form-control" min="10" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
-                                                            <span class="input-group-text">px</span>
-                                                        </div>
-                                                        <input type="range" class="form-range" min="10" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" id="roi_width_slider">
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <label for="roi_height" class="form-label">Height (px)</label>
-                                                        <div class="input-group input-group-sm mb-2">
-                                                            <input type="number" id="roi_height" class="form-control" min="10" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
-                                                            <span class="input-group-text">px</span>
-                                                        </div>
-                                                        <input type="range" class="form-range" min="10" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" id="roi_height_slider">
+                                                        <div id="roi_y_range_slider" style="margin: 10px 0;"></div>
                                                     </div>
                                                 </div>
                                                 <div class="mt-3">
@@ -178,38 +166,39 @@
                                         <div class="mt-3">
                                             <div class="card">
                                                 <div class="card-body">
-                                                    <h6 class="card-subtitle mb-3">Strobe Control</h6>
+                                                    <h6 class="card-subtitle mb-3">Strobe Illumination</h6>
                                                     <div class="row g-3">
-                                                        <div class="col-md-3">
-                                                            <label class="form-label">Enabled</label>
-                                                            <p id="strobe_enable" class="form-control-plaintext"></p>
-                                                            <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-primary btn-sm w-100"></button>
+                                                        <div class="col-md-4">
+                                                            <label class="form-label">Enable</label>
+                                                            <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-secondary w-100" style="height: 38px; font-weight: bold;">DISABLED</button>
                                                         </div>
-                                                        <div class="col-md-3">
-                                                            <label class="form-label">Hold</label>
-                                                            <p id="strobe_hold" class="form-control-plaintext"></p>
-                                                            <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary btn-sm w-100"></button>
-                                                        </div>
-                                                        <div class="col-md-3">
-                                                            <label class="form-label">Period (μs)</label>
-                                                            <p id="strobe_period_us" class="form-control-plaintext"></p>
-                                                            <div class="input-group input-group-sm">
-                                                                <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000">
+                                                        <div class="col-md-4">
+                                                            <label class="form-label">Strobe Duration (μs)</label>
+                                                            <div class="input-group">
+                                                                <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000" placeholder="Period">
                                                                 <button id="btn_strobe_period_us" onclick="strobe_period()" class="btn btn-outline-primary">Set</button>
                                                             </div>
                                                         </div>
-                                                        <div class="col-md-3">
-                                                            <label class="form-label">Cam Read Time (μs)</label>
-                                                            <p id="strobe_cam_time_us" class="form-control-plaintext"></p>
-                                                            <label class="form-label">Framerate</label>
-                                                            <p id="strobe_framerate" class="form-control-plaintext"></p>
-                                                            <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success btn-sm w-100">Optimize</button>
+                                                        <div class="col-md-4">
+                                                            <label class="form-label">Continuous Light</label>
+                                                            <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary w-100" style="height: 38px; font-weight: bold;">OFF</button>
                                                         </div>
                                                     </div>
-                                                    <div class="mt-3">
-                                                        <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary">
-                                                            <i class="bi bi-camera"></i> Snapshot
-                                                        </button>
+                                                    <div class="row g-3 mt-2">
+                                                        <div class="col-md-6">
+                                                            <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success w-100" style="height: 38px;">Optimize</button>
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-success w-100" style="height: 45px; font-size: 1.1em; font-weight: bold;">📸 SNAPSHOT</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="row g-3 mt-2">
+                                                        <div class="col-md-6">
+                                                            <small class="text-muted">Cam Read: <span id="strobe_cam_time_us"></span> μs</small>
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <small class="text-muted">FPS: <span id="strobe_framerate"></span></small>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -463,16 +452,49 @@
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.socket.io/5.0.0/socket.io.min.js"></script>
+    <!-- jQuery UI for dual-handle range sliders -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/ui-lightness/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <style>
+        /* Style ROI range sliders to have blue line (matching ROI box) */
+        #roi_x_range_slider .ui-slider-range,
+        #roi_y_range_slider .ui-slider-range {
+            background: #0099ff !important;
+            border-color: #0099ff !important;
+        }
+    </style>
+    <!-- Socket.IO client v2.3.0 - compatible with Flask-SocketIO 4.3.2 + python-engineio 3.13.2 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- ROI Selector - Simple slider-based (reliable, no canvas coordinate issues) -->
-    <script src="{{ url_for('static', filename='roi_selector_simple.js') }}"></script>
+    <!-- ROI Selector - Range slider-based (dual handles for min/max) -->
+    <script src="{{ url_for('static', filename='roi_selector_range.js') }}"></script>
     <script src="{{ url_for('static', filename='droplet_histogram.js') }}"></script>
     
     <script type="text/javascript">
+        // Initialize Socket.IO FIRST (functions need it)
+        var socket = io({
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5
+        });
+        
+        // Debug: Log connection state
+        console.log('Socket.IO initialized, connecting...');
+        console.log('Socket connection state:', socket.connected);
+        
+        // Log connection attempts
+        socket.on('connect_error', function(error) {
+            console.error('Socket.IO connection error:', error);
+        });
+        
+        socket.on('connect_timeout', function() {
+            console.error('Socket.IO connection timeout');
+        });
+        
+        // Include camera functions (after socket is defined so functions can use it)
         {{ cam_html.js_functions( cam, strobe ) }}
         
-        var socket = io();
         var heaters = {{heaters|tojson}};
         var flows = {{flows|tojson}};
         
@@ -495,17 +517,17 @@
         // Make updateROIInfo globally accessible
         window.updateROIInfo = updateROIInfo;
         
-        // Initialize simple slider-based ROI selector
-        var roiSelectorSimple = null;
+        // Initialize range slider-based ROI selector (dual handles for min/max)
+        var roiSelectorRange = null;
         var cameraImg = document.getElementById('camera_image');
         
-        function initROISelectorSimple() {
+        function initROISelectorRange() {
             if (!cameraImg) {
-                setTimeout(initROISelectorSimple, 100);
+                setTimeout(initROISelectorRange, 100);
                 return;
             }
             
-            if (roiSelectorSimple) {
+            if (roiSelectorRange) {
                 return; // Already initialized
             }
             
@@ -513,25 +535,31 @@
             const maxWidth = {% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %};
             const maxHeight = {% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %};
             
-            roiSelectorSimple = new ROISelectorSimple(cameraImg, socket, maxWidth, maxHeight);
-            window.roiSelectorSimple = roiSelectorSimple; // Make globally accessible
+            // Wait for jQuery UI to be loaded
+            if (typeof $.fn.slider === 'undefined') {
+                setTimeout(initROISelectorRange, 100);
+                return;
+            }
+            
+            roiSelectorRange = new ROISelectorRange(cameraImg, socket, maxWidth, maxHeight);
+            window.roiSelectorRange = roiSelectorRange; // Make globally accessible
         }
         
-        // Wait for image to load
+        // Wait for image to load and jQuery UI
         if (cameraImg) {
             if (cameraImg.complete) {
-                initROISelectorSimple();
+                initROISelectorRange();
             } else {
-                cameraImg.addEventListener('load', initROISelectorSimple);
+                cameraImg.addEventListener('load', initROISelectorRange);
             }
         } else {
-            setTimeout(initROISelectorSimple, 500);
+            setTimeout(initROISelectorRange, 500);
         }
         
         // Clear ROI function (for button)
         function clearROI() {
-            if (roiSelectorSimple) {
-                roiSelectorSimple.clearROI();
+            if (roiSelectorRange) {
+                roiSelectorRange.clearROI();
             }
         }
         window.clearROI = clearROI;
@@ -588,12 +616,24 @@
             flows_update();
             
             socket.on('connect', function() {
-                console.log('WebSocket connected!');
+                console.log('✅ WebSocket connected! Socket.connected:', socket.connected);
+                // Try to flush any queued events
+                console.log('SendBuffer length:', socket.sendBuffer.length);
             });
             
             socket.on('disconnect', function() {
-                console.log('WebSocket connection lost!');
+                console.log('❌ WebSocket connection lost!');
             });
+            
+            // Check connection status periodically
+            setTimeout(function() {
+                console.log('Connection check after 2s - socket.connected:', socket.connected);
+                if (!socket.connected) {
+                    console.error('⚠️ Socket still not connected after 2 seconds!');
+                    console.log('Attempting manual connect...');
+                    socket.connect();
+                }
+            }, 2000);
             
             socket.on('reload', function(data) {
                 location.reload(true);

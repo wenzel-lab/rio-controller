@@ -444,7 +444,7 @@ class Camera:
             logger.warning("Cannot register WebSocket handlers: socketio is None")
             return
 
-        logger.info(f"🔌 Registering WebSocket handlers: {WS_EVENT_CAM}, {WS_EVENT_STROBE}, {WS_EVENT_ROI}")
+        logger.debug(f"Registering WebSocket handlers: {WS_EVENT_CAM}, {WS_EVENT_STROBE}, {WS_EVENT_ROI}")
 
         @self.socketio.on(WS_EVENT_CAM)
         def on_cam(data: Dict[str, Any]) -> None:
@@ -452,14 +452,14 @@ class Camera:
 
         @self.socketio.on(WS_EVENT_STROBE)
         def on_strobe(data: Dict[str, Any]) -> None:
-            logger.info(f"🔔 WebSocket handler received strobe event: {data}")
+            logger.debug(f"WebSocket handler received strobe event: {data}")
             self.on_strobe(data)
 
         @self.socketio.on(WS_EVENT_ROI)
         def on_roi(data: Dict[str, Any]) -> None:
             self.on_roi(data)
 
-        logger.info("✅ WebSocket handlers registered successfully")
+        logger.debug("WebSocket handlers registered successfully")
 
     def initialize(self) -> None:
         """
@@ -759,6 +759,10 @@ class Camera:
         This method performs an iterative optimization loop to find the optimal
         strobe post-padding time based on the actual camera read time. It continues
         until convergence or maximum tries are reached.
+        
+        Note: In strobe-centric mode, get_cam_read_time() may not work reliably
+        if the strobe is not enabled. The optimization will fail gracefully if
+        camera read time cannot be obtained.
         """
         logger.info("Starting FPS optimization")
         cam_read_time_us = 10000  # Initial estimate
@@ -776,10 +780,12 @@ class Camera:
                 self.strobe_cam.set_timing(
                     STROBE_PRE_PADDING_NS, self.strobe_period_ns, strobe_post_padding_ns
                 )
+                
+                # Get camera read time with timeout protection (SPI call may hang)
                 valid, cam_read_time_us = self.strobe_cam.strobe.get_cam_read_time()
 
                 if not valid:
-                    logger.warning("Failed to get camera read time during optimization")
+                    logger.warning("Failed to get camera read time during optimization - strobe may need to be enabled")
                     break
 
                 # Calculate new post-padding based on actual read time
@@ -791,6 +797,8 @@ class Camera:
                 )
             except Exception as e:
                 logger.error(f"Error during FPS optimization: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 break
 
             tries -= 1
@@ -852,7 +860,7 @@ class Camera:
         Args:
             data: Dictionary containing 'cmd' and 'parameters' keys
         """
-        logger.info(f"🔔 on_strobe() called with data: {data}")  # Debug: verify handler is called
+        logger.debug(f"on_strobe() called with data: {data}")
         try:
             cmd = data.get("cmd")
             params = data.get("parameters", {})
@@ -876,7 +884,7 @@ class Camera:
                 # This ensures UI reflects what user tried to set, even if hardware call failed
                 self.strobe_data["enable"] = enabled
                 if valid:
-                    logger.info(f"✅ Strobe {'ENABLED' if enabled else 'DISABLED'} successfully")
+                    logger.info(f"Strobe {'ENABLED' if enabled else 'DISABLED'} successfully")
                 else:
                     logger.error(
                         f"⚠️ CRITICAL: Failed to set strobe enable to {enabled} - hardware may not be responding! Check SPI connection and strobe hardware power."
@@ -991,20 +999,9 @@ class Camera:
             "height": roi_tuple[3],
         }
 
-        # Set hardware ROI for cameras that support it (Mako, Pi cameras)
-        if self.camera and hasattr(self.camera, "set_roi_hardware"):
-            try:
-                success = self.camera.set_roi_hardware(roi_tuple)
-                camera_type = self.cam_data.get("camera", "unknown")
-                if success:
-                    logger.info(f"Hardware ROI set on {camera_type} camera: {roi_tuple}")
-                    logger.info("Camera will now capture only ROI region for increased frame rate")
-                else:
-                    logger.warning(
-                        f"Failed to set hardware ROI on {camera_type} camera, using software cropping"
-                    )
-            except Exception as e:
-                logger.warning(f"Error setting hardware ROI: {e}, using software cropping")
+        # Software ROI only - hardware ROI requires camera restart which causes issues
+        # Using software cropping for now - works reliably without camera restart
+        logger.debug(f"ROI set (software cropping): {roi_tuple}")
 
         logger.info(
             f"ROI set: ({self.roi['x']}, {self.roi['y']}) "
@@ -1033,22 +1030,9 @@ class Camera:
             self.socketio.emit(WS_EVENT_ROI, response)
 
     def _handle_roi_clear(self) -> None:
-        """Handle ROI clear command. Reset hardware ROI for Mako if applicable."""
+        """Handle ROI clear command. Software ROI only (hardware ROI disabled for stability)."""
         if self.roi is not None:
             logger.info("ROI cleared")
-
-            # Reset hardware ROI to full frame for cameras that support it
-            if self.camera and hasattr(self.camera, "get_max_resolution"):
-                try:
-                    max_width, max_height = self.camera.get_max_resolution()
-                    if hasattr(self.camera, "set_roi_hardware"):
-                        self.camera.set_roi_hardware((0, 0, max_width, max_height))
-                        camera_type = self.cam_data.get("camera", "unknown")
-                        logger.info(
-                            f"Hardware ROI reset to full frame on {camera_type}: {max_width}×{max_height}"
-                        )
-                except Exception as e:
-                    logger.debug(f"Could not reset hardware ROI: {e}")
 
         self.roi = None
         if self.socketio:

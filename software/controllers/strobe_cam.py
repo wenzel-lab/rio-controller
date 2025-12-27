@@ -482,16 +482,17 @@ class PiStrobeCam:
 
         In strobe-centric mode, strobe should be enabled explicitly by the user
         after timing is set. This matches the old working implementation behavior.
+        
+        Note: Camera is already started by the Camera controller thread, so this
+        is a no-op for strobe-centric mode. We don't need to start it again.
         """
         if self.camera is None:
             logger.error("Camera is None, cannot start")
             return False
-        try:
-            self.camera.start()
-            return True
-        except Exception as e:
-            logger.error(f"Error starting camera: {e}")
-            return False
+        # Camera is already started by Camera controller thread (_thread method calls generate_frames)
+        # Calling start() again is unnecessary and could cause issues
+        # For strobe-centric mode, camera is already running
+        return True
 
     def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> Optional[Any]:
         """
