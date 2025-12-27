@@ -10,10 +10,10 @@ keywords:
   - "flow-control"
   - "raspberry pi"
 license: "CERN-OHL-2-W"
-documentation: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller"
-documentation-home: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller"
-design_files: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller"
-bom: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller/blob/master/RPi-HAT-extension-board/Bill-of-Materials.csv"
+documentation: "https://github.com/wenzel-lab/rio-controller"
+documentation-home: "https://github.com/wenzel-lab/rio-controller"
+design_files: "https://github.com/wenzel-lab/rio-controller"
+bom: "https://github.com/wenzel-lab/rio-controller/blob/master/hardware-modules/rpi-hat/Bill-of-Materials.csv"
 manifest-author:
   name: "Tobias Wenzel"
   affiliation: "Institute for Biological and Medical Engineering, Pontificia Universidad Católica de Chile"
@@ -45,5 +45,5 @@ development-stage: "Prototype"
 made: true
 made-independently: false
 software:
-  - path: "https://github.com/wenzel-lab/modular-microfluidics-workstation-controller/tree/master/software"
+  - path: "https://github.com/wenzel-lab/rio-controller/tree/master/software"
     title: "Rio Microfluidics Controller Software"

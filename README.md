@@ -107,14 +107,14 @@ DOI: [https://dx.doi.org/10.3791/67659](https://dx.doi.org/10.3791/67659)
 
 ## Modules Wish List
 
-* High-pressure source module to replace large gas bottles with a small soda CO2 bottle, developed in this [sub-repository](https://github.com/wenzel-lab/moldular-microfluidics-workstation-controller/tree/master/module-high-pressure-source)
+* High-pressure source module to replace large gas bottles with a small soda CO2 bottle, developed in this [sub-repository](https://github.com/wenzel-lab/rio-controller/tree/master/module-high-pressure-source)
 * Support for small piezo pumps
 * Smart cultivation sleeves for vials, smaller and with OD-tracking - the V2 of our current sample holders and strirrers
 * Microfluidic droplet sorting workstation driven by the droplet workstation tools is described [here](https://github.com/wenzel-lab/droplet-sorter-master/tree/main) (This is being developed in a separate repository).
 
 ## Contributing
 
-Feel free to dive in! [Open an issue](https://github.com/wenzel-lab/moldular-microfluidics-workstation-controller/issues/new).
+Feel free to dive in! [Open an issue](https://github.com/wenzel-lab/rio-controller/issues/new).
 For interactions in our team and with the community applies the [GOSH Code of Conduct](https://openhardware.science/gosh-2017/gosh-code-of-conduct/).
 
 ## License

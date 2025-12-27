@@ -240,7 +240,7 @@ python main.py
 ### Sync Code (from Mac/PC)
 
 ```bash
-cd /Users/twenzel/Documents/GitHub/open-microfluidics-workstation
+cd /Users/twenzel/Documents/GitHub/rio-controller
 ./create-pi-deployment.sh
 rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' pi-deployment/ pi@raspberrypi.local:~/rio-controller/
 ```
