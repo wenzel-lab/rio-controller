@@ -34,6 +34,35 @@ export RIO_HEATER_ENABLED=false    # Hide heater tab if not used
 python main.py
 ```
 
+### 3. Desktop Launcher (Optional)
+
+To create a desktop launcher icon for easy access to the application:
+
+1. **Copy the desktop file:**
+   ```bash
+   # For user-specific (recommended):
+   cp omw.desktop ~/.local/share/applications/
+   
+   # Or for system-wide:
+   sudo cp omw.desktop /usr/share/applications/
+   ```
+
+2. **Make it executable:**
+   ```bash
+   chmod +x ~/.local/share/applications/omw.desktop
+   ```
+
+3. **Refresh the desktop database:**
+   ```bash
+   update-desktop-database ~/.local/share/applications/
+   # Or for system-wide:
+   sudo update-desktop-database /usr/share/applications/
+   ```
+
+After these steps, you should see "Open Microfluidic Workstation" in your applications menu. The launcher will use `run.sh` if available (which sets proper environment variables), or fall back to directly running `python3 main.py`.
+
+**Note:** The desktop launcher opens the application in a terminal window so you can see logs and output.
+
 ## Environment Variables
 
 - `RIO_STROBE_CONTROL_MODE`: `strobe-centric` (32-bit, old firmware) or `camera-centric` (new firmware)

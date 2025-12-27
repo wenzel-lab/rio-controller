@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Open Microfluidic Workstation
+Comment=Rio Microfluidics Controller - Web Interface
+Exec=sh -c "cd /home/pi/rio-controller && if [ -f run.sh ]; then ./run.sh; else python3 main.py; fi"
+Icon=applications-science
+Terminal=true
+Categories=Science;Utility;
+StartupNotify=true
+
