@@ -1,4 +1,4 @@
-# Sample Holder Module
+# Heating and stirring module
 
 <img src="images/sample_holder_with_insert.jpg" width=50%>
 
