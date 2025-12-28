@@ -1,5 +1,5 @@
 Rio Microfluidics Controller - Deployment Package
-Created: Sun 28 Dec 2025 12:46:44 -03
+Created: Sun 28 Dec 2025 12:55:59 -03
 Source: open-microfluidics-workstation/software
 Branch: strobe-rewrite
 
@@ -18,4 +18,4 @@ Excluded:
 - Development files
 - Python cache files
 
-Size: 636K
+Size: 644K

@@ -106,13 +106,50 @@ class ROISelectorRange {
         
         // Update Y-axis slider (vertical) to match image height
         const ySlider = $('#roi_y_range_slider');
+        const ySliderContainer = ySlider.parent();
+        
         if (ySlider.length && ySlider.slider('instance')) {
+            // Update slider dimensions
             ySlider.css({
-                'width': imgHeight + 'px', // Width becomes height after rotation
-                'height': '20px'
+                'height': imgHeight + 'px',
+                'width': '20px'
             });
-            // Recalculate slider dimensions
-            ySlider.slider('refresh');
+            
+            // Update container to match
+            ySliderContainer.css({
+                'height': imgHeight + 'px',
+                'width': '50px'
+            });
+            
+            // Refresh slider to recalculate internal dimensions
+            // Use a small delay to ensure CSS changes are applied
+            setTimeout(() => {
+                try {
+                    ySlider.slider('refresh');
+                } catch (e) {
+                    // If refresh fails, reinitialize with current values
+                    const currentValues = ySlider.slider('values');
+                    ySlider.slider('destroy');
+                    ySlider.slider({
+                        range: true,
+                        min: 0,
+                        max: this.maxHeight,
+                        values: currentValues,
+                        step: this.constraints.offset_y.increment || 1,
+                        orientation: 'vertical',
+                        slide: (event, ui) => {
+                            this.y_min = ui.values[0];
+                            this.y_max = ui.values[1];
+                            this.updateFromRange();
+                        },
+                        change: (event, ui) => {
+                            this.y_min = ui.values[0];
+                            this.y_max = ui.values[1];
+                            this.updateFromRange();
+                        }
+                    });
+                }
+            }, 50);
         }
         
         // Update X-axis slider (horizontal) to match image width
@@ -123,7 +160,13 @@ class ROISelectorRange {
                 'height': '20px'
             });
             // Recalculate slider dimensions
-            xSlider.slider('refresh');
+            setTimeout(() => {
+                try {
+                    xSlider.slider('refresh');
+                } catch (e) {
+                    console.warn('Could not refresh X slider:', e);
+                }
+            }, 50);
         }
     }
     
@@ -158,17 +201,43 @@ class ROISelectorRange {
         });
         
         // Y-axis range slider (dual handles) - vertical orientation
-        // Note: For RPi compatibility, we'll use horizontal orientation with CSS transform
-        // as some browsers on RPi don't handle vertical orientation well
-        const ySliderContainer = $('#roi_y_range_slider').parent();
-        $('#roi_y_range_slider').slider({
+        // Ensure container and slider have proper dimensions before initialization
+        const ySliderElement = $('#roi_y_range_slider');
+        const ySliderContainer = ySliderElement.parent();
+        
+        // Set initial dimensions for vertical slider (will be updated dynamically)
+        // Container needs explicit height for vertical slider to work
+        if (this.img) {
+            const imgRect = this.img.getBoundingClientRect();
+            const initialHeight = imgRect.height || 300; // Fallback to 300px
+            ySliderElement.css({
+                'height': initialHeight + 'px',
+                'width': '20px',
+                'display': 'block',
+                'margin': '0 auto'
+            });
+            // Ensure container can accommodate the slider
+            ySliderContainer.css({
+                'height': initialHeight + 'px',
+                'width': '50px',
+                'display': 'flex',
+                'flex-direction': 'column',
+                'align-items': 'center',
+                'justify-content': 'center'
+            });
+        }
+        
+        // Initialize with vertical orientation - this works reliably when dimensions are set first
+        ySliderElement.slider({
             range: true,
             min: 0,
             max: maxH,
             values: [initialYMin, initialYMax],
             step: this.constraints.offset_y.increment || 1,
-            orientation: 'horizontal', // Use horizontal for RPi compatibility
+            orientation: 'vertical', // True vertical orientation
             slide: (event, ui) => {
+                // For vertical slider: top = smaller value (ui.values[0]), bottom = larger value (ui.values[1])
+                // In image coordinates: top = y_min (smaller), bottom = y_max (larger)
                 this.y_min = ui.values[0];
                 this.y_max = ui.values[1];
                 this.updateFromRange();
@@ -178,13 +247,6 @@ class ROISelectorRange {
                 this.y_max = ui.values[1];
                 this.updateFromRange();
             }
-        });
-        
-        // Apply CSS transform for vertical appearance (works on both Mac and RPi)
-        $('#roi_y_range_slider').css({
-            'transform': 'rotate(-90deg)',
-            'transform-origin': 'center',
-            'position': 'relative'
         });
         
         // Set initial slider values (visible range for UI, but no ROI set yet)

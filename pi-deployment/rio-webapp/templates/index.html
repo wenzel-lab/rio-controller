@@ -157,12 +157,19 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            min-height: 300px; /* Minimum height for initial render */
         }
-        /* Vertical slider - rotated horizontal slider for RPi compatibility */
+        /* Vertical slider - true vertical orientation */
         #roi_y_range_slider {
-            width: 300px !important; /* Will be updated dynamically to match image height */
-            height: 20px !important;
+            height: 300px !important; /* Will be updated dynamically to match image height */
+            width: 20px !important;
             margin: 0 auto;
+            display: block;
+        }
+        /* Ensure vertical slider container has proper dimensions */
+        #roi_y_range_slider.ui-slider-vertical {
+            height: 100% !important;
+            width: 20px !important;
         }
         /* X-axis slider - matches image width */
         #roi_x_range_slider {
