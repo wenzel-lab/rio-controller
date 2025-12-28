@@ -6,8 +6,8 @@
 okh:manifest-version: "1.0"
 okh:project-version: "1.0"
 
-name: "Rio: Modular Microfluidics Workstation Controller"
-description: "An open-source modular microfluidics workstation controller for bioengineering applications, featuring pressure and flow control, heating and stirring, and stroboscopic illumination for microscopy."
+name: "Rio: Modular Microfluidics Controller"
+description: "An open-source modular microfluidics controller for bioengineering applications, featuring pressure and flow control, heating and stirring, and stroboscopic illumination for microscopy."
 
 # Repository information (required for OKH-LD)
 repository:
@@ -200,7 +200,7 @@ modules:
 
 # Intended use and function
 intended-use: "Control of high-end research fluidics platforms, as well as low-resource microfluidics research and teaching."
-function: "Microfluidics workstation controller for droplet microfluidic biological assays with pressure/flow control, heating, stirring, and stroboscopic imaging capabilities"
+function: "Microfluidics controller for droplet microfluidic biological assays with pressure/flow control, heating, stirring, and stroboscopic imaging capabilities"
 
 # Development status
 development-stage: "Prototype"

@@ -71,8 +71,15 @@ class ROISelectorRange {
         this.ctx = this.canvas.getContext('2d');
         this.updateCanvasSize();
         
-        this.img.addEventListener('load', () => this.updateCanvasSize());
-        window.addEventListener('resize', () => this.updateCanvasSize());
+        this.img.addEventListener('load', () => {
+            this.updateCanvasSize();
+            // Delay slider update to ensure image is fully rendered
+            setTimeout(() => this.updateSliderDimensions(), 100);
+        });
+        window.addEventListener('resize', () => {
+            this.updateCanvasSize();
+            setTimeout(() => this.updateSliderDimensions(), 100);
+        });
     }
     
     updateCanvasSize() {
@@ -84,7 +91,40 @@ class ROISelectorRange {
         this.canvas.style.width = rect.width + 'px';
         this.canvas.style.height = rect.height + 'px';
         
+        // Update slider dimensions to match image
+        this.updateSliderDimensions();
+        
         this.draw();
+    }
+    
+    updateSliderDimensions() {
+        if (!this.img) return;
+        
+        const rect = this.img.getBoundingClientRect();
+        const imgHeight = rect.height;
+        const imgWidth = rect.width;
+        
+        // Update Y-axis slider (vertical) to match image height
+        const ySlider = $('#roi_y_range_slider');
+        if (ySlider.length && ySlider.slider('instance')) {
+            ySlider.css({
+                'height': imgHeight + 'px',
+                'width': '20px'
+            });
+            // Recalculate slider dimensions
+            ySlider.slider('refresh');
+        }
+        
+        // Update X-axis slider (horizontal) to match image width
+        const xSlider = $('#roi_x_range_slider');
+        if (xSlider.length && xSlider.slider('instance')) {
+            xSlider.css({
+                'width': imgWidth + 'px',
+                'height': '20px'
+            });
+            // Recalculate slider dimensions
+            xSlider.slider('refresh');
+        }
     }
     
     setupRangeSliders() {
@@ -117,13 +157,17 @@ class ROISelectorRange {
             }
         });
         
-        // Y-axis range slider (dual handles) - visible blue line with handles
+        // Y-axis range slider (dual handles) - vertical orientation
+        // Note: For RPi compatibility, we'll use horizontal orientation with CSS transform
+        // as some browsers on RPi don't handle vertical orientation well
+        const ySliderContainer = $('#roi_y_range_slider').parent();
         $('#roi_y_range_slider').slider({
             range: true,
             min: 0,
             max: maxH,
             values: [initialYMin, initialYMax],
             step: this.constraints.offset_y.increment || 1,
+            orientation: 'horizontal', // Use horizontal for RPi compatibility
             slide: (event, ui) => {
                 this.y_min = ui.values[0];
                 this.y_max = ui.values[1];
@@ -134,6 +178,13 @@ class ROISelectorRange {
                 this.y_max = ui.values[1];
                 this.updateFromRange();
             }
+        });
+        
+        // Apply CSS transform for vertical appearance (works on both Mac and RPi)
+        $('#roi_y_range_slider').css({
+            'transform': 'rotate(-90deg)',
+            'transform-origin': 'center',
+            'position': 'relative'
         });
         
         // Set initial slider values (visible range for UI, but no ROI set yet)
@@ -258,16 +309,10 @@ class ROISelectorRange {
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.clearRect(x, y, w, h);
         
-        // Draw ROI rectangle with blue border
-        this.ctx.strokeStyle = '#0099ff';
+        // Draw ROI rectangle with Ocean Breeze Royal Blue border
+        this.ctx.strokeStyle = '#2196F3'; // Royal Blue
         this.ctx.lineWidth = 3;
         this.ctx.strokeRect(x, y, w, h);
-        
-        // Draw ROI info
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = 'bold 14px Arial';
-        const info = `ROI: (${this.roi.x}, ${this.roi.y}) ${this.roi.width}×${this.roi.height} px`;
-        this.ctx.fillText(info, x + 5, y - 8);
     }
     
     setROI(roi, sendToServer = true) {
@@ -299,6 +344,7 @@ class ROISelectorRange {
         
         this._updatingInputs = true;
         $('#roi_x_range_slider').slider('values', [this.x_min, this.x_max]);
+        // For vertical slider, values map directly (top = y_min, bottom = y_max)
         $('#roi_y_range_slider').slider('values', [this.y_min, this.y_max]);
         $('#roi_x_min').val(this.x_min);
         $('#roi_x_max').val(this.x_max);
@@ -344,6 +390,7 @@ class ROISelectorRange {
         
         this._updatingInputs = true;
         $('#roi_x_range_slider').slider('values', [this.x_min, this.x_max]);
+        // For vertical slider, values map directly (top = y_min, bottom = y_max)
         $('#roi_y_range_slider').slider('values', [this.y_min, this.y_max]);
         $('#roi_x_min').val(this.x_min);
         $('#roi_x_max').val(this.x_max);

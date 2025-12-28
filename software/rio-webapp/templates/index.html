@@ -8,10 +8,10 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         body {
-            background-color: #f5f5f5;
+            background-color: #FFFFFF; /* Pure White - Ocean Breeze */
         }
         .sidebar {
-            background-color: #343a40;
+            background-color: #6c757d; /* Professional Grey */
             min-height: 100vh;
             padding: 20px;
         }
@@ -20,10 +20,119 @@
         }
         .main-content {
             padding: 20px;
+            background-color: #FFFFFF; /* Pure White */
         }
         .card {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
+            background-color: #FFFFFF; /* Pure White */
+            border: 1px solid #E0E0E0; /* Light Gray - Ocean Breeze */
+        }
+        /* Ocean Breeze Color Palette Application */
+        .btn-primary {
+            background-color: #2196F3; /* Royal Blue */
+            border-color: #2196F3;
+        }
+        .btn-primary:hover {
+            background-color: #1565C0; /* Navy Blue */
+            border-color: #1565C0;
+        }
+        .btn-success {
+            background-color: #7FD3D3; /* Light Teal */
+            border-color: #7FD3D3;
+            color: #1565C0; /* Navy Blue text for contrast */
+        }
+        .btn-success:hover {
+            background-color: #1565C0; /* Navy Blue */
+            border-color: #1565C0;
+            color: #FFFFFF;
+        }
+        .btn-outline-primary {
+            color: #2196F3; /* Royal Blue */
+            border-color: #2196F3;
+        }
+        .btn-outline-primary:hover {
+            background-color: #2196F3; /* Royal Blue */
+            border-color: #2196F3;
+            color: #FFFFFF;
+        }
+        .badge.bg-info {
+            background-color: #B3E5FC !important; /* Sky Blue */
+            color: #1565C0; /* Navy Blue text */
+        }
+        .badge.bg-success {
+            background-color: #7FD3D3 !important; /* Light Teal */
+            color: #1565C0; /* Navy Blue text */
+        }
+        .nav-tabs .nav-link.active {
+            background-color: #FFFFFF;
+            border-color: #E0E0E0 #E0E0E0 #FFFFFF;
+            color: #1565C0; /* Navy Blue */
+        }
+        .nav-tabs .nav-link {
+            color: #666666;
+        }
+        .nav-tabs .nav-link:hover {
+            color: #2196F3; /* Royal Blue */
+        }
+        /* UI Best Practices - Improved spacing and readability */
+        .form-label {
+            font-weight: 500;
+            color: #1565C0; /* Navy Blue for labels */
+            margin-bottom: 0.5rem;
+        }
+        .card-title, .card-subtitle {
+            color: #1565C0; /* Navy Blue for headings */
+        }
+        .btn {
+            transition: all 0.2s ease-in-out; /* Smooth transitions */
+        }
+        .btn:focus {
+            box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25); /* Focus ring */
+        }
+        input[type="number"]:focus,
+        select:focus {
+            border-color: #2196F3; /* Royal Blue focus */
+            box-shadow: 0 0 0 0.2rem rgba(33, 150, 243, 0.25);
+        }
+        /* Improved contrast for text */
+        .text-muted {
+            color: #666666 !important;
+        }
+        /* Consistent button heights */
+        .btn-sm {
+            height: 32px;
+            font-size: 0.875rem;
+        }
+        /* Better visual hierarchy */
+        h1, h2, h3, h4, h5, h6 {
+            color: #1565C0; /* Navy Blue */
+            font-weight: 600; /* Semi-bold for better readability */
+        }
+        /* Improved font readability */
+        body {
+            font-weight: 400;
+        }
+        .form-label, label {
+            font-weight: 600; /* Bold labels for better readability */
+            font-size: 0.95rem;
+        }
+        .card-subtitle {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .btn {
+            font-weight: 500; /* Medium weight for buttons */
+        }
+        input[type="number"], input[type="text"], select {
+            font-weight: 500; /* Medium weight for inputs */
+            font-size: 0.95rem;
+        }
+        .badge {
+            font-weight: 500;
+        }
+        small, .text-muted {
+            font-weight: 500; /* Make small text more readable */
         }
         .camera-container {
             position: relative;
@@ -41,6 +150,24 @@
             left: 0;
             pointer-events: auto;
             cursor: crosshair;
+        }
+        /* ROI slider styling - vertical Y slider on left */
+        .roi-y-slider-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Vertical slider - rotated horizontal slider for RPi compatibility */
+        #roi_y_range_slider {
+            width: 300px !important; /* Will be updated dynamically to match image height */
+            height: 20px !important;
+            margin: 0 auto;
+        }
+        /* X-axis slider - matches image width */
+        #roi_x_range_slider {
+            width: 100% !important; /* Will be updated dynamically to match image width */
+            height: 20px !important;
         }
         .debug-info {
             font-size: 0.85em;
@@ -114,51 +241,31 @@
                                             {% import 'camera_none.html' as cam_html %}
                                         {% endif %}
                                         
-                                        <div class="d-flex justify-content-center mb-3">
-                                            <div class="camera-container">
-                                                <img id="camera_image" src="{{ url_for('video') }}" alt="Camera feed" class="img-fluid">
-                                                <!-- ROI preview canvas (read-only visual overlay) -->
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="card mb-3">
-                                            <div class="card-body">
-                                                <h6 class="card-subtitle mb-3">Region of Interest (ROI) Selection</h6>
-                                                <p class="text-muted small mb-3">
-                                                    Adjust sliders to select ROI. Values are in image pixels. 
-                                                    {% if cam.camera == "mako" %}
-                                                    <strong>Mako camera:</strong> ROI will use hardware ROI for increased frame rate.
-                                                    {% elif cam.camera in ["rpi", "rpi_hq"] %}
-                                                    <strong>Pi camera:</strong> ROI will use hardware ROI for increased frame rate and reduced Pi load.
-                                                    {% endif %}
-                                                </p>
-                                                <div class="row g-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">X Range (px)</label>
-                                                        <div class="input-group input-group-sm mb-2">
-                                                            <input type="number" id="roi_x_min" class="form-control" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
-                                                            <span class="input-group-text">to</span>
-                                                            <input type="number" id="roi_x_max" class="form-control" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0">
-                                                            <span class="input-group-text">px</span>
-                                                        </div>
-                                                        <div id="roi_x_range_slider" style="margin: 10px 0;"></div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Y Range (px)</label>
-                                                        <div class="input-group input-group-sm mb-2">
-                                                            <input type="number" id="roi_y_min" class="form-control" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
-                                                            <span class="input-group-text">to</span>
-                                                            <input type="number" id="roi_y_max" class="form-control" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
-                                                            <span class="input-group-text">px</span>
-                                                        </div>
-                                                        <div id="roi_y_range_slider" style="margin: 10px 0;"></div>
+                                        <div class="roi-container-wrapper" style="position: relative; display: inline-block; margin-bottom: 15px; width: 100%;">
+                                            <div class="d-flex align-items-start justify-content-center">
+                                                <!-- Left side: Y-axis slider (vertical) -->
+                                                <div class="roi-y-slider-container" style="width: 50px; margin-right: 10px; padding-top: 20px; flex-shrink: 0;">
+                                                    <div id="roi_y_range_slider" style="height: 300px; margin: 0 auto;"></div>
+                                                    <div class="input-group input-group-sm mt-2" style="flex-direction: column;">
+                                                        <input type="number" id="roi_y_min" class="form-control form-control-sm mb-1" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" style="width: 100%;">
+                                                        <input type="number" id="roi_y_max" class="form-control form-control-sm" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" style="width: 100%;">
                                                     </div>
                                                 </div>
-                                                <div class="mt-3">
-                                                    <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary btn-sm me-2">
-                                                        <span style="font-size: 1.2em;">✕</span> Clear ROI
-                                                    </button>
-                                                    <span id="roi_info" class="badge bg-info">No ROI selected</span>
+                                                
+                                                <!-- Center: Image with ROI overlay -->
+                                                <div class="camera-container" style="flex: 1; max-width: 100%;">
+                                                    <img id="camera_image" src="{{ url_for('video') }}" alt="Camera feed" class="img-fluid">
+                                                    <!-- ROI preview canvas (read-only visual overlay) -->
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Bottom: X-axis slider (horizontal) -->
+                                            <div class="roi-x-slider-container" style="margin-top: 10px; padding-left: 60px;">
+                                                <div id="roi_x_range_slider" style="margin: 0;"></div>
+                                                <div class="input-group input-group-sm mt-2" style="justify-content: center;">
+                                                    <input type="number" id="roi_x_min" class="form-control form-control-sm" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" style="width: 80px;">
+                                                    <span class="input-group-text" style="padding: 0.25rem 0.5rem;">to</span>
+                                                    <input type="number" id="roi_x_max" class="form-control form-control-sm" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" style="width: 80px;">
                                                 </div>
                                             </div>
                                         </div>
@@ -167,6 +274,19 @@
                                             <div class="card">
                                                 <div class="card-body">
                                                     <h6 class="card-subtitle mb-3">Strobe Illumination</h6>
+                                                    <div class="row g-3 align-items-center">
+                                                        <div class="col-md-4 mb-2">
+                                                            <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary w-100" style="height: 38px; font-weight: bold;">📸 Snapshot</button>
+                                                        </div>
+                                                        <div class="col-md-4 mb-2">
+                                                            <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary w-100" style="height: 38px;">
+                                                                <span style="font-size: 1.1em;">✕</span> Clear ROI
+                                                            </button>
+                                                        </div>
+                                                        <div class="col-md-4 mb-2">
+                                                            <span id="roi_info" class="badge bg-info w-100 d-block text-center" style="font-size: 0.9em; padding: 0.5rem; font-weight: 500;">No ROI selected</span>
+                                                        </div>
+                                                    </div>
                                                     <div class="row g-3">
                                                         <div class="col-md-4">
                                                             <label class="form-label">Enable</label>
@@ -189,15 +309,8 @@
                                                             <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success w-100" style="height: 38px;">Optimize</button>
                                                         </div>
                                                         <div class="col-md-6">
-                                                            <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-success w-100" style="height: 45px; font-size: 1.1em; font-weight: bold;">📸 SNAPSHOT</button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="row g-3 mt-2">
-                                                        <div class="col-md-6">
-                                                            <small class="text-muted">Cam Read: <span id="strobe_cam_time_us"></span> μs</small>
-                                                        </div>
-                                                        <div class="col-md-6">
-                                                            <small class="text-muted">FPS: <span id="strobe_framerate"></span></small>
+                                                            <small class="text-muted d-block">Cam Read: <span id="strobe_cam_time_us"></span> μs</small>
+                                                            <small class="text-muted d-block">FPS: <span id="strobe_framerate"></span></small>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -456,11 +569,20 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/ui-lightness/jquery-ui.css">
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
     <style>
-        /* Style ROI range sliders to have blue line (matching ROI box) */
+        /* Style ROI range sliders to match Ocean Breeze palette */
         #roi_x_range_slider .ui-slider-range,
         #roi_y_range_slider .ui-slider-range {
-            background: #0099ff !important;
-            border-color: #0099ff !important;
+            background: #2196F3 !important; /* Royal Blue */
+            border-color: #2196F3 !important;
+        }
+        #roi_x_range_slider .ui-slider-handle,
+        #roi_y_range_slider .ui-slider-handle {
+            border-color: #1565C0 !important; /* Navy Blue */
+            background: #2196F3 !important; /* Royal Blue */
+        }
+        #roi_x_range_slider .ui-slider-handle:hover,
+        #roi_y_range_slider .ui-slider-handle:hover {
+            background: #7FD3D3 !important; /* Light Teal */
         }
     </style>
     <!-- Socket.IO client v2.3.0 - compatible with Flask-SocketIO 4.3.2 + python-engineio 3.13.2 -->
@@ -501,11 +623,11 @@
         // ROI update function
         function updateROIInfo() {
             var roiInfo = document.getElementById('roi_info');
-            if (roiInfo && typeof roiSelectorSimple !== 'undefined' && roiSelectorSimple) {
-                var roi = roiSelectorSimple.getROI();
+            if (roiInfo && typeof roiSelectorRange !== 'undefined' && roiSelectorRange) {
+                var roi = roiSelectorRange.getROI();
                 if (roi) {
                     roiInfo.textContent = 
-                        'ROI: (' + roi.x + ', ' + roi.y + ') ' + roi.width + '×' + roi.height + ' px';
+                        'ROI: ' + roi.width + '×' + roi.height + ' px';
                     roiInfo.className = 'badge bg-success';
                 } else {
                     roiInfo.textContent = 'No ROI selected';

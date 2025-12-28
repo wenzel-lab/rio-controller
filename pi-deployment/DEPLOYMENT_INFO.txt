@@ -1,5 +1,5 @@
 Rio Microfluidics Controller - Deployment Package
-Created: Sun 28 Dec 2025 11:08:59 -03
+Created: Sun 28 Dec 2025 12:46:44 -03
 Source: open-microfluidics-workstation/software
 Branch: strobe-rewrite
 
