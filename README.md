@@ -101,7 +101,7 @@ The software follows a client-server architecture and allows users to control th
 
 ## Read the Paper
 
-"Rio" has been employed in the article ["Plasmid Stability Analysis with Open-Source Droplet Microfluidics"](https://app.jove.com/t/67659/plasmid-stability-analysis-with-open-source-droplet-microfluidics), published in JoVE in December 2024.
+"Rio" has been employed in the article ["Plasmid Stability Analysis with Open-Source Droplet Microfluidics"](https://app.jove.com/t/67659/plasmid-stability-analysis-with-open-source-droplet-microfluidics), published in JoVE in December 2024. Please cite this article when using our hardware system.
 
 DOI: [https://dx.doi.org/10.3791/67659](https://dx.doi.org/10.3791/67659)
 
@@ -115,14 +115,12 @@ DOI: [https://dx.doi.org/10.3791/67659](https://dx.doi.org/10.3791/67659)
 ## Contributing
 
 Feel free to dive in! [Open an issue](https://github.com/wenzel-lab/rio-controller/issues/new).
-For interactions in our team and with the community applies the [GOSH Code of Conduct](https://openhardware.science/gosh-2017/gosh-code-of-conduct/).
+For interactions in our team and with the community applies the [GOSH Code of Conduct](https://openhardware.science/gosh-2017/gosh-code-of-conduct/). If you want to get involved in our research, please see the [website of our team](https://wenzel-lab.github.io/en/).
 
 ## License
 
-**Hardware:** All source files located in the `hardware-modules` directories (including firmware, PCB designs, and documentation) are released under the [CERN-OHL-W-2.0](https://ohwr.org/cern_ohl_w_v2.txt) license.
+**Hardware:** All source files located in the `hardware-modules` directories (including firmware, PCB designs, and documentation) and documentation are released under the [CERN-OHL-W-2.0](https://ohwr.org/cern_ohl_w_v2.txt) license.
 
 **Software:** The source codes located in the `software` directory are released under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.en.html) license.
 
-**Other materials:** All other materials, including instructions and pictures, are released under the [Creative Commons CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) license.
-
-© Tobias Wenzel, Christie Nel, and Pierre Padilla-Huamantinco. This project is Open-Source Hardware - please acknowledge us when using the hardware or sharing modifications.
+© Tobias Wenzel, Christie Nel, and Pierre Padilla-Huamantinco. This project is Open-Source Hardware - please cite and acknowledge us when using the hardware or sharing modifications.
