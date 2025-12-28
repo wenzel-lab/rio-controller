@@ -72,3 +72,4 @@ $RECYCLE.BIN/
 # Project-specific test snapshots (uncomment if you want to exclude)
 # software/home/pi/snapshots/*.jpg
 
+/docs
