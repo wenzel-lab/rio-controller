@@ -66,23 +66,11 @@ A _module_ commonly consists of a compact controller, sensors, and actuators, an
 
 ### Software
 
-The software follows a client-server architecture and allows users to control the physical hardware through a graphical interface. It runs on a Raspberry Pi (32-bit or 64-bit operating system).
+The software follows a client-server architecture and allows users to control the physical hardware through a graphical interface. It runs on a Raspberry Pi (32-bit bullseye, or 64-bit operating system).
 
 **Installation and Usage:**
 - For detailed software installation and usage instructions, see [software/README.md](software/README.md)
 - For Raspberry Pi deployment instructions, see [pi-deployment/README.md](pi-deployment/README.md)
-
-<table>
-<tr>
-    <td align="center"><b>Web UI</b></td>
-</tr>
-<tr>
-    <td align="center"><img src="software/images/web-ui.png" width=800 alt="Web User Interface" /></td>
-</tr>
-<tr>
-    <td align="center"><a href="software/"><br><b>Source Code</b></a><br><br></td>
-</tr>
-</table>
 
 **Features:**
 - Real-time camera control with strobe synchronization
