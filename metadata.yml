@@ -1,5 +1,0 @@
-title: "Rio: Modular Microfluidics Workstation Controller"
-description: "An open-source modular microfluidics workstation controller."
-topics: ["open-hardware", "microfluidics", "bioengineering", "electronics", "flow-control", "raspberry-pi"]
-license: "CERN-OHL-2-W"
-docs_url: "https://github.com/wenzel-lab/rio-controller"
