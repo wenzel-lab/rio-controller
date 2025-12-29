@@ -28,13 +28,17 @@ fi
 echo "✓ Found requirements file: $REQ_FILE"
 echo ""
 
-# Create virtual environment
+# Create virtual environment with system site packages
+# This allows access to system-wide hardware packages (spidev, RPi.GPIO, picamera)
+# while still isolating the Socket.IO packages for testing
 if [ ! -d "venv-socketio-test" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv-socketio-test
+    echo "Creating virtual environment with system site packages..."
+    echo "(This allows access to hardware libraries like spidev, RPi.GPIO, picamera)"
+    python3 -m venv --system-site-packages venv-socketio-test
     echo "✓ Virtual environment created"
 else
     echo "Virtual environment already exists"
+    echo "Note: If you have issues, delete it and recreate: rm -rf venv-socketio-test"
 fi
 
 # Activate and install

@@ -33,6 +33,11 @@ PyYAML>=6.0
 # - spidev==3.6 (you have 3.6 ✓)
 # - RPi.GPIO==0.7.1 (you have 0.7.1 ✓)
 # - picamera==1.13 (you have 1.13 ✓)
+#
+# IMPORTANT: When using a virtual environment for testing, create it with:
+#   python3 -m venv --system-site-packages venv-socketio-test
+# This allows the venv to access system-wide hardware packages while
+# isolating the Socket.IO packages for testing.
 
 # Install with:
 # python3 -m venv venv-rio-test
