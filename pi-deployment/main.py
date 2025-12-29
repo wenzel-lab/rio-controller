@@ -129,7 +129,17 @@ try:
     try:
         import socketio
         import engineio
-        logger.info(f"Socket.IO versions: python-socketio={socketio.__version__}, python-engineio={engineio.__version__}")
+        import pkg_resources
+        # python-socketio 5.x may not have __version__, use pkg_resources
+        try:
+            socketio_version = socketio.__version__
+        except AttributeError:
+            socketio_version = pkg_resources.get_distribution('python-socketio').version
+        try:
+            engineio_version = engineio.__version__
+        except AttributeError:
+            engineio_version = pkg_resources.get_distribution('python-engineio').version
+        logger.info(f"Socket.IO versions: python-socketio={socketio_version}, python-engineio={engineio_version}")
         logger.info(f"python-socketio location: {socketio.__file__}")
         logger.info(f"python-engineio location: {engineio.__file__}")
     except Exception as e:

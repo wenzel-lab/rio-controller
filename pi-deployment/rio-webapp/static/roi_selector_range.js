@@ -372,14 +372,16 @@ class ROISelectorRange {
             const dist1 = Math.abs(value - this.customVerticalSlider.value1);
             const dist2 = Math.abs(value - this.customVerticalSlider.value2);
             
+            // In vertical slider: top handle (handle1) = y_min, bottom handle (handle2) = y_max
             if (dist1 < dist2) {
+                // Top handle controls y_min
                 this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
+                this.y_min = this.customVerticalSlider.value1;
             } else {
+                // Bottom handle controls y_max
                 this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
+                this.y_max = this.customVerticalSlider.value2;
             }
-            
-            this.y_min = Math.min(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
-            this.y_max = Math.max(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
             
             this.customVerticalSlider.updateDisplay();
             this.updateFromRange();
