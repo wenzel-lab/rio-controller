@@ -64,11 +64,18 @@ try:
     import flask_socketio
     import socketio
     import engineio
-    print(f'  Flask-SocketIO: {flask_socketio.__version__}')
+    # Flask-SocketIO 5.x uses __version__ but may need to check package metadata
+    try:
+        fs_version = flask_socketio.__version__
+    except AttributeError:
+        import pkg_resources
+        fs_version = pkg_resources.get_distribution('Flask-SocketIO').version
+    print(f'  Flask-SocketIO: {fs_version}')
     print(f'  python-socketio: {socketio.__version__}')
     print(f'  python-engineio: {engineio.__version__}')
-except ImportError as e:
-    print(f'  Error importing: {e}')
+except Exception as e:
+    print(f'  Error checking versions: {e}')
+    print('  (But packages may still be installed correctly)')
 "
 
 echo ""
