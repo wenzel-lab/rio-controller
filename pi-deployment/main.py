@@ -135,7 +135,9 @@ try:
     except Exception as e:
         logger.warning(f"Could not check Socket.IO versions: {e}")
     
-    socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+    # Flask-SocketIO 5.x: allowEIO3 for backward compatibility with older clients
+    # This helps with protocol negotiation
+    socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*", allowEIO3=True)
     logger.info("Step 3: SocketIO instance created successfully")
 except Exception as e:
     logger.error(f"Step 3: SocketIO creation failed: {e}")

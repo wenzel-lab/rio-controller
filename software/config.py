@@ -40,7 +40,7 @@ SNAPSHOT_RESOLUTION_FULL = "full"  # Use full sensor resolution
 SNAPSHOT_RESOLUTION_CUSTOM = "custom"  # Use custom resolution
 
 # Strobe Configuration
-STROBE_DEFAULT_PERIOD_NS = 100000  # 100 microseconds (reverted from 20µs - 20µs was too short causing black lines)
+STROBE_DEFAULT_PERIOD_NS = 20000  # 20 microseconds
 STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds
 STROBE_PRE_PADDING_NS = 32  # Pre-padding before strobe pulse
 STROBE_POST_PADDING_NS = 20000000  # Post-padding after strobe pulse

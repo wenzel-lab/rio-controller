@@ -598,11 +598,14 @@
     
     <script type="text/javascript">
         // Initialize Socket.IO FIRST (functions need it)
+        // Flask-SocketIO 5.x with Engine.IO 4.x requires allowEIO3 for backward compatibility
         var socket = io({
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionDelay: 1000,
-            reconnectionAttempts: 5
+            reconnectionAttempts: 5,
+            // Allow Engine.IO 3.x protocol for compatibility with Flask-SocketIO 5.x
+            allowEIO3: true
         });
         
         // Debug: Log connection state

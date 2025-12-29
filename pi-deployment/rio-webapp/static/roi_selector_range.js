@@ -74,11 +74,23 @@ class ROISelectorRange {
         this.img.addEventListener('load', () => {
             this.updateCanvasSize();
             // Delay slider update to ensure image is fully rendered
-            setTimeout(() => this.updateSliderDimensions(), 100);
+            setTimeout(() => {
+                this.updateSliderDimensions();
+                // Force update of custom vertical slider display
+                if (this.customVerticalSlider) {
+                    this.customVerticalSlider.updateDisplay();
+                }
+            }, 100);
         });
         window.addEventListener('resize', () => {
             this.updateCanvasSize();
-            setTimeout(() => this.updateSliderDimensions(), 100);
+            setTimeout(() => {
+                this.updateSliderDimensions();
+                // Force update of custom vertical slider display
+                if (this.customVerticalSlider) {
+                    this.customVerticalSlider.updateDisplay();
+                }
+            }, 100);
         });
     }
     
@@ -104,52 +116,9 @@ class ROISelectorRange {
         const imgHeight = rect.height;
         const imgWidth = rect.width;
         
-        // Update Y-axis slider (vertical) to match image height
-        const ySlider = $('#roi_y_range_slider');
-        const ySliderContainer = ySlider.parent();
-        
-        if (ySlider.length && ySlider.slider('instance')) {
-            // Update slider dimensions
-            ySlider.css({
-                'height': imgHeight + 'px',
-                'width': '20px'
-            });
-            
-            // Update container to match
-            ySliderContainer.css({
-                'height': imgHeight + 'px',
-                'width': '50px'
-            });
-            
-            // Refresh slider to recalculate internal dimensions
-            // Use a small delay to ensure CSS changes are applied
-            setTimeout(() => {
-                try {
-                    ySlider.slider('refresh');
-                } catch (e) {
-                    // If refresh fails, reinitialize with current values
-                    const currentValues = ySlider.slider('values');
-                    ySlider.slider('destroy');
-                    ySlider.slider({
-                        range: true,
-                        min: 0,
-                        max: this.maxHeight,
-                        values: currentValues,
-                        step: this.constraints.offset_y.increment || 1,
-                        orientation: 'vertical',
-                        slide: (event, ui) => {
-                            this.y_min = ui.values[0];
-                            this.y_max = ui.values[1];
-                            this.updateFromRange();
-                        },
-                        change: (event, ui) => {
-                            this.y_min = ui.values[0];
-                            this.y_max = ui.values[1];
-                            this.updateFromRange();
-                        }
-                    });
-                }
-            }, 50);
+        // Update custom vertical Y-axis slider to match image height
+        if (this.customVerticalSlider) {
+            this.customVerticalSlider.updateDimensions(imgHeight);
         }
         
         // Update X-axis slider (horizontal) to match image width
@@ -168,6 +137,253 @@ class ROISelectorRange {
                 }
             }, 50);
         }
+    }
+    
+    setupCustomVerticalSlider(maxH, initialYMin, initialYMax) {
+        // Create custom vertical slider that works reliably on all platforms
+        const sliderContainer = $('#roi_y_range_slider').parent();
+        const sliderElement = $('#roi_y_range_slider');
+        
+        // Clear any existing jQuery UI slider
+        if (sliderElement.slider('instance')) {
+            sliderElement.slider('destroy');
+        }
+        
+        // Get initial height from image if available
+        let initialHeight = 300; // Default fallback
+        if (this.img) {
+            const imgRect = this.img.getBoundingClientRect();
+            if (imgRect.height > 0) {
+                initialHeight = imgRect.height;
+            }
+        }
+        
+        // Create custom slider structure
+        sliderElement.empty();
+        sliderElement.css({
+            'position': 'relative',
+            'width': '20px',
+            'height': initialHeight + 'px', // Match image height
+            'margin': '0 auto',
+            'background': '#E0E0E0',
+            'border-radius': '10px',
+            'cursor': 'pointer'
+        });
+        
+        // Create slider track
+        const track = $('<div></div>').css({
+            'position': 'absolute',
+            'left': '0',
+            'top': '0',
+            'width': '100%',
+            'height': '100%',
+            'background': 'transparent'
+        });
+        sliderElement.append(track);
+        
+        // Create range highlight
+        const range = $('<div></div>').css({
+            'position': 'absolute',
+            'left': '0',
+            'width': '100%',
+            'background': '#2196F3',
+            'border-radius': '10px',
+            'pointer-events': 'none'
+        });
+        sliderElement.append(range);
+        
+        // Create handles
+        const handle1 = $('<div></div>').css({
+            'position': 'absolute',
+            'left': '-5px',
+            'width': '30px',
+            'height': '20px',
+            'background': '#2196F3',
+            'border': '2px solid #1565C0',
+            'border-radius': '10px',
+            'cursor': 'ns-resize',
+            'z-index': '10',
+            'box-shadow': '0 2px 4px rgba(0,0,0,0.2)',
+            'transition': 'background 0.2s ease'
+        }).on('mouseenter', function() {
+            $(this).css('background', '#7FD3D3');
+        }).on('mouseleave', function() {
+            $(this).css('background', '#2196F3');
+        });
+        const handle2 = $('<div></div>').css({
+            'position': 'absolute',
+            'left': '-5px',
+            'width': '30px',
+            'height': '20px',
+            'background': '#2196F3',
+            'border': '2px solid #1565C0',
+            'border-radius': '10px',
+            'cursor': 'ns-resize',
+            'z-index': '10',
+            'box-shadow': '0 2px 4px rgba(0,0,0,0.2)',
+            'transition': 'background 0.2s ease'
+        }).on('mouseenter', function() {
+            $(this).css('background', '#7FD3D3');
+        }).on('mouseleave', function() {
+            $(this).css('background', '#2196F3');
+        });
+        sliderElement.append(handle1);
+        sliderElement.append(handle2);
+        
+        // Store references
+        this.customVerticalSlider = {
+            element: sliderElement,
+            track: track,
+            range: range,
+            handle1: handle1,
+            handle2: handle2,
+            maxValue: maxH,
+            minValue: 0,
+            value1: initialYMin,
+            value2: initialYMax,
+            dragging: null,
+            updateDimensions: (height) => {
+                sliderElement.css('height', height + 'px');
+                this.customVerticalSlider.updateDisplay();
+            },
+            updateDisplay: () => {
+                const height = sliderElement.height();
+                const max = this.customVerticalSlider.maxValue;
+                const val1 = this.customVerticalSlider.value1;
+                const val2 = this.customVerticalSlider.value2;
+                
+                // Convert values to positions (top = 0, bottom = max)
+                const pos1 = (val1 / max) * height;
+                const pos2 = (val2 / max) * height;
+                
+                // Update handles
+                handle1.css('top', (pos1 - 10) + 'px');
+                handle2.css('top', (pos2 - 10) + 'px');
+                
+                // Update range highlight
+                const topPos = Math.min(pos1, pos2);
+                const rangeHeight = Math.abs(pos2 - pos1);
+                range.css({
+                    'top': topPos + 'px',
+                    'height': rangeHeight + 'px'
+                });
+            },
+            valueToPosition: (value) => {
+                const height = sliderElement.height();
+                return (value / this.customVerticalSlider.maxValue) * height;
+            },
+            positionToValue: (position) => {
+                const height = sliderElement.height();
+                const value = (position / height) * this.customVerticalSlider.maxValue;
+                return Math.max(0, Math.min(this.customVerticalSlider.maxValue, Math.round(value)));
+            }
+        };
+        
+        // Set initial values
+        this.y_min = initialYMin;
+        this.y_max = initialYMax;
+        this.customVerticalSlider.updateDisplay();
+        
+        // Mouse and touch event handlers
+        const handleMouseDown = (e, handle) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.customVerticalSlider.dragging = handle;
+            $(document).on('mousemove.verticalSlider', handleMouseMove);
+            $(document).on('mouseup.verticalSlider', handleMouseUp);
+        };
+        
+        const handleMouseMove = (e) => {
+            if (!this.customVerticalSlider.dragging) return;
+            e.preventDefault();
+            
+            const rect = sliderElement[0].getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const value = this.customVerticalSlider.positionToValue(y);
+            
+            if (this.customVerticalSlider.dragging === handle1) {
+                this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
+            } else {
+                this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
+            }
+            
+            this.y_min = Math.min(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
+            this.y_max = Math.max(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
+            
+            this.customVerticalSlider.updateDisplay();
+            this.updateFromRange();
+        };
+        
+        const handleMouseUp = (e) => {
+            this.customVerticalSlider.dragging = null;
+            $(document).off('mousemove.verticalSlider');
+            $(document).off('mouseup.verticalSlider');
+        };
+        
+        // Attach event handlers
+        handle1.on('mousedown', (e) => handleMouseDown(e, handle1));
+        handle2.on('mousedown', (e) => handleMouseDown(e, handle2));
+        
+        // Touch support
+        const handleTouchStart = (e, handle) => {
+            e.preventDefault();
+            this.customVerticalSlider.dragging = handle;
+            const touch = e.originalEvent.touches[0];
+            $(document).on('touchmove.verticalSlider', handleTouchMove);
+            $(document).on('touchend.verticalSlider', handleTouchEnd);
+        };
+        
+        const handleTouchMove = (e) => {
+            if (!this.customVerticalSlider.dragging) return;
+            e.preventDefault();
+            const touch = e.originalEvent.touches[0];
+            const rect = sliderElement[0].getBoundingClientRect();
+            const y = touch.clientY - rect.top;
+            const value = this.customVerticalSlider.positionToValue(y);
+            
+            if (this.customVerticalSlider.dragging === handle1) {
+                this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
+            } else {
+                this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
+            }
+            
+            this.y_min = Math.min(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
+            this.y_max = Math.max(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
+            
+            this.customVerticalSlider.updateDisplay();
+            this.updateFromRange();
+        };
+        
+        const handleTouchEnd = (e) => {
+            this.customVerticalSlider.dragging = null;
+            $(document).off('touchmove.verticalSlider');
+            $(document).off('touchend.verticalSlider');
+        };
+        
+        handle1.on('touchstart', (e) => handleTouchStart(e, handle1));
+        handle2.on('touchstart', (e) => handleTouchStart(e, handle2));
+        
+        // Click on track to move nearest handle
+        track.on('click', (e) => {
+            const rect = sliderElement[0].getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const value = this.customVerticalSlider.positionToValue(y);
+            
+            const dist1 = Math.abs(value - this.customVerticalSlider.value1);
+            const dist2 = Math.abs(value - this.customVerticalSlider.value2);
+            
+            if (dist1 < dist2) {
+                this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
+            } else {
+                this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
+            }
+            
+            this.y_min = Math.min(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
+            this.y_max = Math.max(this.customVerticalSlider.value1, this.customVerticalSlider.value2);
+            
+            this.customVerticalSlider.updateDisplay();
+            this.updateFromRange();
+        });
     }
     
     setupRangeSliders() {
@@ -200,54 +416,9 @@ class ROISelectorRange {
             }
         });
         
-        // Y-axis range slider (dual handles) - vertical orientation
-        // Ensure container and slider have proper dimensions before initialization
-        const ySliderElement = $('#roi_y_range_slider');
-        const ySliderContainer = ySliderElement.parent();
-        
-        // Set initial dimensions for vertical slider (will be updated dynamically)
-        // Container needs explicit height for vertical slider to work
-        if (this.img) {
-            const imgRect = this.img.getBoundingClientRect();
-            const initialHeight = imgRect.height || 300; // Fallback to 300px
-            ySliderElement.css({
-                'height': initialHeight + 'px',
-                'width': '20px',
-                'display': 'block',
-                'margin': '0 auto'
-            });
-            // Ensure container can accommodate the slider
-            ySliderContainer.css({
-                'height': initialHeight + 'px',
-                'width': '50px',
-                'display': 'flex',
-                'flex-direction': 'column',
-                'align-items': 'center',
-                'justify-content': 'center'
-            });
-        }
-        
-        // Initialize with vertical orientation - this works reliably when dimensions are set first
-        ySliderElement.slider({
-            range: true,
-            min: 0,
-            max: maxH,
-            values: [initialYMin, initialYMax],
-            step: this.constraints.offset_y.increment || 1,
-            orientation: 'vertical', // True vertical orientation
-            slide: (event, ui) => {
-                // For vertical slider: top = smaller value (ui.values[0]), bottom = larger value (ui.values[1])
-                // In image coordinates: top = y_min (smaller), bottom = y_max (larger)
-                this.y_min = ui.values[0];
-                this.y_max = ui.values[1];
-                this.updateFromRange();
-            },
-            change: (event, ui) => {
-                this.y_min = ui.values[0];
-                this.y_max = ui.values[1];
-                this.updateFromRange();
-            }
-        });
+        // Y-axis range slider - CUSTOM VERTICAL IMPLEMENTATION
+        // jQuery UI vertical orientation is unreliable, so we use a custom implementation
+        this.setupCustomVerticalSlider(maxH, initialYMin, initialYMax);
         
         // Set initial slider values (visible range for UI, but no ROI set yet)
         // Sliders are initialized with a visible range so handles are visible at both ends
@@ -338,7 +509,12 @@ class ROISelectorRange {
             if (min !== this.y_min || max !== this.y_max) {
                 this.y_min = min;
                 this.y_max = max;
-                $('#roi_y_range_slider').slider('values', [min, max]);
+                // Update custom vertical slider
+                if (this.customVerticalSlider) {
+                    this.customVerticalSlider.value1 = min;
+                    this.customVerticalSlider.value2 = max;
+                    this.customVerticalSlider.updateDisplay();
+                }
                 this.updateFromRange();
             }
         });
@@ -406,8 +582,12 @@ class ROISelectorRange {
         
         this._updatingInputs = true;
         $('#roi_x_range_slider').slider('values', [this.x_min, this.x_max]);
-        // For vertical slider, values map directly (top = y_min, bottom = y_max)
-        $('#roi_y_range_slider').slider('values', [this.y_min, this.y_max]);
+        // Update custom vertical slider
+        if (this.customVerticalSlider) {
+            this.customVerticalSlider.value1 = this.y_min;
+            this.customVerticalSlider.value2 = this.y_max;
+            this.customVerticalSlider.updateDisplay();
+        }
         $('#roi_x_min').val(this.x_min);
         $('#roi_x_max').val(this.x_max);
         $('#roi_y_min').val(this.y_min);
@@ -452,8 +632,12 @@ class ROISelectorRange {
         
         this._updatingInputs = true;
         $('#roi_x_range_slider').slider('values', [this.x_min, this.x_max]);
-        // For vertical slider, values map directly (top = y_min, bottom = y_max)
-        $('#roi_y_range_slider').slider('values', [this.y_min, this.y_max]);
+        // Update custom vertical slider
+        if (this.customVerticalSlider) {
+            this.customVerticalSlider.value1 = this.y_min;
+            this.customVerticalSlider.value2 = this.y_max;
+            this.customVerticalSlider.updateDisplay();
+        }
         $('#roi_x_min').val(this.x_min);
         $('#roi_x_max').val(this.x_max);
         $('#roi_y_min').val(this.y_min);
