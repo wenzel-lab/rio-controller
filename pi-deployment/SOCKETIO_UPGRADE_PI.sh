@@ -31,20 +31,36 @@ echo ""
 # Create virtual environment with system site packages
 # This allows access to system-wide hardware packages (spidev, RPi.GPIO, picamera)
 # while still isolating the Socket.IO packages for testing
-if [ ! -d "venv-socketio-test" ]; then
+if [ ! -d "venv-socketio-test" ] || [ ! -f "venv-socketio-test/bin/activate" ]; then
+    if [ -d "venv-socketio-test" ]; then
+        echo "Removing broken virtual environment..."
+        rm -rf venv-socketio-test
+    fi
     echo "Creating virtual environment with system site packages..."
     echo "(This allows access to hardware libraries like spidev, RPi.GPIO, picamera)"
     python3 -m venv --system-site-packages venv-socketio-test
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to create virtual environment"
+        exit 1
+    fi
     echo "✓ Virtual environment created"
 else
     echo "Virtual environment already exists"
-    echo "Note: If you have issues, delete it and recreate: rm -rf venv-socketio-test"
 fi
 
 # Activate and install
 echo ""
 echo "Activating virtual environment..."
+if [ ! -f "venv-socketio-test/bin/activate" ]; then
+    echo "ERROR: Virtual environment activation script not found"
+    echo "Please delete and recreate: rm -rf venv-socketio-test"
+    exit 1
+fi
 source venv-socketio-test/bin/activate
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to activate virtual environment"
+    exit 1
+fi
 
 echo "Upgrading pip..."
 pip install --upgrade pip --quiet
