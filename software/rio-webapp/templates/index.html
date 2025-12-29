@@ -159,17 +159,12 @@
             justify-content: center;
             min-height: 300px; /* Minimum height for initial render */
         }
-        /* Vertical slider - true vertical orientation */
+        /* Custom vertical slider styling */
         #roi_y_range_slider {
-            height: 300px !important; /* Will be updated dynamically to match image height */
+            min-height: 100px; /* Minimum height */
             width: 20px !important;
             margin: 0 auto;
             display: block;
-        }
-        /* Ensure vertical slider container has proper dimensions */
-        #roi_y_range_slider.ui-slider-vertical {
-            height: 100% !important;
-            width: 20px !important;
         }
         /* X-axis slider - matches image width */
         #roi_x_range_slider {
@@ -252,7 +247,7 @@
                                             <div class="d-flex align-items-start justify-content-center">
                                                 <!-- Left side: Y-axis slider (vertical) -->
                                                 <div class="roi-y-slider-container" style="width: 50px; margin-right: 10px; padding-top: 20px; flex-shrink: 0;">
-                                                    <div id="roi_y_range_slider" style="height: 300px; margin: 0 auto;"></div>
+                                                    <div id="roi_y_range_slider"></div>
                                                     <div class="input-group input-group-sm mt-2" style="flex-direction: column;">
                                                         <input type="number" id="roi_y_min" class="form-control form-control-sm mb-1" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" style="width: 100%;">
                                                         <input type="number" id="roi_y_max" class="form-control form-control-sm" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" style="width: 100%;">
@@ -577,23 +572,26 @@
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
     <style>
         /* Style ROI range sliders to match Ocean Breeze palette */
-        #roi_x_range_slider .ui-slider-range,
-        #roi_y_range_slider .ui-slider-range {
+        /* X-axis slider (jQuery UI) */
+        #roi_x_range_slider .ui-slider-range {
             background: #2196F3 !important; /* Royal Blue */
             border-color: #2196F3 !important;
         }
-        #roi_x_range_slider .ui-slider-handle,
-        #roi_y_range_slider .ui-slider-handle {
+        #roi_x_range_slider .ui-slider-handle {
             border-color: #1565C0 !important; /* Navy Blue */
             background: #2196F3 !important; /* Royal Blue */
         }
-        #roi_x_range_slider .ui-slider-handle:hover,
-        #roi_y_range_slider .ui-slider-handle:hover {
+        #roi_x_range_slider .ui-slider-handle:hover {
             background: #7FD3D3 !important; /* Light Teal */
+        }
+        /* Custom vertical Y-axis slider - handles styled in JavaScript */
+        #roi_y_range_slider div[style*="background: #2196F3"]:hover {
+            background: #7FD3D3 !important; /* Light Teal on hover */
         }
     </style>
     <!-- Socket.IO client v2.3.0 - compatible with Flask-SocketIO 4.3.2 + python-engineio 3.13.2 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+    <!-- Socket.IO client - upgraded to v4.7.2 for compatibility with Flask-SocketIO 5.x -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- ROI Selector - Range slider-based (dual handles for min/max) -->
     <script src="{{ url_for('static', filename='roi_selector_range.js') }}"></script>
