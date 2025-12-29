@@ -10,17 +10,26 @@ echo "=========================================="
 echo ""
 
 # Check if we're in the right directory
-if [ ! -f "pi-deployment/requirements-webapp-only-32bit-upgraded.txt" ]; then
+# The file should be in the current directory (pi-deployment) or in pi-deployment subdirectory
+if [ -f "requirements-webapp-only-32bit-upgraded.txt" ]; then
+    REQ_FILE="requirements-webapp-only-32bit-upgraded.txt"
+elif [ -f "pi-deployment/requirements-webapp-only-32bit-upgraded.txt" ]; then
+    REQ_FILE="pi-deployment/requirements-webapp-only-32bit-upgraded.txt"
+else
     echo "ERROR: requirements file not found!"
     echo "Current directory: $(pwd)"
     echo ""
-    echo "Please run this script from the rio-controller directory:"
+    echo "Please run this script from the rio-controller directory on the Pi:"
     echo "  cd ~/rio-controller"
     echo "  ./SOCKETIO_UPGRADE_PI.sh"
+    echo ""
+    echo "Or make sure you've deployed the latest code with:"
+    echo "  ./create-pi-deployment.sh"
+    echo "  rsync -avz --delete ... pi-deployment/ pi@raspberrypi.local:~/rio-controller/"
     exit 1
 fi
 
-echo "✓ Found requirements file"
+echo "✓ Found requirements file: $REQ_FILE"
 echo ""
 
 # Create virtual environment
@@ -42,7 +51,7 @@ pip install --upgrade pip --quiet
 
 echo "Installing upgraded Socket.IO packages..."
 echo "(This may take a few minutes...)"
-pip install -r pi-deployment/requirements-webapp-only-32bit-upgraded.txt
+pip install -r "$REQ_FILE"
 
 echo ""
 echo "=========================================="
