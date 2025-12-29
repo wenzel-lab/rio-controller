@@ -35,11 +35,12 @@ PyYAML>=6.0
 # - picamera==1.13 (you have 1.13 ✓)
 
 # Install with:
-# python3 -m venv venv-socketio-test
-# source venv-socketio-test/bin/activate
+# python3 -m venv venv-rio-test
+# source venv-rio-test/bin/activate
 # pip install -r requirements-webapp-only-32bit-upgraded.txt
 
 # IMPORTANT: Flask-SocketIO 5.x is backward compatible with Socket.IO client v2.3.0
 # The server will automatically handle the protocol negotiation.
 # However, you may want to update the client to Socket.IO v4.x for better performance:
 # <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+
