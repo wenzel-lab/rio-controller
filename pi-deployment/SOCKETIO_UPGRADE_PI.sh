@@ -55,10 +55,11 @@ pip install -r "$REQ_FILE"
 
 # Force install eventlet in venv to override system version
 # This is needed because --system-site-packages sees system eventlet first
+# Install dependencies first, then force reinstall eventlet
 echo ""
 echo "Ensuring eventlet is installed in venv (overrides system version)..."
-pip install --force-reinstall --no-deps "eventlet>=0.33.0,<1.0.0"
 pip install "dnspython>=1.15.0" "greenlet>=0.3" "six>=1.10.0"
+pip install --force-reinstall --no-deps "eventlet>=0.33.0,<1.0.0"
 
 echo ""
 echo "=========================================="
