@@ -60,11 +60,6 @@ cp -r "$SOURCE_DIR/configurations" "$DEPLOY_DIR/"
 # Requirements file
 cp "$SOURCE_DIR/requirements-webapp-only-32bit.txt" "$DEPLOY_DIR/"
 
-# Upgraded requirements file (for Socket.IO upgrade testing)
-if [ -f "$SOURCE_DIR/requirements-webapp-only-32bit-upgraded.txt" ]; then
-    cp "$SOURCE_DIR/requirements-webapp-only-32bit-upgraded.txt" "$DEPLOY_DIR/"
-fi
-
 # Create setup script for Pi
 cat > "$DEPLOY_DIR/setup.sh" << 'EOF'
 #!/bin/bash
