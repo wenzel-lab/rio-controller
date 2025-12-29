@@ -22,7 +22,8 @@ This will:
 
 ```bash
 cd ~/rio-controller
-python3 -m venv venv-socketio-test
+# Create venv with system site packages (to access hardware libraries)
+python3 -m venv --system-site-packages venv-socketio-test
 source venv-socketio-test/bin/activate
 pip install --upgrade pip
 pip install -r requirements-webapp-only-32bit-upgraded.txt
