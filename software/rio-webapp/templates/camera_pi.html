@@ -108,9 +108,8 @@
   strobe_update_init();
   cam_update();
   
-  // NOTE: ROI selector is now handled by roi_selector_simple.js in index.html
-  // The old freehand canvas-based selector code has been removed
-  // ROI initialization happens in index.html's initROISelectorSimple()
+  // NOTE: ROI selector is handled by roi_selector_range.js in index.html
+  // The old freehand/canvas selector code has been removed.
   
   socket.on( 'strobe', function( data ) {
     strobe = data;
