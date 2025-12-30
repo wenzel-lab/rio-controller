@@ -19,6 +19,7 @@ if software_root not in sys.path:
     sys.path.insert(0, software_root)
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
+from config import CONTROL_MODE_FIRMWARE_TO_UI  # noqa: E402
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -117,12 +118,8 @@ class ViewModel:
             else:
                 num_channels = 4  # Default fallback
             for i in range(num_channels):
-                # Map firmware mode to UI mode index for display
-                # Firmware: 0=Off, 1=Pressure Open Loop, 2=Pressure Closed Loop (hidden), 3=Flow Closed Loop
-                # UI: 0=Off, 1=Set Pressure, 2=Flow Closed Loop
-                firmware_to_ui = {0: 0, 1: 1, 2: 0, 3: 2}
                 firmware_mode = flow.control_modes[i] if i < len(flow.control_modes) else 0
-                ui_mode_index = firmware_to_ui.get(firmware_mode, 0)
+                ui_mode_index = CONTROL_MODE_FIRMWARE_TO_UI.get(firmware_mode, 0)
 
                 formatted.append(
                     {

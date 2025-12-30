@@ -18,23 +18,12 @@ from typing import List, cast
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from drivers.flow import PiFlow  # noqa: E402
-
-# Import configuration constants
-try:
-    # Config is now at software/ level (same level as controllers/)
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from config import (
-        FLOW_REPLY_PAUSE_S,
-        FLOW_NUM_CONTROLLERS,
-        CONTROL_MODE_FIRMWARE_TO_UI,
-        CONTROL_MODE_UI_TO_FIRMWARE,
-    )
-except ImportError:
-    # Fallback values if config module not available
-    FLOW_REPLY_PAUSE_S = 0.1
-    FLOW_NUM_CONTROLLERS = 4
-    CONTROL_MODE_FIRMWARE_TO_UI = {0: 0, 1: 1, 2: 0, 3: 2}
-    CONTROL_MODE_UI_TO_FIRMWARE = {0: 0, 1: 1, 2: 3}
+from config import (  # noqa: E402
+    FLOW_REPLY_PAUSE_S,
+    CONTROL_MODE_FIRMWARE_TO_UI,
+    CONTROL_MODE_UI_TO_FIRMWARE,
+    FLOW_CTRL_MODE_STR,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -63,8 +52,8 @@ class FlowWeb:
         reload: Flag indicating state reload is needed
     """
 
-    # Control mode display strings (UI indices)
-    CTRL_MODE_STR = ["Off", "Set Pressure", "Flow Closed Loop"]
+    # Control mode display strings (UI indices), sourced from config to avoid drift
+    CTRL_MODE_STR = FLOW_CTRL_MODE_STR
 
     # Status strings
     PRESS_STATUS_STR = ["Unconfigured", "Idle", "Active", "Error"]

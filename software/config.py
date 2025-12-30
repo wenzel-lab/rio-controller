@@ -7,6 +7,12 @@ used throughout the application to improve maintainability and readability.
 
 import os
 
+from flow_control_modes import (  # single source-of-truth (Phase B / Track 2)
+    CONTROL_MODE_FIRMWARE_TO_UI,
+    CONTROL_MODE_UI_TO_FIRMWARE,
+    FLOW_CTRL_MODE_STR,
+)
+
 # Camera Configuration
 CAMERA_DEFAULT_WIDTH = 640
 CAMERA_DEFAULT_HEIGHT = 480
@@ -86,20 +92,8 @@ ROI_MIN_SIZE_PX = 10  # Minimum ROI size in pixels
 ROI_UPDATE_INTERVAL_MS = 500  # ROI info update interval
 
 # Control Mode Mapping
-# Firmware control modes: 0=Off, 1=Pressure Open Loop, 2=Pressure Closed Loop (deprecated), 3=Flow Closed Loop
-# UI control modes: 0=Off, 1=Set Pressure, 2=Flow Closed Loop
-CONTROL_MODE_FIRMWARE_TO_UI = {
-    0: 0,  # Off -> Off
-    1: 1,  # Pressure Open Loop -> Set Pressure
-    2: 0,  # Pressure Closed Loop (hidden) -> Off
-    3: 2,  # Flow Closed Loop -> Flow Closed Loop
-}
-
-CONTROL_MODE_UI_TO_FIRMWARE = {
-    0: 0,  # Off -> Off
-    1: 1,  # Set Pressure -> Pressure Open Loop
-    2: 3,  # Flow Closed Loop -> Flow Closed Loop
-}
+# NOTE: Imported from `software/flow_control_modes.py` and re-exported here for
+# backward compatibility. UI strings live alongside the mappings.
 
 # Camera Types
 CAMERA_TYPE_NONE = "none"

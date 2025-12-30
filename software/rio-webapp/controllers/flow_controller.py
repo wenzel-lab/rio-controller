@@ -20,6 +20,7 @@ if software_root not in sys.path:
     sys.path.insert(0, software_root)
 from controllers.flow_web import FlowWeb  # noqa: E402
 from view_model import ViewModel  # noqa: E402
+from config import CONTROL_MODE_UI_TO_FIRMWARE  # noqa: E402
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -83,11 +84,7 @@ class FlowController:
 
             elif cmd == "control_mode":
                 ui_control_mode = int(params.get("control_mode", 0))
-                # Map UI mode index to firmware mode
-                # UI: 0=Off, 1=Set Pressure, 2=Flow Closed Loop
-                # Firmware: 0=Off, 1=Pressure Open Loop, 3=Flow Closed Loop
-                ui_to_firmware = {0: 0, 1: 1, 2: 3}
-                firmware_mode = ui_to_firmware.get(ui_control_mode, 0)
+                firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(ui_control_mode, 0)
                 valid = self.flow.set_control_mode(index, firmware_mode)
                 logger.debug(
                     f"Set control mode for channel {index}: UI={ui_control_mode}, Firmware={firmware_mode}"
