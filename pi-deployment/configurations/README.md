@@ -38,7 +38,7 @@ This directory contains example configuration files and documentation for the Ri
 
 ## Documentation
 
-- **`configuration-quick-reference.md`** - Complete configuration guide with all options
+The configuration “quick reference” is included in this README (below) to avoid keeping parallel documentation files in the deployment bundle.
 
 ## Usage
 
@@ -81,6 +81,80 @@ This will hide the unused tabs in the web interface.
 
 ## More Information
 
-See [Configuration Quick Reference](configuration-quick-reference.md) for complete documentation.
+## Configuration quick reference (platform presets, control modes, ports)
+
+This bundle is generated from `software/`, so the examples below match the same environment variables used by `pi-deployment/main.py`.
+
+<details>
+<summary><strong>Platform presets (recommended starting points)</strong></summary>
+
+### 1) Strobe-only (32-bit) + droplet detection
+
+- **Example file**: `config-example-strobe-only-32bit.yaml`
+- **Key env**:
+
+```bash
+export RIO_STROBE_CONTROL_MODE=strobe-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false
+export RIO_HEATER_ENABLED=false
+```
+
+### 2) Strobe-only (64-bit) + droplet detection
+
+- **Example file**: `config-example-strobe-only-64bit.yaml`
+- **Key env**:
+
+```bash
+export RIO_STROBE_CONTROL_MODE=camera-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false
+export RIO_HEATER_ENABLED=false
+```
+
+### 3) Full features (64-bit) + droplet detection
+
+- **Example file**: `config-example-full-features-64bit.yaml`
+- **Key env**:
+
+```bash
+export RIO_STROBE_CONTROL_MODE=camera-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=true
+export RIO_HEATER_ENABLED=true
+```
+
+</details>
+
+<details>
+<summary><strong>Strobe control modes</strong></summary>
+
+### Strobe-centric (`RIO_STROBE_CONTROL_MODE=strobe-centric`)
+
+- Strobe timing is the “clock” (software-trigger style).
+
+### Camera-centric (`RIO_STROBE_CONTROL_MODE=camera-centric`)
+
+- Camera frame callback triggers strobe via GPIO (hardware-trigger style).
+- Trigger uses **BCM pin 18** (see `pi-deployment/config.py`).
+
+</details>
+
+<details>
+<summary><strong>SPI port assignments (BOARD numbering)</strong></summary>
+
+| Component | Port (BOARD) |
+|---|---:|
+| Strobe | 24 |
+| Flow | 26 |
+| Heater 1 | 31 |
+| Heater 2 | 33 |
+| Heater 3 | 32 |
+| Heater 4 | 36 |
+
+</details>
 
 

@@ -38,7 +38,7 @@ This directory contains example configuration files and documentation for the Ri
 
 ## Documentation
 
-- **`configuration-quick-reference.md`** - Complete configuration guide with all options
+The configuration “quick reference” is included in this README (below) to avoid keeping parallel documentation files.
 
 ## Usage
 
@@ -88,6 +88,110 @@ This will hide the unused tabs in the web interface.
 
 ## More Information
 
-See [Configuration Quick Reference](configuration-quick-reference.md) for complete documentation.
+## Configuration quick reference (platform presets, control modes, ports)
+
+<details>
+<summary><strong>Platform presets (recommended starting points)</strong></summary>
+
+### 1) Strobe-only (32-bit) + droplet detection
+
+- **Example file**: `config-example-strobe-only-32bit.yaml`
+- **Key env**:
+
+```bash
+export RIO_STROBE_CONTROL_MODE=strobe-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false
+export RIO_HEATER_ENABLED=false
+```
+
+- **Notes**:
+  - Intended for legacy “strobe-centric” timing (software trigger).
+  - Camera is the Pi camera using the legacy stack (32-bit / `picamera`).
+
+### 2) Strobe-only (64-bit) + droplet detection
+
+- **Example file**: `config-example-strobe-only-64bit.yaml`
+- **Key env**:
+
+```bash
+export RIO_STROBE_CONTROL_MODE=camera-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false
+export RIO_HEATER_ENABLED=false
+```
+
+- **Notes**:
+  - Intended for “camera-centric” timing (hardware trigger).
+  - Requires the strobe trigger GPIO wiring (BCM pin 18) and compatible firmware.
+
+### 3) Full features (64-bit) + droplet detection
+
+- **Example file**: `config-example-full-features-64bit.yaml`
+- **Key env**:
+
+```bash
+export RIO_STROBE_CONTROL_MODE=camera-centric
+export RIO_SIMULATION=false
+export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=true
+export RIO_HEATER_ENABLED=true
+```
+
+</details>
+
+<details>
+<summary><strong>Strobe control modes (what changes in code)</strong></summary>
+
+### Strobe-centric (`RIO_STROBE_CONTROL_MODE=strobe-centric`)
+
+- **Behavior**: strobe timing is the “clock” (software-trigger style).
+- **Where it’s decided**: `software/controllers/strobe_cam.py` reads `STROBE_CONTROL_MODE` from `software/config.py`.
+- **When to use**: legacy firmware / legacy camera stack.
+
+### Camera-centric (`RIO_STROBE_CONTROL_MODE=camera-centric`)
+
+- **Behavior**: camera frame callback triggers strobe via GPIO (hardware trigger style).
+- **Where it’s decided**: `software/controllers/strobe_cam.py` (`PiStrobeCam.hardware_trigger_mode`).
+- **GPIO**: trigger uses **BCM pin 18** (see `software/config.py`).
+
+</details>
+
+<details>
+<summary><strong>SPI port assignments (BOARD numbering)</strong></summary>
+
+These are the “chip select” ports used by `software/drivers/spi_handler.py` (BOARD numbering):
+
+| Component | Port (BOARD) |
+|---|---:|
+| Strobe | 24 |
+| Flow | 26 |
+| Heater 1 | 31 |
+| Heater 2 | 33 |
+| Heater 3 | 32 |
+| Heater 4 | 36 |
+
+</details>
+
+<details>
+<summary><strong>How to run (hardware vs simulation)</strong></summary>
+
+From `software/`:
+
+```bash
+cd software
+
+# Hardware mode
+export RIO_SIMULATION=false
+python main.py
+
+# Simulation mode (no hardware)
+export RIO_SIMULATION=true
+python main.py
+```
+
+</details>
 
 
