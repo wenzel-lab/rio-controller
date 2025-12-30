@@ -1,85 +1,73 @@
-#!/bin/bash
-# Deploy the pi-deployment package to Raspberry Pi via SSH
-# Usage: ./deploy-to-pi.sh [pi-hostname-or-ip]
+#!/usr/bin/env bash
+# Deploy the generated `pi-deployment/` bundle to a Raspberry Pi over SSH.
+#
+# Usage:
+#   ./deploy-to-pi.sh [pi-hostname-or-ip]
+#
+# This script is intended to be run from your development machine (Mac/PC),
+# not from the Raspberry Pi itself.
 
-set -e
+set -euo pipefail
 
 PI_HOST="${1:-raspberrypi.local}"
-PI_USER="pi"
+PI_USER="${PI_USER:-pi}"
 DEPLOY_DIR="pi-deployment"
-TARBALL="pi-deployment.tar.gz"
 
 echo "Rio Microfluidics Controller - Deployment Script"
 echo "================================================"
 echo ""
-echo "Target: $PI_USER@$PI_HOST"
+echo "Target: ${PI_USER}@${PI_HOST}"
 echo ""
 
-# Check if deployment directory exists
-if [ ! -d "$DEPLOY_DIR" ]; then
-    echo "Error: Deployment directory '$DEPLOY_DIR' not found."
-    echo "Please run ./create-pi-deployment.sh first to create the deployment package."
+# Guardrail: refuse to run on a Raspberry Pi (common cause of nested deployments).
+if [[ "$(uname -s)" == "Linux" ]] && [[ -r /sys/firmware/devicetree/base/model ]]; then
+    if grep -q "Raspberry Pi" /sys/firmware/devicetree/base/model; then
+        echo "Error: This script should be run from your Mac/PC, not on the Raspberry Pi."
+        echo "Reason: running deployment commands on the Pi is a common cause of nested paths like:"
+        echo "  ~/rio-controller/pi-deployment/pi-deployment/..."
+        exit 1
+    fi
+fi
+
+echo "Step 1: Generating ${DEPLOY_DIR}/ ..."
+./create-pi-deployment.sh
+
+if [[ ! -d "${DEPLOY_DIR}" ]]; then
+    echo "Error: ${DEPLOY_DIR}/ was not created by create-pi-deployment.sh"
     exit 1
 fi
 
-# Create tarball
-echo "Step 1: Creating deployment tarball..."
-cd "$DEPLOY_DIR"
-tar czf "../$TARBALL" .
-cd ..
-
-echo "Step 2: Copying to Raspberry Pi..."
-echo "You may be prompted for the Pi's password..."
-
-scp "$TARBALL" "$PI_USER@$PI_HOST:~/" || {
-    echo ""
-    echo "Error: Failed to copy files. Please check:"
-    echo "  - Pi is connected to network"
-    echo "  - SSH is enabled on Pi"
-    echo "  - Hostname/IP is correct: $PI_HOST"
-    echo "  - Username is correct: $PI_USER"
+if [[ ! -f "${DEPLOY_DIR}/setup.sh" ]] || [[ ! -f "${DEPLOY_DIR}/run.sh" ]]; then
+    echo "Error: ${DEPLOY_DIR}/ does not look like a valid deployment bundle (missing setup.sh/run.sh)."
     exit 1
-}
+fi
 
 echo ""
-echo "Step 3: Extracting and setting up on Pi..."
-echo "You may be prompted for the Pi's password again..."
+echo "Step 2: Preparing destination on Pi..."
+ssh "${PI_USER}@${PI_HOST}" << 'ENDSSH'
+set -euo pipefail
+mkdir -p ~/rio-controller
 
-ssh "$PI_USER@$PI_HOST" << ENDSSH
-    # Create directory if it doesn't exist
-    mkdir -p ~/rio-controller
-    
-    # Extract tarball
-    cd ~/rio-controller
-    tar xzf ~/$TARBALL
-    
-    # Remove tarball
-    rm ~/$TARBALL
-    
-    # Make scripts executable
-    chmod +x setup.sh run.sh
-    
-    echo ""
-    echo "Deployment complete!"
-    echo ""
-    echo "Next steps on the Pi:"
-    echo "  1. cd ~/rio-controller"
-    echo "  2. ./setup.sh"
-    echo "  3. ./run.sh"
-    echo ""
-    echo "Or SSH into the Pi and run:"
-    echo "  ssh $PI_USER@$PI_HOST"
-    echo "  cd ~/rio-controller"
-    echo "  ./setup.sh"
+# Guardrail: if someone previously synced into ~/rio-controller/pi-deployment/,
+# remove that nested copy so the next rsync lands at the correct depth.
+if [[ -f ~/rio-controller/pi-deployment/setup.sh ]] || [[ -f ~/rio-controller/pi-deployment/run.sh ]]; then
+  echo "Detected nested deployment at ~/rio-controller/pi-deployment/ — removing it."
+  rm -rf ~/rio-controller/pi-deployment
+fi
 ENDSSH
 
 echo ""
-echo "Deployment complete!"
+echo "Step 3: Syncing bundle to Pi (rsync)..."
+echo "Note: The trailing slash on '${DEPLOY_DIR}/' is intentional."
+rsync -avz --delete \
+  --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' \
+  "${DEPLOY_DIR}/" "${PI_USER}@${PI_HOST}:~/rio-controller/"
+
 echo ""
-echo "Local tarball kept at: $TARBALL (you can delete it if desired)"
+echo "Deployment sync complete."
 echo ""
-echo "To finish setup on the Pi, run:"
-echo "  ssh $PI_USER@$PI_HOST"
+echo "Next steps on the Pi:"
+echo "  ssh ${PI_USER}@${PI_HOST}"
 echo "  cd ~/rio-controller"
-echo "  ./setup.sh"
+echo "  ./setup.sh   # first time only (or after dependency changes)"
 echo "  ./run.sh"

@@ -253,15 +253,32 @@ python main.py
 ### Sync Code (from Mac/PC)
 
 ```bash
-cd /Users/twenzel/Documents/GitHub/rio-controller
+cd /path/to/rio-controller
+
+# Recommended: use the safe wrapper (generates bundle + uses the correct rsync dest)
+./deploy-to-pi.sh raspberrypi.local
+
+# Or manual:
 ./create-pi-deployment.sh
-rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' pi-deployment/ pi@raspberrypi.local:~/rio-controller/
+rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' \
+  pi-deployment/ pi@raspberrypi.local:~/rio-controller/
 ```
 
 
 Note: `create-pi-deployment.sh` **regenerates** this folder. If you hand-edit files under `pi-deployment/`, those edits will be overwritten the next time the bundle is generated.
 
-If you only see an empty folder on the Pi, you likely ran `rsync` from the Pi instead of the Mac. Re-run the above commands from your Mac so `setup.sh`, `run.sh`, and the requirements file are copied.
+**Avoid nested folders:** do **not** rsync to `~/rio-controller/pi-deployment/` — that creates `~/rio-controller/pi-deployment/pi-deployment/...`.
+
+If you only see an empty folder on the Pi, or you ended up with nested `pi-deployment/`, you likely ran `rsync` from the Pi instead of the Mac (or used the wrong destination path). Fix by removing the nested folder and re-syncing from your Mac/PC:
+
+```bash
+ssh pi@raspberrypi.local
+rm -rf ~/rio-controller/pi-deployment
+exit
+
+cd /path/to/rio-controller
+./deploy-to-pi.sh raspberrypi.local
+```
 
 ## Troubleshooting
 
