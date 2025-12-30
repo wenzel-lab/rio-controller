@@ -175,7 +175,7 @@ modules:
     bom: "hardware-modules/heating-stirring/Bill-of-Materials.csv"
     design-files: 
       - "hardware-modules/heating-stirring/sample_holder_pcb/"
-    documentation: "hardware-modules/heating-stirring/readme.md"
+    documentation: "hardware-modules/heating-stirring/README.md"
     firmware: "hardware-modules/heating-stirring/sample_holder_pic/"
     image: "hardware-modules/heating-stirring/images/heating-and-stirring-controller.png"
     
@@ -185,7 +185,7 @@ modules:
     design-files: 
       - "hardware-modules/strobe-imaging/strobe_pcb/"
       - "hardware-modules/strobe-imaging/strobe_LED_mount/"
-    documentation: "hardware-modules/strobe-imaging/readme.md"
+    documentation: "hardware-modules/strobe-imaging/README.md"
     firmware: "hardware-modules/strobe-imaging/strobe_pic/"
     image: "hardware-modules/strobe-imaging/images/strobe-imaging-controller.png"
     
@@ -194,7 +194,7 @@ modules:
     bom: "hardware-modules/pressure-flow-control/Bill-of-Materials.csv"
     design-files: 
       - "hardware-modules/pressure-flow-control/pressure_and_flow_pcb/"
-    documentation: "hardware-modules/pressure-flow-control/readme.md"
+    documentation: "hardware-modules/pressure-flow-control/README.md"
     firmware: "hardware-modules/pressure-flow-control/pressure_and_flow_pic/"
     image: "hardware-modules/pressure-flow-control/images/pressure-and-flow-controller.png"
 

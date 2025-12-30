@@ -346,7 +346,7 @@ The YAML configuration files show default values, but these are overridden by UI
 
 ## Additional Resources
 
-- [Raspberry Pi Update Guide](../docs/raspberry-pi-update-guide.md) - Complete migration instructions
+- Raspberry Pi deployment/update: see `../../pi-deployment/README.md` and `../../deploy-to-pi.sh`
 - Pre-configurations (in this directory):
   - `config-example-strobe-only-32bit.yaml` - Strobe only 32-bit
   - `config-example-strobe-only-64bit.yaml` - Strobe only 64-bit

@@ -22,6 +22,8 @@ Our aim is to create a prototype of a _compact_ working station for microfluidic
 
 **Rio** serves as a platform to implement fully functional research-grade workstations with good specifications, such as fast reaction times and low-pressure fluctuations. It is modular so that parts of this platform can be repurposed and improved in the open-source hardware sense and easily combined, exchanged, or used independently in challenging environments.
 
+- For a repository architecture guide, see [ARCHITECTURE.md](ARCHITECTURE.md)
+
 ## Getting Started
 
 In order to implement a workstation, you must build the core board and any module of your interest. The user interface software will allow you to control and monitor the operations of the modules.
@@ -70,7 +72,6 @@ The software follows a client-server architecture and allows users to control th
 
 **Installation and Usage:**
 - For detailed software installation and usage instructions, see [software/README.md](software/README.md)
-- For Raspberry Pi deployment instructions, see [pi-deployment/README.md](pi-deployment/README.md)
 
 **Features:**
 - Real-time camera control with strobe synchronization

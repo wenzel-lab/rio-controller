@@ -4,18 +4,18 @@ This is a minimal deployment package containing only the essential files needed 
 
 ## Quick Start
 
-### 1. Setup (First time only)
+### 1. Setup (first time only)
 
 ```bash
 ./setup.sh
 ```
 
-This will:
-- Upgrade pip
-- Install required packages to system Python
-- Verify installation
-
-**Note:** Packages are installed to system Python. No virtual environment is used.
+This installs from `requirements-webapp-only-32bit.txt` using system Python and verifies the install. If `setup.sh` is missing, re-sync the deployment package from your Mac (see “Sync Code” below) or install directly with:
+```bash
+python3 -m pip install --upgrade pip wheel
+pip install -r requirements-webapp-only-32bit.txt
+```
+Packages are installed to system Python (no virtualenv).
 
 ### 2. Run
 
@@ -95,6 +95,8 @@ cd /Users/twenzel/Documents/GitHub/rio-controller
 ./create-pi-deployment.sh
 rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' pi-deployment/ pi@raspberrypi.local:~/rio-controller/
 ```
+
+If you only see an empty folder on the Pi, you likely ran `rsync` from the Pi instead of the Mac. Re-run the above commands from your Mac so `setup.sh`, `run.sh`, and the requirements file are copied.
 
 ## Troubleshooting
 

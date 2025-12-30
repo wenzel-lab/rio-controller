@@ -2,74 +2,25 @@
 
 This directory contains all software for the Rio microfluidics controller system.
 
-> **Package Compatibility**: See `docs/PACKAGE_COMPATIBILITY.md` for detailed compatibility information across Raspberry Pi 32/64-bit and Mac/PC/Ubuntu platforms.
+**Platform compatibility (summary):**
+- **Developer machines (Mac/PC/Linux)**: run in **simulation** (`RIO_SIMULATION=true`) using `requirements-simulation.txt`.
+- **Raspberry Pi 32-bit**: hardware mode with Pi-specific packages (see `requirements_32bit.txt` or use the deployment bundle).
+- **Raspberry Pi 64-bit**: hardware mode with Pi-specific packages (see `requirements_64bit.txt`).
 
-## Folder Structure
+## Structure overview (start here)
 
-```
-software/
-├── main.py                 # Application entry point
-├── config.py               # Configuration constants (system-wide)
-├── rio-webapp/             # Web application components
-│   ├── controllers/       # Web controllers (HTTP/WebSocket handlers)
-│   │   ├── camera_controller.py
-│   │   ├── flow_controller.py
-│   │   ├── heater_controller.py
-│   │   └── view_model.py
-│   ├── routes.py         # Flask route definitions
-│   ├── templates/         # HTML templates
-│   │   ├── index.html
-│   │   ├── camera_pi.html
-│   │   └── camera_none.html
-│   └── static/            # JavaScript, CSS
-│       └── roi_selector.js
-│
-├── drivers/                # Low-level device drivers
-│   ├── spi_handler.py     # SPI and GPIO communication
-│   ├── flow.py            # Low-level flow controller driver
-│   ├── heater.py          # Low-level heater driver
-│   ├── strobe.py          # Low-level strobe driver
-│   └── camera/            # Camera abstraction layer
-│       ├── camera_base.py
-│       ├── pi_camera_legacy.py
-│       └── pi_camera_v2.py
-│
-├── controllers/            # Device controllers (business logic layer)
-│   ├── flow_web.py        # Flow control device controller
-│   ├── heater_web.py      # Heater control device controller
-│   ├── camera.py          # Camera device controller
-│   ├── strobe_cam.py      # Strobe-camera integration controller
-│   └── droplet_detector_controller.py  # Droplet detection controller
-│
-│   Note: In hardware control systems, "controller" refers to device
-│   control logic (equivalent to "Model" in MVC). See docs/ARCHITECTURE_TERMINOLOGY.md
-│
-├── simulation/             # Simulation layer (for testing without hardware)
-│   ├── camera_simulated.py
-│   ├── flow_simulated.py
-│   ├── strobe_simulated.py
-│   └── spi_simulated.py
-│
-├── tests/                  # Test suite
-│   ├── test_imports.py     # Dependency verification
-│   ├── test_drivers.py     # Driver unit tests
-│   ├── test_simulation.py  # Simulation layer tests
-│   ├── test_controllers.py # Controller unit tests
-│   ├── test_integration.py # Integration tests
-│   └── test_all.py         # Run all tests
-│
-└── droplet-detection/      # Droplet detection algorithms
-    ├── detector.py         # Main detection pipeline
-    ├── preprocessor.py     # Image preprocessing
-    ├── segmenter.py        # Contour detection
-    ├── measurer.py         # Geometric measurements
-    ├── artifact_rejector.py # Temporal filtering
-    ├── histogram.py        # Statistics and histograms
-    ├── config.py           # Configuration management
-    ├── benchmark.py        # Performance benchmarking
-    ├── optimize.py         # Parameter optimization
-    └── test_integration.py  # Integration tests
-```
+Use these short READMEs to navigate the codebase. Detailed implementation lives in the code; this page stays intentionally shallow.
+
+- Core architecture: `../ARCHITECTURE.md`
+- Device controllers (business logic): [`controllers/README.md`](controllers/README.md)
+- Drivers (hardware adapters): [`drivers/README.md`](drivers/README.md)
+  - Camera abstraction/backends: [`drivers/camera/README.md`](drivers/camera/README.md)
+- Web app (Flask + UI): [`rio-webapp/README.md`](rio-webapp/README.md)
+  - Web controllers (WS/HTTP handlers): [`rio-webapp/controllers/README.md`](rio-webapp/controllers/README.md)
+- Droplet detection pipeline: [`droplet-detection/README.md`](droplet-detection/README.md)
+- Simulation layer: [`simulation/README.md`](simulation/README.md)
+- Tests: [`tests/README.md`](tests/README.md)
+- Configuration examples: [`configurations/README.md`](configurations/README.md)
 
 ## Launching the Software
 
@@ -219,9 +170,8 @@ The system includes real-time droplet detection capabilities with a modular pipe
 - Performance monitoring and timing instrumentation
 
 **Documentation:**
-- User Guide: `docs/droplet_detection_user_guide.md`
-- Developer Guide: `docs/droplet_detection_developer_guide.md`
-- Testing & Optimization: `docs/testing_and_optimization_guide.md`
+- Implementation: `droplet-detection/` (module docstrings + code)
+- Tests & optimization: `tests/droplet-detection-testing_and_optimization_guide.md`
 
 **Testing:**
 ```bash
@@ -284,5 +234,5 @@ python main.py 5001
 3. **Simulation Support**: All hardware interactions have simulation equivalents
 4. **Configuration**: Centralize constants in `config.py` (system-wide)
 
-See `docs/ARCHITECTURE_TERMINOLOGY.md` for detailed explanation of terminology.
+Terminology reminder: “device controllers” live in `controllers/`, while “web controllers” live in `rio-webapp/controllers/`.
 

@@ -15,7 +15,8 @@ Architecture layers:
 4. Drivers: Hardware communication abstraction
 5. Simulation: Drop-in hardware replacement (when RIO_SIMULATION=true)
 
-See docs/ARCHITECTURE_TERMINOLOGY.md for terminology explanation.
+Terminology note: this repo uses “device controllers” for hardware/state logic (`controllers/`)
+and “web controllers” for HTTP/WebSocket handlers (`rio-webapp/controllers/`).
 
 Usage:
     python main.py [PORT]

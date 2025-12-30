@@ -369,7 +369,7 @@ Scenario: ROI=medium (100×512), Density=medium (12 droplets)
 
 After testing and optimization:
 
-1. **Document Results:** Save benchmark and optimization results in `docs/`
+1. **Document Results:** Save benchmark and optimization results to a local folder (or external lab notebook) and avoid committing large artifacts to the repository
 2. **Create Profiles:** Save optimized configurations as parameter profiles
 3. **Validate on Hardware:** Test optimized parameters on actual Raspberry Pi
 4. **Monitor Runtime:** Use timing instrumentation to verify performance in production
