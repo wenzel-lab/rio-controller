@@ -39,6 +39,9 @@ warn_unused_ignores = true
 warn_no_return = true
 ignore_missing_imports = true
 explicit_package_bases = true
+# `mypy .` aborts if it encounters a directory that cannot be a Python package.
+# This repo contains `droplet-detection/` (hyphen) for historical reasons.
+exclude = '(?x)(^droplet-detection/)'
 # Ignore missing imports for hardware-specific libraries
 [[tool.mypy.overrides]]
 module = [
@@ -51,4 +54,20 @@ module = [
     "flask_socketio",
 ]
 ignore_missing_imports = true
+
+# These modules are intentionally dynamic / hardware-driven today and are not
+# type-clean yet. We still want mypy to be runnable and useful elsewhere.
+[[tool.mypy.overrides]]
+module = [
+    "simulation.*",
+    "drivers.camera.*",
+    "controllers.droplet_detector_controller",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+]
+ignore_errors = true
 

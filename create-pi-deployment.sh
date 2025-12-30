@@ -258,6 +258,7 @@ cd /Users/twenzel/Documents/GitHub/rio-controller
 rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' pi-deployment/ pi@raspberrypi.local:~/rio-controller/
 ```
 
+
 Note: `create-pi-deployment.sh` **regenerates** this folder. If you hand-edit files under `pi-deployment/`, those edits will be overwritten the next time the bundle is generated.
 
 If you only see an empty folder on the Pi, you likely ran `rsync` from the Pi instead of the Mac. Re-run the above commands from your Mac so `setup.sh`, `run.sh`, and the requirements file are copied.

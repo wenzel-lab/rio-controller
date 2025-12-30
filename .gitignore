@@ -69,7 +69,10 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 
-# Project-specific test snapshots (uncomment if you want to exclude)
-# software/home/pi/snapshots/*.jpg
+# Runtime outputs
+software/home/pi/snapshots/
+
+# Generated deployment bundle (build artifact)
+pi-deployment/
 
 /docs

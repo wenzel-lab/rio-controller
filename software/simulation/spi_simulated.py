@@ -417,12 +417,14 @@ class SimulatedSPIHandler:
             if self.current_device == 24:  # PORT_STROBE
                 if self._simulated_strobe is None:
                     from simulation.strobe_simulated import SimulatedStrobe
+
                     self._simulated_strobe = SimulatedStrobe(device_port=24, reply_pause_s=0.1)
                 valid, response_data = self._simulated_strobe.packet_query(packet_type, data)
 
             elif self.current_device == 26:  # PORT_FLOW
                 if self._simulated_flow is None:
                     from simulation.flow_simulated import SimulatedFlow
+
                     self._simulated_flow = SimulatedFlow(device_port=26, reply_pause_s=0.1)
                 valid, response_data = self._simulated_flow.packet_query(packet_type, data)
 
@@ -430,7 +432,10 @@ class SimulatedSPIHandler:
                 port = self.current_device
                 if port not in self._simulated_heaters:
                     from simulation.heater_simulated import SimulatedHeater
-                    self._simulated_heaters[port] = SimulatedHeater(device_port=port, reply_pause_s=0.05)
+
+                    self._simulated_heaters[port] = SimulatedHeater(
+                        device_port=port, reply_pause_s=0.05
+                    )
                 valid, response_data = self._simulated_heaters[port].packet_query(packet_type, data)
 
             else:

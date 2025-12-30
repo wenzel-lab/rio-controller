@@ -482,7 +482,7 @@ class PiStrobeCam:
 
         In strobe-centric mode, strobe should be enabled explicitly by the user
         after timing is set. This matches the old working implementation behavior.
-        
+
         Note: Camera is already started by the Camera controller thread, so this
         is a no-op for strobe-centric mode. We don't need to start it again.
         """

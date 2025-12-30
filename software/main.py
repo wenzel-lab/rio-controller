@@ -99,14 +99,13 @@ from routes import register_routes, create_background_update_task  # noqa: E402
 # But use INFO at startup to catch initialization issues
 try:
     from config import RIO_LOG_LEVEL
+
     log_level = getattr(logging, RIO_LOG_LEVEL, logging.WARNING)
 except (ImportError, AttributeError):
     # Fallback to WARNING if config not available or invalid level
     log_level = logging.WARNING
 
-logging.basicConfig(
-    level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Reduce Socket.IO and Engine.IO logging verbosity (too noisy at INFO level)
@@ -164,12 +163,14 @@ try:
         socketio_version = getattr(socketio, "__version__", _pkg_version("python-socketio"))
         engineio_version = getattr(engineio, "__version__", _pkg_version("python-engineio"))
 
-        logger.info(f"Socket.IO versions: python-socketio={socketio_version}, python-engineio={engineio_version}")
+        logger.info(
+            f"Socket.IO versions: python-socketio={socketio_version}, python-engineio={engineio_version}"
+        )
         logger.info(f"python-socketio location: {socketio.__file__}")
         logger.info(f"python-engineio location: {engineio.__file__}")
     except Exception as e:
         logger.warning(f"Could not check Socket.IO versions: {e}")
-    
+
     # Flask-SocketIO 5.x: allowEIO3 for backward compatibility with older clients
     # Prefer gevent if available to avoid eventlet deprecation warnings
     socketio = SocketIO(
@@ -182,6 +183,7 @@ try:
 except Exception as e:
     logger.error(f"Step 3: SocketIO creation failed: {e}")
     import traceback
+
     logger.error(traceback.format_exc())
     raise
 
@@ -203,6 +205,7 @@ try:
 except Exception as e:
     logger.error(f"Step 5: Camera initialization failed: {e}")
     import traceback
+
     logger.error(traceback.format_exc())
     raise
 
@@ -240,6 +243,7 @@ try:
 except Exception as e:
     logger.error(f"Step 6: Web controller initialization failed: {e}")
     import traceback
+
     logger.error(traceback.format_exc())
     raise
 
@@ -272,6 +276,7 @@ try:
 except Exception as e:
     logger.error(f"Step 7: Route registration failed: {e}")
     import traceback
+
     logger.error(traceback.format_exc())
     raise
 

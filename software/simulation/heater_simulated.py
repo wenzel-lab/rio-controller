@@ -92,7 +92,15 @@ class SimulatedHeater:
                 p_bytes = self.pid_p.to_bytes(2, "big", signed=False)
                 i_bytes = self.pid_i.to_bytes(2, "big", signed=False)
                 d_bytes = self.pid_d.to_bytes(2, "big", signed=False)
-                return True, [0, p_bytes[0], p_bytes[1], i_bytes[0], i_bytes[1], d_bytes[0], d_bytes[1]]
+                return True, [
+                    0,
+                    p_bytes[0],
+                    p_bytes[1],
+                    i_bytes[0],
+                    i_bytes[1],
+                    d_bytes[0],
+                    d_bytes[1],
+                ]
 
             if packet_type == self.PACKET_TYPE_PID_SET_RUNNING:
                 if len(data) >= 1:
@@ -146,4 +154,3 @@ class SimulatedHeater:
         except Exception as e:
             logger.error(f"Error in heater simulation: {e}")
             return False, []
-

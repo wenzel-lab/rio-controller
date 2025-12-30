@@ -133,8 +133,7 @@ class PiCameraV2(BaseCamera):
 
             # Encode as JPEG with streaming quality (lower quality for reduced bandwidth/CPU)
             ret, buffer = cv2.imencode(
-                ".jpg", frame,
-                [cv2.IMWRITE_JPEG_QUALITY, CAMERA_STREAMING_JPEG_QUALITY]
+                ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, CAMERA_STREAMING_JPEG_QUALITY]
             )
 
             # Handle capture request

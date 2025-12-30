@@ -44,7 +44,7 @@ class PiCameraLegacy(BaseCamera):
         self.cam_running_event: Event = Event()
         self.capture_flag: Event = Event()
         self.capture_queue: Queue[bytes] = Queue(1)
-        
+
         # Store last decoded frame for ROI access (updated during generate_frames)
         self._last_frame_array: Optional[np.ndarray] = None
         self._last_frame_lock = threading.Lock()
@@ -122,7 +122,9 @@ class PiCameraLegacy(BaseCamera):
         # This is more efficient than creating new streams in a loop
         # Set JPEG quality for streaming (lower quality reduces bandwidth/CPU)
         stream = io.BytesIO()
-        for frame in self.cam.capture_continuous(stream, format="jpeg", use_video_port=True, quality=CAMERA_STREAMING_JPEG_QUALITY):
+        for frame in self.cam.capture_continuous(
+            stream, format="jpeg", use_video_port=True, quality=CAMERA_STREAMING_JPEG_QUALITY
+        ):
             if not self.cam_running_event.is_set():
                 break
 
@@ -144,8 +146,9 @@ class PiCameraLegacy(BaseCamera):
             try:
                 from PIL import Image
                 import io as io_module
+
                 img = Image.open(io_module.BytesIO(data))
-                frame_array = np.array(img.convert('RGB'))
+                frame_array = np.array(img.convert("RGB"))
                 with self._last_frame_lock:
                     self._last_frame_array = frame_array
             except Exception as e:
@@ -218,41 +221,46 @@ class PiCameraLegacy(BaseCamera):
                         logger.warning("No decoded frame available for ROI, returning black frame")
                         return np.zeros((height, width, 3), dtype=np.uint8)
                     frame = self._last_frame_array.copy()
-                
+
                 # Apply software cropping to ROI region
                 frame_height, frame_width = frame.shape[:2]
-                
+
                 # Check bounds
                 if x + width > frame_width or y + height > frame_height:
-                    logger.warning(f"ROI bounds ({x}, {y}, {width}, {height}) exceed frame size ({frame_width}, {frame_height})")
+                    logger.warning(
+                        f"ROI bounds ({x}, {y}, {width}, {height}) exceed frame size ({frame_width}, {frame_height})"
+                    )
                     # Clamp to frame bounds
                     x = max(0, min(x, frame_width - 1))
                     y = max(0, min(y, frame_height - 1))
                     width = min(width, frame_width - x)
                     height = min(height, frame_height - y)
-                
-                roi_frame = frame[y:y+height, x:x+width]
+
+                roi_frame = frame[y : y + height, x : x + width]
                 return roi_frame
             else:
                 # Not capturing continuously - use software cropping on captured frame
                 frame = self.cam.capture_array()
                 frame_height, frame_width = frame.shape[:2]
-                
+
                 # Check bounds
                 if x + width > frame_width or y + height > frame_height:
-                    logger.warning(f"ROI bounds ({x}, {y}, {width}, {height}) exceed frame size ({frame_width}, {frame_height})")
+                    logger.warning(
+                        f"ROI bounds ({x}, {y}, {width}, {height}) exceed frame size ({frame_width}, {frame_height})"
+                    )
                     # Clamp to frame bounds
                     x = max(0, min(x, frame_width - 1))
                     y = max(0, min(y, frame_height - 1))
                     width = min(width, frame_width - x)
                     height = min(height, frame_height - y)
-                
-                roi_frame = frame[y:y+height, x:x+width]
+
+                roi_frame = frame[y : y + height, x : x + width]
                 return roi_frame
 
         except Exception as e:
             logger.error(f"Error in get_frame_roi: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
             # Fallback: return a black frame of correct size
             return np.zeros((height, width, 3), dtype=np.uint8)
@@ -411,7 +419,7 @@ class PiCameraLegacy(BaseCamera):
         Update camera configuration
 
         Based on tested implementation from flow-microscopy-platform
-        
+
         Note: For picamera, framerate and shutter_speed can be safely modified
         while capture_continuous is running (they take effect on next frame).
         However, we avoid clearing cam_running_event here to prevent interrupting
@@ -524,7 +532,9 @@ class PiCameraLegacy(BaseCamera):
 
             # Capture frame as JPEG
             stream = io.BytesIO()
-            self.cam.capture(stream, format="jpeg", use_video_port=False, quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
+            self.cam.capture(
+                stream, format="jpeg", use_video_port=False, quality=CAMERA_SNAPSHOT_JPEG_QUALITY
+            )
             stream.seek(0)
             frame_data = stream.read()
 

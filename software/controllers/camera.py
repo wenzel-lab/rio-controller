@@ -70,9 +70,6 @@ try:
         CAMERA_V2_MAX_HEIGHT,
         CAMERA_HQ_MAX_WIDTH,
         CAMERA_HQ_MAX_HEIGHT,
-        SNAPSHOT_RESOLUTION_DISPLAY,
-        SNAPSHOT_RESOLUTION_FULL,
-        SNAPSHOT_RESOLUTION_CUSTOM,
     )
 except ImportError:
     # Fallback values if config module not available
@@ -444,7 +441,9 @@ class Camera:
             logger.warning("Cannot register WebSocket handlers: socketio is None")
             return
 
-        logger.debug(f"Registering WebSocket handlers: {WS_EVENT_CAM}, {WS_EVENT_STROBE}, {WS_EVENT_ROI}")
+        logger.debug(
+            f"Registering WebSocket handlers: {WS_EVENT_CAM}, {WS_EVENT_STROBE}, {WS_EVENT_ROI}"
+        )
 
         @self.socketio.on(WS_EVENT_CAM)
         def on_cam(data: Dict[str, Any]) -> None:
@@ -516,7 +515,7 @@ class Camera:
         # Don't try to initialize if camera is None (prevents error spam)
         if self.camera is None:
             return None
-        
+
         # Only initialize if camera thread is not running to avoid repeated starts
         if self.thread is None or not self.thread.is_alive():
             self.initialize()
@@ -759,7 +758,7 @@ class Camera:
         This method performs an iterative optimization loop to find the optimal
         strobe post-padding time based on the actual camera read time. It continues
         until convergence or maximum tries are reached.
-        
+
         Note: In strobe-centric mode, get_cam_read_time() may not work reliably
         if the strobe is not enabled. The optimization will fail gracefully if
         camera read time cannot be obtained.
@@ -780,12 +779,14 @@ class Camera:
                 self.strobe_cam.set_timing(
                     STROBE_PRE_PADDING_NS, self.strobe_period_ns, strobe_post_padding_ns
                 )
-                
+
                 # Get camera read time with timeout protection (SPI call may hang)
                 valid, cam_read_time_us = self.strobe_cam.strobe.get_cam_read_time()
 
                 if not valid:
-                    logger.warning("Failed to get camera read time during optimization - strobe may need to be enabled")
+                    logger.warning(
+                        "Failed to get camera read time during optimization - strobe may need to be enabled"
+                    )
                     break
 
                 # Calculate new post-padding based on actual read time
@@ -798,6 +799,7 @@ class Camera:
             except Exception as e:
                 logger.error(f"Error during FPS optimization: {e}")
                 import traceback
+
                 logger.debug(traceback.format_exc())
                 break
 

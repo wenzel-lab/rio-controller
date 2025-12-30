@@ -293,9 +293,10 @@ def _register_http_routes(
             # Check if controllers exist and have data
             # Also check environment variables for explicit enable/disable
             import os
+
             flow_enabled_env = os.getenv("RIO_FLOW_ENABLED", "").lower()
             heater_enabled_env = os.getenv("RIO_HEATER_ENABLED", "").lower()
-            
+
             # If environment variable is explicitly set, use it
             if flow_enabled_env == "false":
                 flow_enabled = False
@@ -304,7 +305,7 @@ def _register_http_routes(
             else:
                 # Default: check if controllers exist and have data
                 flow_enabled = flow is not None and len(flows_data) > 0
-            
+
             if heater_enabled_env == "false":
                 heater_enabled = False
             elif heater_enabled_env == "true":
@@ -341,7 +342,7 @@ def _register_http_routes(
         """
         if cam.cam_data.get("camera") == "none":
             return Response("Camera disabled", status=404, mimetype="text/plain")
-        
+
         # Lazy initialization: start camera thread only when first client connects
         # This reduces startup overhead and CPU usage when no clients are viewing
         if cam.thread is None or not cam.thread.is_alive():

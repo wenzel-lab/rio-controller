@@ -136,8 +136,9 @@ class MakoCamera(BaseCamera):
 
                             # Encode as JPEG with streaming quality (lower quality for reduced bandwidth/CPU)
                             _, buffer = cv2.imencode(
-                                ".jpg", opencv_image,
-                                [cv2.IMWRITE_JPEG_QUALITY, CAMERA_STREAMING_JPEG_QUALITY]
+                                ".jpg",
+                                opencv_image,
+                                [cv2.IMWRITE_JPEG_QUALITY, CAMERA_STREAMING_JPEG_QUALITY],
                             )
 
                             # Handle capture request

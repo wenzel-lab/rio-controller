@@ -55,7 +55,9 @@ STROBE_REPLY_PAUSE_S = 0.1  # SPI reply pause time
 #                 Replaced by camera-centric mode with new strobe chip firmware
 # camera-centric: Camera frame callback triggers strobe via GPIO (requires new firmware with hardware trigger)
 # Can be overridden via environment variable RIO_STROBE_CONTROL_MODE
-STROBE_CONTROL_MODE = os.getenv("RIO_STROBE_CONTROL_MODE", "camera-centric").lower()  # Default to "camera-centric" for strobe-rewrite branch
+STROBE_CONTROL_MODE = os.getenv(
+    "RIO_STROBE_CONTROL_MODE", "camera-centric"
+).lower()  # Default to "camera-centric" for strobe-rewrite branch
 STROBE_CONTROL_MODE_STROBE_CENTRIC = "strobe-centric"  # Strobe-centric control (software trigger)
 STROBE_CONTROL_MODE_CAMERA_CENTRIC = "camera-centric"  # Camera trigger-centric (hardware trigger)
 # Backward compatibility aliases (deprecated - use strobe-centric/camera-centric)
@@ -120,10 +122,14 @@ FPS_OPTIMIZATION_POST_PADDING_OFFSET_US = 100  # Additional padding offset
 # Lower streaming quality reduces bandwidth and CPU usage significantly
 # Quality range: 1-100 (1=lowest quality/smallest file, 100=highest quality/largest file)
 _streaming_quality_raw = int(os.getenv("RIO_JPEG_QUALITY_STREAMING", "75"))
-CAMERA_STREAMING_JPEG_QUALITY = max(1, min(100, _streaming_quality_raw))  # Clamp to valid range [1, 100]
+CAMERA_STREAMING_JPEG_QUALITY = max(
+    1, min(100, _streaming_quality_raw)
+)  # Clamp to valid range [1, 100]
 
 _snapshot_quality_raw = int(os.getenv("RIO_JPEG_QUALITY_SNAPSHOT", "95"))
-CAMERA_SNAPSHOT_JPEG_QUALITY = max(1, min(100, _snapshot_quality_raw))  # Clamp to valid range [1, 100]
+CAMERA_SNAPSHOT_JPEG_QUALITY = max(
+    1, min(100, _snapshot_quality_raw)
+)  # Clamp to valid range [1, 100]
 
 # Logging Configuration
 # Production should use WARNING level to reduce I/O overhead

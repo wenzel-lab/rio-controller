@@ -86,7 +86,12 @@ class PiStrobe:
             max_read_attempts = 100  # Prevent infinite loop if PIC doesn't respond
             read_attempts = 0
             try:
-                while valid and (type_read != type) and (type_read != 0) and (read_attempts < max_read_attempts):
+                while (
+                    valid
+                    and (type_read != type)
+                    and (type_read != 0)
+                    and (read_attempts < max_read_attempts)
+                ):
                     valid, type_read, data_read = self.packet_read()
                     read_attempts += 1
                 if read_attempts >= max_read_attempts:
