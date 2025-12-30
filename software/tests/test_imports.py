@@ -17,10 +17,7 @@ import os
 # Set simulation mode
 os.environ["RIO_SIMULATION"] = "true"
 
-# Add parent directory (software/) to path so we can import modules
 software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if software_dir not in sys.path:
-    sys.path.insert(0, software_dir)
 
 
 def test_external_dependencies():
@@ -123,9 +120,6 @@ def _test_webapp_modules() -> list:
     """Test webapp controller module imports."""
     errors = []
     try:
-        rio_webapp_controllers_dir = os.path.join(software_dir, "rio-webapp", "controllers")
-        if rio_webapp_controllers_dir not in sys.path:
-            sys.path.insert(0, rio_webapp_controllers_dir)
         from camera_controller import CameraController  # noqa: F401
         from flow_controller import FlowController  # noqa: F401
         from heater_controller import HeaterController  # noqa: F401

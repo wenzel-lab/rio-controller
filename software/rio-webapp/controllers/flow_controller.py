@@ -9,18 +9,12 @@ Classes:
 """
 
 import logging
-import sys
-import os
 from typing import Dict, Any
 from flask_socketio import SocketIO
 
-# Add parent directories to path for imports (software/ level)
-software_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if software_root not in sys.path:
-    sys.path.insert(0, software_root)
-from controllers.flow_web import FlowWeb  # noqa: E402
-from view_model import ViewModel  # noqa: E402
-from config import CONTROL_MODE_UI_TO_FIRMWARE  # noqa: E402
+from controllers.flow_web import FlowWeb
+from view_model import ViewModel
+from config import CONTROL_MODE_UI_TO_FIRMWARE
 
 # Configure logging
 logger = logging.getLogger(__name__)

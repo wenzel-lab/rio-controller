@@ -9,14 +9,12 @@ import os
 import logging
 from pathlib import Path
 
-# Add parent directory to path
-software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, software_dir)
-
 # Import droplet_detection module (directory has hyphen, so use importlib)
 import importlib.util
 
-droplet_detection_path = os.path.join(software_dir, "droplet-detection")
+droplet_detection_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "droplet-detection"
+)
 if os.path.exists(droplet_detection_path):
     spec = importlib.util.spec_from_file_location(
         "droplet_detection", os.path.join(droplet_detection_path, "__init__.py")

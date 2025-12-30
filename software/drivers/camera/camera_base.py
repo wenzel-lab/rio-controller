@@ -245,15 +245,6 @@ def _create_simulated_camera(
     simulation: bool, sim_config: Optional[Dict[str, Any]] = None
 ) -> BaseCamera:
     """Create simulated camera instance."""
-    import sys
-    import os as os_module
-
-    current_file = os_module.path.abspath(__file__)
-    parent_dir = os_module.path.dirname(os_module.path.dirname(current_file))
-
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-
     try:
         from simulation.camera_simulated import SimulatedCamera
 
@@ -261,23 +252,13 @@ def _create_simulated_camera(
             return SimulatedCamera(**sim_config)
         return SimulatedCamera()
     except ImportError as e1:
-        try:
-            sim_path = os_module.path.join(parent_dir, "simulation")
-            if sim_path not in sys.path:
-                sys.path.insert(0, sim_path)
-            from camera_simulated import SimulatedCamera  # type: ignore[no-redef]
-
-            return SimulatedCamera()
-        except ImportError as e2:
-            error_msg = (
-                str(e1) if "numpy" in str(e1).lower() or "cv2" in str(e1).lower() else str(e2)
+        error_msg = str(e1)
+        if "numpy" in error_msg.lower() or "cv2" in error_msg.lower():
+            raise ImportError(
+                f"Simulation dependencies missing: {error_msg}. "
+                "Install with: pip install numpy opencv-python"
             )
-            if "numpy" in error_msg.lower() or "cv2" in error_msg.lower():
-                raise ImportError(
-                    f"Simulation dependencies missing: {error_msg}. "
-                    "Install with: pip install numpy opencv-python"
-                )
-            raise ImportError(f"Could not import SimulatedCamera: {error_msg}")
+        raise ImportError(f"Could not import SimulatedCamera: {error_msg}")
 
 
 def _create_mako_camera() -> BaseCamera:
@@ -337,7 +318,7 @@ def _create_pi_camera() -> BaseCamera:
             print(f"picamera2 not available ({e}), falling back to picamera")
 
     try:
-        import picamera  # noqa: F401
+        import picamera as picamera_legacy  # noqa: F401
 
         from .pi_camera_legacy import PiCameraLegacy
 

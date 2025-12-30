@@ -16,9 +16,7 @@ import os
 import importlib.util
 from pathlib import Path
 
-# Add parent directory to path
 software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, software_dir)
 
 # Import droplet-detection module
 droplet_detection_path = os.path.join(software_dir, "droplet-detection")

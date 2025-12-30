@@ -82,14 +82,6 @@ if _DATASET_BASE:
 
 # Try to import real camera classes (will fail on non-Pi systems, that's OK)
 try:
-    import sys
-    import os as os_module
-
-    parent_dir = os_module.path.dirname(
-        os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__)))
-    )
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
     from drivers.camera.camera_base import BaseCamera
 except ImportError:
     # Fallback for when camera_base not available

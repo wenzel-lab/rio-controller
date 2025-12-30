@@ -16,18 +16,13 @@ import unittest
 # Set simulation mode for all tests
 os.environ["RIO_SIMULATION"] = "true"
 
-# Add parent directory (software/) to path
-software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if software_dir not in sys.path:
-    sys.path.insert(0, software_dir)
-
 
 def discover_and_run_tests():
     """Discover and run all tests"""
     # Discover tests in the tests directory
     loader = unittest.TestLoader()
     suite = loader.discover(
-        start_dir=os.path.dirname(__file__), pattern="test_*.py", top_level_dir=software_dir
+        start_dir=os.path.dirname(__file__), pattern="test_*.py", top_level_dir=None
     )
 
     # Run tests

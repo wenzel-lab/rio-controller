@@ -11,16 +11,9 @@ Routes:
 
 import time
 import logging
-import sys
-import os
 from flask import Flask, render_template, Response
 from flask_socketio import SocketIO
 from typing import List, Any, Optional
-
-# Add parent directory to path for imports
-software_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if software_root not in sys.path:
-    sys.path.insert(0, software_root)
 
 logger = logging.getLogger(__name__)
 

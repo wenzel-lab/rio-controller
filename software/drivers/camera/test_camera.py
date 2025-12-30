@@ -12,10 +12,10 @@ Tests:
 """
 
 import sys
-import os
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from path_bootstrap import bootstrap_runtime
+
+bootstrap_runtime()
 
 # Note: This test file may need updating for new structure
 from drivers.camera import create_camera, BaseCamera  # noqa: E402

@@ -49,11 +49,7 @@ class PiFlow:
         sim_mode = os.getenv("RIO_SIMULATION", "false").lower() == "true"
         if sim_mode:
             try:
-                # Add parent directory to path for simulation imports
-                parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                if parent_dir not in sys.path:
-                    sys.path.insert(0, parent_dir)
-                from simulation.flow_simulated import SimulatedFlow  # noqa: E402
+                from simulation.flow_simulated import SimulatedFlow
 
                 self._simulated_flow = SimulatedFlow(
                     device_port=device_port, reply_pause_s=reply_pause_s

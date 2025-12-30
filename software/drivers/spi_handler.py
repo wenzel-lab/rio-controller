@@ -7,12 +7,6 @@ SIMULATION_MODE = os.getenv("RIO_SIMULATION", "false").lower() == "true"
 
 if SIMULATION_MODE:
     # Use simulated SPI and GPIO
-    import sys
-
-    # Add parent directory to path to find simulation module
-    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
     try:
         from simulation.spi_simulated import SimulatedSPIHandler, SimulatedGPIO
 
@@ -24,8 +18,6 @@ if SIMULATION_MODE:
 
         logger = logging.getLogger(__name__)
         logger.error(f"Could not import simulation module: {e}")
-        logger.debug(f"Current path: {sys.path}")
-        logger.debug(f"Looking for: {os.path.join(parent_dir, 'simulation')}")
         raise
 else:
     # Use real hardware

@@ -12,14 +12,12 @@ import queue
 from typing import Optional, Dict, Any, List, cast
 import numpy as np
 
-# Add parent directory to path for imports
 import sys
 import os
 import importlib.util
 
 # Handle import of droplet-detection (hyphenated directory name)
 software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, software_dir)
 
 # Import droplet_detection module (directory is droplet-detection, but we import as droplet_detection)
 droplet_detection_path = os.path.join(software_dir, "droplet-detection")

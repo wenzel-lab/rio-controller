@@ -7,7 +7,6 @@ Uses picamera2 library for 64-bit Raspberry Pi OS
 
 from picamera2 import Picamera2
 import cv2
-import os
 import time
 from typing import Optional, Dict, Tuple, Generator, Any
 import numpy as np

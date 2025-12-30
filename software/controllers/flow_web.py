@@ -10,15 +10,10 @@ Classes:
 """
 
 import logging
-import sys
-import os
 from typing import List, cast
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from drivers.flow import PiFlow  # noqa: E402
-from config import (  # noqa: E402
+from drivers.flow import PiFlow
+from config import (
     FLOW_REPLY_PAUSE_S,
     CONTROL_MODE_FIRMWARE_TO_UI,
     CONTROL_MODE_UI_TO_FIRMWARE,

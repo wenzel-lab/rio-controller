@@ -6,14 +6,13 @@ Uses picamera library for 32-bit Raspberry Pi OS
 """
 
 from picamera import PiCamera
-import os
 import io
 import time
 import threading
 from typing import Optional, Dict, Tuple, Generator, Any
 import numpy as np
 from queue import Queue
-from threading import Event, Lock
+from threading import Event
 import logging
 
 from .camera_base import BaseCamera

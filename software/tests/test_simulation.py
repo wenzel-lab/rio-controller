@@ -10,17 +10,11 @@ Usage:
     python -m tests.test_simulation
 """
 
-import sys
 import os
 import unittest
 
 # Set simulation mode
 os.environ["RIO_SIMULATION"] = "true"
-
-# Add parent directory (software/) to path
-software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if software_dir not in sys.path:
-    sys.path.insert(0, software_dir)
 
 
 class TestSimulatedSPI(unittest.TestCase):

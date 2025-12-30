@@ -48,7 +48,9 @@ class SimulatedHeater:
     def _status_ok(self) -> List[int]:
         return [0]
 
-    def packet_query(self, packet_type: int, data: List[int]) -> Tuple[bool, List[int]]:
+    def packet_query(  # noqa: C901
+        self, packet_type: int, data: List[int]
+    ) -> Tuple[bool, List[int]]:
         """
         Handle heater packet queries.
 

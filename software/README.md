@@ -22,6 +22,12 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
 
+## Imports and path bootstrap (beginner-friendly)
+
+- You should not need to touch `PYTHONPATH` or add `sys.path` in modules.
+- Runtime: `python main.py` calls `path_bootstrap.bootstrap_runtime()` for you.
+- Tests: `RIO_SIMULATION=true python -m pytest` picks up `software/conftest.py`, which calls `path_bootstrap.bootstrap_tests()` once.
+
 ## Runtime wiring (how the software fits together)
 
 The main runtime entry point is **`software/main.py`**, which wires the layers together in a fairly direct way:

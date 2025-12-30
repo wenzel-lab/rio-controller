@@ -1,11 +1,5 @@
-import sys
-import os
 import logging
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from drivers.heater import PiHolder  # noqa: E402
+from drivers.heater import PiHolder
 
 # Configure logging
 logger = logging.getLogger(__name__)

@@ -405,7 +405,6 @@ class SimulatedSPIHandler:
             self._stored_response = []
             return []
 
-        size = packet[1] if len(packet) > 1 else 0
         packet_type = packet[2] if len(packet) > 2 else 0
         data = packet[3:-1] if len(packet) > 4 else []  # Skip STX, size, type, checksum
 

@@ -11,53 +11,25 @@ Classes:
 """
 
 import time
-import sys
-import os
 import logging
 from typing import Optional, Tuple, Any, cast
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from drivers.strobe import PiStrobe  # noqa: E402
-from drivers.spi_handler import GPIO  # noqa: E402  # Handles simulation mode automatically
-from drivers.camera import create_camera, BaseCamera  # noqa: E402
-
-# Import configuration constants
-try:
-    # Config is now at software/ level (same level as controllers/)
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from config import (
-        CAMERA_DEFAULT_WIDTH,
-        CAMERA_DEFAULT_HEIGHT,
-        CAMERA_DEFAULT_FPS,
-        STROBE_TRIGGER_GPIO_PIN,
-        STROBE_TRIGGER_PULSE_US,
-        STROBE_REPLY_PAUSE_S,
-        STROBE_PRE_PADDING_NS,
-        STROBE_POST_PADDING_NS,
-        STROBE_CONTROL_MODE,
-        STROBE_CONTROL_MODE_STROBE_CENTRIC,
-        STROBE_CONTROL_MODE_CAMERA_CENTRIC,
-        # Backward compatibility (deprecated - use strobe-centric/camera-centric)
-        STROBE_CONTROL_MODE_LEGACY,
-        STROBE_CONTROL_MODE_NEW,
-    )
-except ImportError:
-    # Fallback values if config module not available
-    CAMERA_DEFAULT_WIDTH = 640
-    CAMERA_DEFAULT_HEIGHT = 480
-    CAMERA_DEFAULT_FPS = 30
-    STROBE_TRIGGER_GPIO_PIN = 18
-    STROBE_TRIGGER_PULSE_US = 0.000001
-    STROBE_REPLY_PAUSE_S = 0.1
-    STROBE_PRE_PADDING_NS = 32
-    STROBE_POST_PADDING_NS = 20000000
-    STROBE_CONTROL_MODE = "camera-centric"
-    STROBE_CONTROL_MODE_STROBE_CENTRIC = "strobe-centric"
-    STROBE_CONTROL_MODE_CAMERA_CENTRIC = "camera-centric"
-    STROBE_CONTROL_MODE_LEGACY = "strobe-centric"  # Backward compatibility
-    STROBE_CONTROL_MODE_NEW = "camera-centric"  # Backward compatibility
+from drivers.strobe import PiStrobe
+from drivers.spi_handler import GPIO  # Handles simulation mode automatically
+from drivers.camera import create_camera, BaseCamera
+from config import (
+    CAMERA_DEFAULT_WIDTH,
+    CAMERA_DEFAULT_HEIGHT,
+    CAMERA_DEFAULT_FPS,
+    STROBE_TRIGGER_GPIO_PIN,
+    STROBE_TRIGGER_PULSE_US,
+    STROBE_REPLY_PAUSE_S,
+    STROBE_CONTROL_MODE,
+    STROBE_CONTROL_MODE_STROBE_CENTRIC,
+    STROBE_CONTROL_MODE_CAMERA_CENTRIC,
+    STROBE_CONTROL_MODE_LEGACY,
+    STROBE_CONTROL_MODE_NEW,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)

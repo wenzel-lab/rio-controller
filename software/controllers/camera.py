@@ -12,96 +12,55 @@ import io
 import threading
 import time
 import logging
-import sys
-import os
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 from PIL import Image
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from drivers.spi_handler import PORT_STROBE  # noqa: E402
-from controllers.strobe_cam import PiStrobeCam  # noqa: E402
-
-# Import configuration constants
-try:
-    # Config is now at software/ level (same level as controllers/)
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from config import (
-        CAMERA_THREAD_WIDTH,
-        CAMERA_THREAD_HEIGHT,
-        CAMERA_THREAD_FPS,
-        CAMERA_INIT_TIMEOUT_S,
-        CAMERA_FRAME_WAIT_SLEEP_S,
-        STROBE_DEFAULT_PERIOD_NS,
-        STROBE_MAX_PERIOD_NS,
-        STROBE_PRE_PADDING_NS,
-        STROBE_POST_PADDING_NS,
-        STROBE_REPLY_PAUSE_S,
-        CAMERA_TYPE_NONE,
-        CAMERA_TYPE_RPI,
-        CAMERA_TYPE_RPI_HQ,
-        SNAPSHOT_FOLDER,
-        SNAPSHOT_FILENAME_PREFIX,
-        SNAPSHOT_FILENAME_SUFFIX,
-        SNAPSHOT_RESOLUTION_DISPLAY,
-        SNAPSHOT_RESOLUTION_FULL,
-        SNAPSHOT_RESOLUTION_CUSTOM,
-        FPS_OPTIMIZATION_MAX_TRIES,
-        FPS_OPTIMIZATION_CONVERGENCE_THRESHOLD_US,
-        FPS_OPTIMIZATION_POST_PADDING_OFFSET_US,
-        CAMERA_SNAPSHOT_JPEG_QUALITY,
-        WS_EVENT_CAM,
-        WS_EVENT_STROBE,
-        WS_EVENT_ROI,
-        CMD_SNAPSHOT,
-        CMD_OPTIMIZE,
-        CMD_SET_RESOLUTION,
-        CMD_SET_SNAPSHOT_RESOLUTION,
-        CMD_HOLD,
-        CMD_ENABLE,
-        CMD_TIMING,
-        CMD_SET,
-        CMD_GET,
-        CMD_CLEAR,
-        CAMERA_RESOLUTION_PRESETS,
-        CAMERA_V2_MAX_WIDTH,
-        CAMERA_V2_MAX_HEIGHT,
-        CAMERA_HQ_MAX_WIDTH,
-        CAMERA_HQ_MAX_HEIGHT,
-    )
-except ImportError:
-    # Fallback values if config module not available
-    CAMERA_THREAD_WIDTH = 1024
-    CAMERA_THREAD_HEIGHT = 768
-    CAMERA_THREAD_FPS = 30
-    CAMERA_INIT_TIMEOUT_S = 5.0
-    CAMERA_FRAME_WAIT_SLEEP_S = 0.01
-    STROBE_DEFAULT_PERIOD_NS = 100000
-    STROBE_MAX_PERIOD_NS = 16000000
-    STROBE_PRE_PADDING_NS = 32
-    STROBE_POST_PADDING_NS = 20000000
-    STROBE_REPLY_PAUSE_S = 0.1
-    CAMERA_TYPE_NONE = "none"
-    CAMERA_TYPE_RPI = "rpi"
-    SNAPSHOT_FOLDER = "home/pi/snapshots/"
-    SNAPSHOT_FILENAME_PREFIX = "snapshot_"
-    SNAPSHOT_FILENAME_SUFFIX = ".jpg"
-    FPS_OPTIMIZATION_MAX_TRIES = 10
-    FPS_OPTIMIZATION_CONVERGENCE_THRESHOLD_US = 1000
-    FPS_OPTIMIZATION_POST_PADDING_OFFSET_US = 100
-    WS_EVENT_CAM = "cam"
-    WS_EVENT_STROBE = "strobe"
-    WS_EVENT_ROI = "roi"
-    CMD_SNAPSHOT = "snapshot"
-    CMD_OPTIMIZE = "optimize"
-    CMD_HOLD = "hold"
-    CMD_ENABLE = "enable"
-    CMD_TIMING = "timing"
-    CMD_SET = "set"
-    CMD_GET = "get"
-    CMD_CLEAR = "clear"
+from drivers.spi_handler import PORT_STROBE
+from controllers.strobe_cam import PiStrobeCam
+from config import (
+    CAMERA_THREAD_WIDTH,
+    CAMERA_THREAD_HEIGHT,
+    CAMERA_THREAD_FPS,
+    CAMERA_INIT_TIMEOUT_S,
+    CAMERA_FRAME_WAIT_SLEEP_S,
+    STROBE_DEFAULT_PERIOD_NS,
+    STROBE_MAX_PERIOD_NS,
+    STROBE_PRE_PADDING_NS,
+    STROBE_POST_PADDING_NS,
+    STROBE_REPLY_PAUSE_S,
+    CAMERA_TYPE_NONE,
+    CAMERA_TYPE_RPI,
+    CAMERA_TYPE_RPI_HQ,
+    SNAPSHOT_FOLDER,
+    SNAPSHOT_FILENAME_PREFIX,
+    SNAPSHOT_FILENAME_SUFFIX,
+    SNAPSHOT_RESOLUTION_DISPLAY,
+    SNAPSHOT_RESOLUTION_FULL,
+    SNAPSHOT_RESOLUTION_CUSTOM,
+    FPS_OPTIMIZATION_MAX_TRIES,
+    FPS_OPTIMIZATION_CONVERGENCE_THRESHOLD_US,
+    FPS_OPTIMIZATION_POST_PADDING_OFFSET_US,
+    CAMERA_SNAPSHOT_JPEG_QUALITY,
+    WS_EVENT_CAM,
+    WS_EVENT_STROBE,
+    WS_EVENT_ROI,
+    CMD_SNAPSHOT,
+    CMD_OPTIMIZE,
+    CMD_SET_RESOLUTION,
+    CMD_SET_SNAPSHOT_RESOLUTION,
+    CMD_HOLD,
+    CMD_ENABLE,
+    CMD_TIMING,
+    CMD_SET,
+    CMD_GET,
+    CMD_CLEAR,
+    CAMERA_RESOLUTION_PRESETS,
+    CAMERA_V2_MAX_WIDTH,
+    CAMERA_V2_MAX_HEIGHT,
+    CAMERA_HQ_MAX_WIDTH,
+    CAMERA_HQ_MAX_HEIGHT,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
