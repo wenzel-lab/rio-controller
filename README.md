@@ -22,7 +22,15 @@ Our aim is to create a prototype of a _compact_ working station for microfluidic
 
 **Rio** serves as a platform to implement fully functional research-grade workstations with good specifications, such as fast reaction times and low-pressure fluctuations. It is modular so that parts of this platform can be repurposed and improved in the open-source hardware sense and easily combined, exchanged, or used independently in challenging environments.
 
-- For a repository architecture guide, see [ARCHITECTURE.md](ARCHITECTURE.md)
+For a repository architecture guide, see [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Software (runtime + development)**: [`software/README.md`](software/README.md)
+  - Main entry point: `software/main.py`
+- **Deployment bundle (Pi updates)**: [`pi-deployment/README.md`](pi-deployment/README.md)
+- **Hardware modules** (assembly + usage):
+  - Pi HAT: [`hardware-modules/rpi-hat/README.md`](hardware-modules/rpi-hat/README.md)
+  - Strobe imaging: [`hardware-modules/strobe-imaging/README.md`](hardware-modules/strobe-imaging/README.md)
+  - Pressure/flow: [`hardware-modules/pressure-flow-control/README.md`](hardware-modules/pressure-flow-control/README.md)
+  - Heating/stirring: [`hardware-modules/heating-stirring/README.md`](hardware-modules/heating-stirring/README.md)
 
 ## Getting Started
 
@@ -79,6 +87,13 @@ The software follows a client-server architecture and allows users to control th
 - Flow and pressure control
 - Temperature and stirring control
 - Modern web-based user interface
+
+**How the software is structured (high level):**
+- UI + routes: `software/rio-webapp/` (browser + Flask + Socket.IO)
+- WebSocket handlers: `software/rio-webapp/controllers/`
+- Device orchestration: `software/controllers/`
+- Hardware adapters: `software/drivers/` (camera backends in `software/drivers/camera/`)
+- Droplet detection pipeline: `software/droplet-detection/`
 
 ## Use Cases
 

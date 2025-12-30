@@ -1,37 +1,50 @@
-## AI-generated notice
+# software/simulation/ — Simulation backends (no-hardware execution)
 
-This file was AI-generated and may contain errors. Please verify against the source code and runtime behavior.
-- Date: 2025-12-30
-- Model: GPT-5.2
-- Maintenance: If you change simulation behavior or public interfaces, please update this document.
-
-## Purpose
-
-This folder contains **simulation implementations** used to run the Rio software without physical hardware. Simulation mode is intended for development, CI-style testing, and UI iteration.
-
-## What belongs here / what does not
-
-- **Belongs here**:
-  - simulated SPI/GPIO, camera frames, and device behaviors that mimic driver interfaces
-  - deterministic behavior suitable for tests
-- **Does not belong here**:
-  - real hardware access (belongs in `../drivers/`)
-  - UI formatting or Flask routes (belongs in `../rio-webapp/`)
+This folder provides simulated implementations that allow the Rio software to run (and be tested) without physical hardware connected. In simulation mode, drivers and camera creation automatically route into these implementations.
 
 ## How simulation is activated
 
-Simulation is activated via the environment variable:
+Set:
 
 ```bash
 export RIO_SIMULATION=true
 ```
 
-Many tests set this automatically; prefer running tests from `software/`.
+This affects:
 
-## Key files
+- `software/drivers/spi_handler.py`: swaps in simulated GPIO + SPI routing
+- `software/drivers/camera/create_camera(...)`: returns a simulated camera backend
 
-- `camera_simulated.py`: simulated camera frame generation + ROI cropping support
-- `spi_simulated.py`: simulated SPI handler backend
-- `flow_simulated.py`, `heater_simulated.py`, `strobe_simulated.py`: simulated module behaviors
+## What’s inside (and how it maps to real hardware)
+
+- **`spi_simulated.py`**
+  - `SimulatedGPIO`: minimal `RPi.GPIO`-compatible API
+  - `SimulatedSPIHandler`: routes SPI “transfers” to simulated devices based on the currently selected port
+
+- **`flow_simulated.py`**
+  - `SimulatedFlow`: implements the same packet types as the flow firmware and returns realistic-enough pressure/flow readings
+
+- **`heater_simulated.py`**
+  - `SimulatedHeater`: implements the same packet types as the sample-holder firmware (PID status, temp readings, stir, power limit, etc.)
+
+- **`strobe_simulated.py`**
+  - `SimulatedStrobe`: implements key strobe commands (enable, timing, hold, cam-read-time, trigger mode)
+
+- **`camera_simulated.py`**
+  - `SimulatedCamera`: a `BaseCamera`-compatible implementation that generates synthetic frames and supports ROI cropping
+  - it can optionally load real background/droplet templates from a `droplet_AInalysis` checkout (if found), otherwise it generates synthetic droplets
+
+## Intended use
+
+- **Routine tests / CI-style checks**: run in simulation mode
+- **UI iteration**: run the server on a development machine without requiring the Pi or attached modules
+- **Hardware validation**: disable simulation and run on the Pi with hardware connected
+
+## AI-generated notice
+
+This file was AI-generated and may contain errors. Please verify against the source code and runtime behavior.
+- Date: 2025-12-30
+- Model: GPT-5.2
+- Maintenance: If you change simulation routing, packet behavior, or frame generation semantics, update this document.
 
 

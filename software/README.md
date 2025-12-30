@@ -22,6 +22,24 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
 
+## Runtime wiring (how the software fits together)
+
+The main runtime entry point is **`software/main.py`**, which wires the layers together in a fairly direct way:
+
+- **SPI/GPIO backend selection** happens inside `drivers/spi_handler.py` (simulation vs hardware is chosen via `RIO_SIMULATION=true|false`).
+- **Device controllers** are created in `main.py`:
+  - `controllers/flow_web.py` (`FlowWeb`) wraps `drivers/flow.py` (`PiFlow`)
+  - `controllers/heater_web.py` (`heater_web`) wraps `drivers/heater.py` (`PiHolder`)
+  - `controllers/camera.py` (`Camera`) composes `controllers/strobe_cam.py` (`PiStrobeCam`)
+    - `PiStrobeCam` composes `drivers/strobe.py` (`PiStrobe`) + `drivers/camera/` (`BaseCamera` backends)
+  - Optional droplet detection: `controllers/droplet_detector_controller.py` bridges camera ROI frames into `droplet-detection/`
+- **Web layer** is created next:
+  - Socket.IO handlers live in `rio-webapp/controllers/` and call into the device controllers above.
+  - HTTP routes (and some `/api/droplet/*` endpoints) are registered via `rio-webapp/routes.py`.
+
+If you’re auditing logic, reading order that matches the runtime is:
+`main.py` → `rio-webapp/routes.py` + `rio-webapp/controllers/*` → `controllers/*` → `drivers/*` → firmware projects under `../hardware-modules/*/*_pic/`.
+
 ## Launching the Software
 
 ### Prerequisites
@@ -100,9 +118,9 @@ export RIO_SIMULATION=true
 python main.py
 ```
 
-The `setup-simulation.sh` script sets up the mamba environment and installs dependencies. The `run-simulation.sh` script activates the environment and runs the application in simulation mode.
+The `setup-simulation.sh` script creates a conda/mamba environment named **`rio-simulation`** and installs dependencies. The `run-simulation.sh` script activates that environment and runs the app in simulation mode.
 
-Configuration can be set in `rio-config.yaml` (in the `software/` directory) or via the `RIO_SIMULATION` environment variable.
+Note: `setup-simulation.sh` also creates a `rio-config.yaml` file for simulation settings, but **the main app currently selects simulation via `RIO_SIMULATION=true`**; `rio-config.yaml` is not a primary runtime configuration source for `main.py`.
 
 This enables simulated SPI, GPIO, camera, and device controllers, allowing you to test the web interface and logic without physical hardware.
 
@@ -206,7 +224,7 @@ python main.py 5001
 
 **Import errors**:
 - Ensure you're running from `software/` directory
-- **Ensure mamba environment is activated**: `mamba activate rio-controller`
+- **Ensure your conda/mamba environment is activated** (e.g., `mamba activate rio-simulation` for simulation, or whatever env you created for hardware/dev)
 - Check that all dependencies are installed: `pip install -r requirements.txt`
 - Verify you're using the environment Python: `which python` should show your mamba environment path
 

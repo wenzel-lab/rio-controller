@@ -42,7 +42,16 @@ This directory contains example configuration files and documentation for the Ri
 
 ## Usage
 
-Configuration is done via environment variables. The YAML files serve as documentation and show default values.
+Configuration is done via **environment variables**. The YAML files in this folder are **examples / documented presets** (they are not automatically parsed by `software/main.py`).
+
+Where configuration is consumed in code:
+
+- Constants and default values live in `software/config.py`.
+- Runtime toggles are read directly via `os.getenv(...)` in various layers, for example:
+  - `RIO_SIMULATION=true|false` (drivers pick simulation vs hardware backends)
+  - `RIO_STROBE_CONTROL_MODE=strobe-centric|camera-centric` (strobe orchestration policy)
+  - `RIO_DROPLET_ANALYSIS_ENABLED=true|false` (enable droplet controller + UI)
+  - `RIO_FLOW_ENABLED` / `RIO_HEATER_ENABLED` (explicitly show/hide tabs in the UI; see `software/rio-webapp/routes.py`)
 
 Example:
 ```bash

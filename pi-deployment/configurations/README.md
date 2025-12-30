@@ -42,7 +42,9 @@ This directory contains example configuration files and documentation for the Ri
 
 ## Usage
 
-Configuration is done via environment variables. The YAML files serve as documentation and show default values.
+Configuration is done via **environment variables**. The YAML files in this folder are **examples / documented presets** (they are not automatically parsed by `pi-deployment/main.py`).
+
+This folder is copied from `software/configurations/` when `create-pi-deployment.sh` generates the deployment bundle.
 
 Example:
 ```bash

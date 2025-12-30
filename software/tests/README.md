@@ -98,6 +98,44 @@ python tests/test_all.py
 python -m tests.test_all
 ```
 
+## Test tiers and boundaries (what each set exercises)
+
+This suite is most useful when read “bottom-up”:
+
+- **Imports + environment sanity**: `test_imports.py`
+- **Drivers layer** (`software/drivers/`): SPI packet framing and driver APIs
+- **Simulation layer** (`software/simulation/`): drop-in “no hardware” replacements
+- **Controllers layer** (`software/controllers/`): orchestration/state; should be runnable in simulation mode
+- **Web layer** (`software/rio-webapp/`): mostly exercised indirectly via controller tests and route wiring
+- **Droplet detection** (`software/droplet-detection/`): pure algorithm tests + some integration coverage
+
+## Pytest configuration and markers
+
+`software/pyproject.toml` defines pytest defaults for this repo (test discovery under `tests/`, `test_*.py`, etc.) and declares these markers:
+
+- `simulation`: tests that require `RIO_SIMULATION=true`
+- `integration`: cross-component tests (often slower / more stateful)
+- `slow`: opt-in slow tests
+
+Examples:
+
+```bash
+cd software
+export RIO_SIMULATION=true
+
+# Skip slow tests
+pytest -m "not slow" -v
+
+# Only integration tests
+pytest -m "integration" -v
+```
+
+## Dataset-dependent droplet tests (optional)
+
+Some droplet-detection tests and tools can optionally look for a `droplet_AInalysis` checkout (see `software/droplet-detection/test_data_loader.py`). If you don’t have that dataset locally, those tests/utilities may skip or need configuration.
+
+For droplet benchmarking/optimization workflows, see `droplet-detection-testing_and_optimization_guide.md`.
+
 ## Test Output
 
 - ✓ indicates successful test

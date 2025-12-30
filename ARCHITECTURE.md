@@ -108,6 +108,16 @@ Terminology note used throughout the repo:
 - **Device controller**: hardware control logic/state (in `software/controllers/`).
 - **Web controller**: request/WebSocket handling (in `software/rio-webapp/controllers/`).
 
+## Runtime startup sequence (software)
+
+If you want to verify that “who owns what logic” is consistent in code, start with `software/main.py`. In broad strokes it:
+
+- initializes Flask + Socket.IO
+- instantiates device controllers (`Camera`, `FlowWeb`, `heater_web`) and (optionally) `DropletDetectorController`
+- instantiates web controllers (Socket.IO handlers under `software/rio-webapp/controllers/`)
+- registers HTTP routes and `/api/droplet/*` endpoints via `software/rio-webapp/routes.py`
+- starts a periodic background update task to emit UI refresh data
+
 ## Configuration (what decides which parts run)
 
 Configuration is primarily driven by environment variables (`RIO_*`) plus a small number of config/constants in `software/config.py`.

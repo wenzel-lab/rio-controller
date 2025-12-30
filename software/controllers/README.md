@@ -1,48 +1,63 @@
-## AI-generated notice
+# software/controllers/ — Device controllers (hardware orchestration)
 
-This file was AI-generated and may contain errors. Please verify against the source code and runtime behavior.
-- Date: 2025-12-30
-- Model: GPT-5.2
-- Maintenance: If you change behavior or public interfaces, please update this document.
+This folder contains stateful controllers that coordinate hardware drivers into “things the UI can do” (start camera streaming, set strobe timing, set pressure/flow targets, run heater PID, run droplet detection, etc.).
 
-## Purpose
-
-This folder contains **device controllers**: the stateful business logic that orchestrates hardware drivers and exposes higher-level operations to the web layer.
+In the default app entrypoint (`software/main.py`), these controllers are instantiated first, then handed to the web layer (`software/rio-webapp/`) which exposes them via HTTP/WebSocket.
 
 ## What belongs here / what does not
 
-- **Belongs here**:
-  - coordination logic and state machines for devices (camera+strobe integration, heater state, flow state)
-  - mapping between firmware concepts and user-facing concepts (when it is device-specific)
-  - performance/robustness guardrails for continuous operation
-- **Does not belong here**:
-  - direct GPIO/SPI/I2C register-level communication (belongs in `../drivers/`)
-  - HTTP routes, template formatting, WebSocket event wiring (belongs in `../rio-webapp/`)
-  - UI JavaScript and HTML (belongs in `../rio-webapp/static` and `../rio-webapp/templates`)
+- **Belongs here**: long-lived state, orchestration across multiple drivers, “do the safe thing” guardrails, and any cross-cutting timing logic (e.g., camera↔strobe).
+- **Does not belong here**: SPI/GPIO packet framing (belongs in `../drivers/`), Flask routing and Socket.IO event registration (belongs in `../rio-webapp/`), and browser JS (belongs in `../rio-webapp/static/`).
 
-## Key entry points
+## Key controllers and their interfaces
 
-- `camera.py`: camera controller, ROI storage, snapshot handling, and strobe integration via `strobe_cam.py`
-- `strobe_cam.py`: camera/strobe synchronization logic (control mode selection, timing behavior)
-- `flow_web.py`: flow/pressure controller wrapper for UI operations
-- `heater_web.py`: heater/stirring controller wrapper for UI operations
-- `droplet_detector_controller.py`: droplet detection orchestration and performance metrics
+- **`camera.py` — `class Camera`**
+  - Owns the camera capture thread and holds the current ROI (`Camera.get_roi()` returns `(x, y, w, h)` or `None`).
+  - Owns droplet calibration values (`get_calibration()` / `set_calibration(...)`).
+  - Integrates strobe timing via `PiStrobeCam` (see `strobe_cam.py`).
+  - Emits UI updates via Socket.IO (event names come from `software/config.py`).
 
-## Extension points (how to add features safely)
+- **`strobe_cam.py` — `class PiStrobeCam`**
+  - Composition of `drivers.strobe.PiStrobe` + `drivers.camera.BaseCamera`.
+  - Supports two strobe control modes (see `STROBE_CONTROL_MODE` in `software/config.py`):
+    - **strobe-centric**: strobe timing is the “clock”
+    - **camera-centric**: camera frame callbacks trigger a GPIO pulse to the strobe PIC
+  - Exposes camera selection via `set_camera_type(camera_type)`.
 
-- **New device module**: create a new controller file here and keep driver-level comms in `../drivers/`.
-- **New “mode” or mapping**: centralize shared mappings in `../config.py` where possible to avoid duplication across layers.
-- **New UI command**: add WebSocket/HTTP handler in `../rio-webapp/controllers/` and call into these controllers (do not re-implement business logic in the web layer).
+- **`flow_web.py` — `class FlowWeb`**
+  - Wraps the low-level `drivers.flow.PiFlow` protocol.
+  - Tracks per-channel state and performs UI↔firmware control-mode mapping.
+  - Typical calls: `set_pressure(index, mbar)`, `set_flow(index, ul_hr)`, `set_control_mode(index, firmware_mode)`.
+
+- **`heater_web.py` — `class heater_web`**
+  - Wraps the low-level `drivers.heater.PiHolder` protocol.
+  - Tracks display-ready strings and state flags (`pid_enabled`, `stir_enabled`, `autotuning`).
+  - Typical calls: `set_temp(temp_c)`, `set_pid_running(on)`, `set_autotune(on)`, `set_stir_running(on)`, `update()`.
+
+- **`droplet_detector_controller.py` — `class DropletDetectorController` (optional)**
+  - Bridges the camera ROI + frames into the algorithm in `../droplet-detection/`.
+  - Public surface used by the web layer includes: `start()`, `stop()`, `reset()`, `update_config(dict)`, `load_profile(path)`, `get_histogram()`, `get_statistics()`, `get_performance_metrics()`, `export_data(format="csv"|"txt")`.
+
+## Integration points (who calls these?)
+
+- `software/rio-webapp/controllers/*` call these controllers from Socket.IO handlers.
+- `software/rio-webapp/routes.py` exposes a subset via HTTP endpoints (and also emits periodic UI updates).
 
 ## Testing
 
-Run tests from the `software/` directory.
-- Routine tests should use simulation mode unless explicitly testing on hardware:
+Most tests should run in simulation mode (no physical hardware required):
 
 ```bash
 cd software
 export RIO_SIMULATION=true
 pytest -v
 ```
+
+## AI-generated notice
+
+This file was AI-generated and may contain errors. Please verify against the source code and runtime behavior.
+- Date: 2025-12-30
+- Model: GPT-5.2
+- Maintenance: If you change controller behavior, public methods, or event/API contracts, update this document.
 
 
