@@ -219,8 +219,8 @@ software:
     requirements: "software/requirements.txt"
     
   - name: "Python Hardware Drivers"
-    path: "hardware-modules/*/sample_holders_python/"
-    description: "Python drivers for hardware module communication"
+    path: "software/drivers/"
+    description: "Python hardware drivers (SPI/GPIO + module protocols) used by the main application"
     language: "Python"
     
   - name: "PIC Microcontroller Firmware"
