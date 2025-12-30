@@ -60,6 +60,9 @@ from config import (
     CAMERA_V2_MAX_HEIGHT,
     CAMERA_HQ_MAX_WIDTH,
     CAMERA_HQ_MAX_HEIGHT,
+    ROI_MODE,
+    ROI_MODE_SOFTWARE,
+    ROI_MODE_HARDWARE,
 )
 
 # Configure logging
@@ -143,6 +146,9 @@ class Camera:
 
         # ROI storage: dictionary with keys 'x', 'y', 'width', 'height' or None
         self.roi: Optional[Dict[str, int]] = None
+        # Active ROI mode (software by default; hardware if configured and supported)
+        self.roi_mode_config = ROI_MODE
+        self.roi_mode_active = ROI_MODE_SOFTWARE
 
         # Resolution settings
         self.display_resolution: Tuple[int, int] = (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
@@ -960,23 +966,47 @@ class Camera:
             "height": roi_tuple[3],
         }
 
-        # Software ROI only - hardware ROI requires camera restart which causes issues
-        # Using software cropping for now - works reliably without camera restart
-        logger.debug(f"ROI set (software cropping): {roi_tuple}")
+        # Decide ROI mode
+        active_mode = ROI_MODE_SOFTWARE
+        if self.roi_mode_config == ROI_MODE_HARDWARE and self.camera:
+            if hasattr(self.camera, "set_roi_hardware"):
+                try:
+                    success = bool(self.camera.set_roi_hardware(roi_tuple))
+                    if success:
+                        active_mode = ROI_MODE_HARDWARE
+                    else:
+                        logger.warning(
+                            "Hardware ROI requested but camera backend did not accept ROI; "
+                            "falling back to software ROI."
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Hardware ROI requested but failed ({e}); falling back to software ROI."
+                    )
+            else:
+                logger.warning(
+                    "Hardware ROI requested but camera backend does not support set_roi_hardware; "
+                    "falling back to software ROI."
+                )
+
+        self.roi_mode_active = active_mode
 
         logger.info(
             f"ROI set: ({self.roi['x']}, {self.roi['y']}) "
             f"{self.roi['width']}×{self.roi['height']}"
         )
         if self.socketio:
-            self.socketio.emit(WS_EVENT_ROI, {"roi": self.roi})
+            self.socketio.emit(
+                WS_EVENT_ROI,
+                {"roi": self.roi, "mode": self.roi_mode_active},
+            )
 
     def _handle_roi_get(self) -> None:
         """Handle ROI get command."""
         if self.socketio:
             roi_data = self.roi if self.roi else None
 
-            # Include camera constraints if available (for Mako cameras)
+            # Include camera constraints if available (for Mako/Pi cameras)
             constraints = None
             if self.camera and hasattr(self.camera, "get_roi_constraints"):
                 try:
@@ -984,7 +1014,7 @@ class Camera:
                 except Exception as e:
                     logger.debug(f"Could not get ROI constraints: {e}")
 
-            response = {"roi": roi_data}
+            response = {"roi": roi_data, "mode": self.roi_mode_active}
             if constraints:
                 response["constraints"] = constraints
 
@@ -996,8 +1026,18 @@ class Camera:
             logger.info("ROI cleared")
 
         self.roi = None
+        self.roi_mode_active = ROI_MODE_SOFTWARE
+        if self.camera and hasattr(self.camera, "set_roi_hardware"):
+            try:
+                max_width, max_height = 0, 0
+                if hasattr(self.camera, "get_max_resolution"):
+                    max_width, max_height = self.camera.get_max_resolution()
+                if max_width and max_height:
+                    self.camera.set_roi_hardware((0, 0, max_width, max_height))
+            except Exception:
+                pass
         if self.socketio:
-            self.socketio.emit(WS_EVENT_ROI, {"roi": None})
+            self.socketio.emit(WS_EVENT_ROI, {"roi": None, "mode": self.roi_mode_active})
 
     def get_calibration(self) -> Dict[str, float]:
         """

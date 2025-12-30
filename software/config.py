@@ -125,6 +125,11 @@ CAMERA_SNAPSHOT_JPEG_QUALITY = max(
     1, min(100, _snapshot_quality_raw)
 )  # Clamp to valid range [1, 100]
 
+# ROI Mode (software default; hardware optional if supported by camera backend)
+ROI_MODE_SOFTWARE = "software"
+ROI_MODE_HARDWARE = "hardware"
+ROI_MODE = os.getenv("RIO_ROI_MODE", ROI_MODE_SOFTWARE).strip().lower() or ROI_MODE_SOFTWARE
+
 # Logging Configuration
 # Production should use WARNING level to reduce I/O overhead
 # Development can use INFO or DEBUG for more verbose output

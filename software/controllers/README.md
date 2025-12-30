@@ -16,6 +16,7 @@ In the default app entrypoint (`software/main.py`), these controllers are instan
   - Owns droplet calibration values (`get_calibration()` / `set_calibration(...)`).
   - Integrates strobe timing via `PiStrobeCam` (see `strobe_cam.py`).
   - Emits UI updates via Socket.IO (event names come from `software/config.py`).
+  - ROI modes: software ROI by default; hardware ROI optional via `RIO_ROI_MODE=hardware` when the camera backend supports it (falls back to software if not).
 
 - **`strobe_cam.py` — `class PiStrobeCam`**
   - Composition of `drivers.strobe.PiStrobe` + `drivers.camera.BaseCamera`.

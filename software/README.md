@@ -27,6 +27,7 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - You should not need to touch `PYTHONPATH` or add `sys.path` in modules.
 - Runtime: `python main.py` calls `path_bootstrap.bootstrap_runtime()` for you.
 - Tests: `RIO_SIMULATION=true python -m pytest` picks up `software/conftest.py`, which calls `path_bootstrap.bootstrap_tests()` once.
+- ROI modes: default is software ROI; set `RIO_ROI_MODE=hardware` to request hardware ROI when the active camera backend supports it (falls back to software if not).
 
 ## Runtime wiring (how the software fits together)
 

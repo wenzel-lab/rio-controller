@@ -285,18 +285,14 @@ class PiCameraV2(BaseCamera):
         # picamera2 returns BGR, convert to RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # Check if hardware ROI is active
-        x, y, width, height = roi
-        frame_height, frame_width = frame.shape[:2]
-
-        # If frame size matches ROI size (within tolerance), hardware ROI is likely active
-        if abs(frame_width - width) <= 2 and abs(frame_height - height) <= 2:
-            # Hardware ROI is active, return frame as-is
+        # If hardware ROI was applied successfully, return the frame as-is.
+        if self.hardware_roi:
             return frame
-        else:
-            # Hardware ROI not active, do software cropping
-            roi_frame = frame[y : y + height, x : x + width]
-            return roi_frame
+
+        # Otherwise perform software crop
+        x, y, width, height = roi
+        roi_frame = frame[y : y + height, x : x + width]
+        return roi_frame
 
     def set_roi_hardware(self, roi: Tuple[int, int, int, int]) -> bool:
         """

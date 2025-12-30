@@ -40,6 +40,7 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
 
 The interface supports **software ROI** via `get_frame_roi((x, y, w, h))`.
 Some backends also include “hardware ROI” helpers (sensor/stream crop), but *choosing* between software vs hardware ROI is an application policy decision (typically owned by higher layers).
+- Hardware ROI support: `pi_camera_v2` (picamera2) and `pi_camera_legacy` (picamera) implement `set_roi_hardware`; `mako_camera` exposes it via Vimba. If a backend rejects hardware ROI, callers should fall back to software ROI.
 
 ## Testing
 
