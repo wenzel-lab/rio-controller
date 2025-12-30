@@ -25,11 +25,12 @@ Usage:
 """
 
 import os
-import sys
 import logging
 from threading import Event
 from flask import Flask
 from flask_socketio import SocketIO
+
+from path_bootstrap import bootstrap_runtime
 
 # Environment flags
 SIMULATION_MODE = os.getenv("RIO_SIMULATION", "false").lower() == "true"
@@ -56,10 +57,9 @@ try:
 except ImportError:
     import importlib_metadata  # type: ignore
 
-# Add current directory to path for imports (we're now at software/ level)
+bootstrap_runtime()
+
 software_dir = os.path.dirname(os.path.abspath(__file__))
-if software_dir not in sys.path:
-    sys.path.insert(0, software_dir)
 
 from drivers.spi_handler import (  # noqa: E402
     spi_init,
@@ -73,25 +73,11 @@ from controllers.heater_web import heater_web  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 
-# Import webapp controllers from rio-webapp/controllers
-# Note: There's a naming conflict - we have both:
-#   - software/controllers/ (device controllers: flow_web, heater_web, camera, strobe_cam)
-#   - software/rio-webapp/controllers/ (web controllers: camera_controller, flow_controller, etc.)
-# Solution: Import directly from the files to avoid package name conflict
-rio_webapp_controllers_dir = os.path.join(software_dir, "rio-webapp", "controllers")
-if rio_webapp_controllers_dir not in sys.path:
-    sys.path.insert(0, rio_webapp_controllers_dir)
-
-# Import directly from controller files
+# Import web controllers and routes (paths already bootstrapped)
 from camera_controller import CameraController  # noqa: E402
 from flow_controller import FlowController  # noqa: E402
 from heater_controller import HeaterController  # noqa: E402
 from view_model import ViewModel  # noqa: E402
-
-# Import routes module (from rio-webapp directory)
-rio_webapp_dir = os.path.join(software_dir, "rio-webapp")
-if rio_webapp_dir not in sys.path:
-    sys.path.insert(0, rio_webapp_dir)
 from routes import register_routes, create_background_update_task  # noqa: E402
 
 # Configure logging
@@ -250,10 +236,6 @@ except Exception as e:
 # Initialize droplet web controller if available
 if droplet_controller is not None:
     try:
-        # Import from rio-webapp/controllers
-        rio_webapp_controllers_dir = os.path.join(software_dir, "rio-webapp", "controllers")
-        if rio_webapp_controllers_dir not in sys.path:
-            sys.path.insert(0, rio_webapp_controllers_dir)
         from droplet_web_controller import DropletWebController
 
         droplet_web_controller = DropletWebController(droplet_controller, socketio)
