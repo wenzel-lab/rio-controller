@@ -1,5 +1,6 @@
 # Heating and stirring module
 
+
 <img src="images/sample_holder_with_insert.jpg" width=50%>
 
 The sample holder is used to heat microfluidic sample liquids such as water, oil or agarose to a set temperature and optionally stirring the sample using a magnetic stir bar, before pumping it through a microfluidics chip.  The PCB can also be used separately with external heaters to heat tubing or microscope glass slides.
@@ -7,6 +8,17 @@ The sample holder is used to heat microfluidic sample liquids such as water, oil
 The sample holder module comprises a PCB, two cartridge heaters, temperature sensor and stirring motor and magnets, all integrated into an aluminium shell.  Aluminium inserts that slot into the top can be machined to accommodate sample bottles of various shapes and sizes.  The sample holder connects to a Raspberry Pi via SPI, from which the sample holder temperature and stir speed are set and monitored.
 
 The sample holder has been tested to 100 degrees Celcius and provides a stable (but uncalibrated) readout to 0.01 degrees Celcius.
+
+## Where the firmware and software live (repo structure)
+
+- **Module firmware (PIC, MPLAB X project)**: `sample_holder_pic/`
+  - Developer-oriented firmware notes: `sample_holder_pic/README.md`
+- **Host-side driver (Raspberry Pi)**: `software/drivers/heater.py` (`PiHolder`)
+- **UI-facing controller wrapper**: `software/controllers/heater_web.py` (`heater_web`)
+- **UI wiring (web app)**: `software/rio-webapp/` + `software/rio-webapp/controllers/heater_controller.py`
+
+When auditing end-to-end behavior, the most direct call chain is:
+browser UI → Socket.IO `"heater"` handler → `heater_web` → `PiHolder` → `sample_holder_pic/` firmware.
 
 ## PCB
 

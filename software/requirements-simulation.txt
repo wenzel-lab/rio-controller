@@ -29,3 +29,21 @@ python-socketio>=5.14.0
 # - RPi.GPIO (Raspberry Pi GPIO - simulated by simulation/spi_simulated.py)
 # - picamera/picamera2 (Raspberry Pi camera - simulated by simulation/camera_simulated.py)
 
+# ------------------------------------------------------------
+# Dev / test tooling (installed in simulation/dev environments)
+# ------------------------------------------------------------
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+black>=23.0.0
+
+flake8>=6.0.0
+flake8-docstrings>=1.7.0
+
+mypy>=1.0.0
+types-PyYAML>=6.0.0
+
+# Optional (heavier / stricter tooling)
+pylint>=2.15.0
+bandit>=1.7.0
+

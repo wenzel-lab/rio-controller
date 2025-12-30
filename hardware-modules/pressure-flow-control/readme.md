@@ -1,13 +1,26 @@
 ## Pressure and flow controller module
 
+
 This is the core piece of the workstation. 
 This electronic controller module aims to regulate and distrbute the pressure (originating from the pressure source module) into the sample tubes, so that the samples (aqueous, gel pre-cursors and oils) flow onto the microfluidic chip and the collection reservoirs.
-We aim to regulate pressures enough for ultra-high throughput agarose bead generation (several bar), in a smooth fashion that avoids pulsing, especially at steady state.
+We regulate high pressure for ultra-high throughput agarose bead generation (several bar), in a smooth fashion that avoids pulsing, especially at steady state.
 This controller consists of a custom circuit board that plugs into the Raspberry Pi hat, in addition to connectors for connecting external pressure controllers and flow sensors. Pressure and flow control are fully automatic.
 
 The controller module can operate either in pressure control mode or flow control mode.  Flow control mode requires external flow sensors to be connected.  Once desired flow rates have been achieved and associated pressures are known, the experiment can be reproduced using only pressure control, without the need for expensive flow sensors.  Both modes require external pressure controllers to be connected.
 
 The module contains a PIC microcontroller that communicates with the Raspberry Pi, controls the pressure controllers and reads back pressure and flow.  The pressure target is controlled using a digital-to-analogue converter and the actual pressure is read using an analogue-to-digital converter.  The flow controllers is read via a four channel I2C multiplexer.
+
+### Where the firmware and software live (repo structure)
+
+- **Module firmware (PIC, MPLAB X project)**: `pressure_and_flow_pic/`
+  - Developer-oriented firmware notes: `pressure_and_flow_pic/README.md`
+- **Host-side driver (Raspberry Pi)**: `software/drivers/flow.py` (`PiFlow`)
+- **UI-facing controller wrapper**: `software/controllers/flow_web.py` (`FlowWeb`)
+- **UI wiring (web app)**: `software/rio-webapp/` + `software/rio-webapp/controllers/flow_controller.py`
+
+When auditing end-to-end behavior, the most direct call chain is:
+browser UI → Socket.IO `"flow"` handler → `FlowWeb` → `PiFlow` → `pressure_and_flow_pic/` firmware.
+
 
 ### Pressure Controllers
 We have selected the SMC ITV0010 pressure controllers for this application.  The pressure target is supplied to the pressure controller by the module as an analogue voltage and the measured pressure achieved is returned as an analogue voltage.  This approach allows the option to connect alternative analogue pressure controllers, or using a separate pressure sensor instead of the one internal to the pressure controller.

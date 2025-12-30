@@ -47,7 +47,7 @@ Start here:
 - **Root-level operational scripts**:
   - `create-pi-deployment.sh`: generates `pi-deployment/` from `software/`
   - `deploy-to-pi.sh`: ships a deployment bundle to a Pi over SSH
-  - `SOCKETIO_UPGRADE_PI.sh` and related scripts: targeted upgrade/troubleshooting helpers
+  - (optional) targeted upgrade/troubleshooting helpers may exist over time; prefer documenting the current supported deployment path in `pi-deployment/README.md`
 
 - **Metadata**:
   - `okh-manifest.yml`: Open Know-How manifest linking hardware modules and software

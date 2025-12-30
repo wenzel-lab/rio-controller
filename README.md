@@ -8,7 +8,7 @@ Follow us! [#twitter](https://twitter.com/WenzelLab), [#YouTube](https://www.you
 
 ## Table of contents
 
-- [Why Rio](#why-rio)
+- [Why](#why)
 - [Getting Started](#getting-started)
 - [Use Cases](#use-cases)
 - [Read the Paper](#read-the-paper)
@@ -16,11 +16,14 @@ Follow us! [#twitter](https://twitter.com/WenzelLab), [#YouTube](https://www.you
 - [Contributing](#contributing)
 - [License](#license)
 
-## Why "Rio"
+## Why
 
 Our aim is to create a prototype of a _compact_ working station for microfluidic research that is based on _connectable_, _open_, modern, and _low-cost_ components (Rasberry Pi, Arduino, 3D printing, on-board components, open or at least accessible design software and operation software - python).
 
 **Rio** serves as a platform to implement fully functional research-grade workstations with good specifications, such as fast reaction times and low-pressure fluctuations. It is modular so that parts of this platform can be repurposed and improved in the open-source hardware sense and easily combined, exchanged, or used independently in challenging environments.
+
+
+## Getting Started
 
 For a repository architecture guide, see [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Software (runtime + development)**: [`software/README.md`](software/README.md)
@@ -31,8 +34,6 @@ For a repository architecture guide, see [ARCHITECTURE.md](ARCHITECTURE.md)
   - Strobe imaging: [`hardware-modules/strobe-imaging/README.md`](hardware-modules/strobe-imaging/README.md)
   - Pressure/flow: [`hardware-modules/pressure-flow-control/README.md`](hardware-modules/pressure-flow-control/README.md)
   - Heating/stirring: [`hardware-modules/heating-stirring/README.md`](hardware-modules/heating-stirring/README.md)
-
-## Getting Started
 
 In order to implement a workstation, you must build the core board and any module of your interest. The user interface software will allow you to control and monitor the operations of the modules.
 

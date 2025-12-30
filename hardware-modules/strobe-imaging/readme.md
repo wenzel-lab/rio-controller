@@ -1,5 +1,6 @@
 # Strobe Imaging Module
 
+
 Stroboscopic imaging is an interesting technique that 'freezes' the motion of fast-moving objects. The light source needs to be synchronized with the objects to be inspected, and the camera is triggered at the exact moment of the light pulse. 
 
 The _**Strobe Imaging Module**_ integrates a controller, sensor, and actuator for imaging fast processes, particularly developed for microfluidic droplet generation.
@@ -7,6 +8,19 @@ The _**Strobe Imaging Module**_ integrates a controller, sensor, and actuator fo
 * The _sensor_ is a Raspberry Pi camera V2, a CMOS sensor with an 8-megapixel resolution. If higher technical specifications are required, the module is compatible with the MAKO U-029 high-speed camera.
 * The _actuator_ consists of a high-power LED attached to a heat sink and assembled with a condenser lens to transmit light through the samples, which is collected by the _sensor_.
 * The _controller_ is a PIC microcontroller board that handles the instant activation of the _actuator_ to capture sharp images of fast moving objects with the _sensor_. It activates the _actuator_ at a specific frequency, defined by the frame rate and exposure time of the _sensor_.
+
+## Where the firmware and software live (repo structure)
+
+- **Module firmware (PIC, MPLAB X project)**: `strobe_pic/`
+  - Developer-oriented firmware notes: `strobe_pic/README.md`
+- **Host-side driver (Raspberry Pi)**: `software/drivers/strobe.py` (`PiStrobe`)
+- **Camera↔strobe orchestration**: `software/controllers/strobe_cam.py` (`PiStrobeCam`)
+- **UI wiring (web app)**:
+  - Socket.IO handlers: `software/rio-webapp/controllers/`
+  - Routes/templates/static: `software/rio-webapp/`
+
+When auditing end-to-end behavior, the most direct call chain is:
+browser UI → Socket.IO handler → `controllers/camera.py` / `controllers/strobe_cam.py` → `drivers/strobe.py` → `strobe_pic/` firmware.
 
 ## Features
 
