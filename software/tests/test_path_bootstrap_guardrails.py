@@ -12,9 +12,7 @@ def test_no_scattered_sys_path_inserts():
         repo_root / "path_bootstrap.py",
         repo_root / "software" / "path_bootstrap.py",  # in case of alt resolution
     }
-    exempt_dirs = {
-        repo_root / "droplet-detection",  # CLI/benchmark tools (left as-is for now)
-    }
+    exempt_dirs = set()
 
     offenders = []
     for py in repo_root.rglob("*.py"):

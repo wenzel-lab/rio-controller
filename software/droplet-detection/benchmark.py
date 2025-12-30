@@ -13,15 +13,14 @@ import logging
 import time
 import numpy as np
 import cv2
-import sys
-import os
 from typing import Dict, List, Tuple, Optional, Any, Callable
 import json
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from path_bootstrap import bootstrap_runtime
 
-from droplet_detection import (
+bootstrap_runtime()
+
+from droplet_detection import (  # noqa: E402
     DropletDetector,
     DropletDetectionConfig,
     Preprocessor,
@@ -131,7 +130,7 @@ class PerformanceBenchmark:
         for _ in range(iterations):
             start = time.perf_counter()
             try:
-                result = component_func(test_frame)
+                component_func(test_frame)
             except Exception as e:
                 logger.warning(f"Error in {component_name}: {e}")
                 continue
@@ -355,7 +354,7 @@ class PerformanceBenchmark:
 
             if "frame_rate" in scenario:
                 fr = scenario["frame_rate"]
-                print(f"\n  Frame Rate Limits:")
+                print("\n  Frame Rate Limits:")
                 print(f"    Max FPS: {fr['max_fps']:.1f}")
                 print(f"    Safe FPS: {fr['safe_fps']:.1f} (p95)")
 

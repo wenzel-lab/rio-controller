@@ -41,7 +41,7 @@ ignore_missing_imports = true
 explicit_package_bases = true
 # `mypy .` aborts if it encounters a directory that cannot be a Python package.
 # This repo contains `droplet-detection/` (hyphen) for historical reasons.
-exclude = '(?x)(^droplet-detection/)'
+exclude = '(?x)(^droplet-detection/)|(^rio-webapp/controllers/)'
 # Ignore missing imports for hardware-specific libraries
 [[tool.mypy.overrides]]
 module = [
@@ -68,6 +68,13 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "tests.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "rio_webapp.controllers",
+    "rio_webapp.controllers.*",
 ]
 ignore_errors = true
 

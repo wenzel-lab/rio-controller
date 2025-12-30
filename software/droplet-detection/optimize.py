@@ -13,26 +13,22 @@ import logging
 import time
 import numpy as np
 import cv2
-import sys
-import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Optional, Any
 import json
 import itertools
 from dataclasses import dataclass, asdict
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from path_bootstrap import bootstrap_runtime
 
-from droplet_detection import (
+bootstrap_runtime()
+
+from droplet_detection import (  # noqa: E402
     DropletDetector,
     DropletDetectionConfig,
-    DropletMetrics,
-    load_config,
     save_config,
 )
-from droplet_detection.test_data_loader import (
-    find_test_images,
+from droplet_detection.test_data_loader import (  # noqa: E402
     load_test_image,
 )
 
@@ -121,7 +117,6 @@ class ParameterOptimizer:
                     false_negatives += expected - detected
 
             total_expected = sum(ground_truth)
-            total_detected = sum(detection_counts)
 
             if total_expected > 0:
                 detection_rate = true_positives / len(ground_truth)
@@ -357,11 +352,6 @@ def main():
     if not test_images:
         logger.error("No test images loaded. Exiting.")
         return
-
-    # Load base config if provided
-    base_config = None
-    if args.base_config:
-        base_config = load_config(args.base_config)
 
     # Run optimization
     optimizer = ParameterOptimizer(test_images)
