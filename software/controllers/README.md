@@ -26,7 +26,7 @@ In the default app entrypoint (`software/main.py`), these controllers are instan
 
 - **`flow_web.py` — `class FlowWeb`**
   - Wraps the low-level `drivers.flow.PiFlow` protocol.
-  - Tracks per-channel state and performs UI↔firmware control-mode mapping.
+  - Tracks per-channel state and performs UI↔firmware control-mode mapping (canonical mapping lives in `flow_control_modes.py` and is re-exported by `config.py`; no local dicts here).
   - Typical calls: `set_pressure(index, mbar)`, `set_flow(index, ul_hr)`, `set_control_mode(index, firmware_mode)`.
 
 - **`heater_web.py` — `class heater_web`**
