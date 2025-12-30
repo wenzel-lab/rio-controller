@@ -136,6 +136,10 @@ Some droplet-detection tests and tools can optionally look for a `droplet_AInaly
 
 For droplet benchmarking/optimization workflows, see `droplet-detection-testing_and_optimization_guide.md`.
 
+**Optional droplet image dataset (for simulation/tests)**
+- Provide via `RIO_DROPLET_TESTDATA_DIR` (preferred) or place under `software/tests/data/droplet/`.
+- If absent, simulation will fall back to synthetic images and any dataset-dependent tests should skip with a clear reason.
+
 ## Test Output
 
 - ✓ indicates successful test

@@ -41,26 +41,44 @@ DEFAULT_DROPLET_SPAWN_RATE = (
 JPEG_QUALITY = 85
 FRAME_WAIT_TIME_S = 0.1
 
-# Path to real sample images (relative to this file)
-# Try to find droplet_AInalysis repository
-_SCRIPT_DIR = Path(__file__).parent.absolute()
-# Try multiple possible paths (sibling directories in GitHub folder)
-_POSSIBLE_ROOTS = [
-    _SCRIPT_DIR.parent.parent.parent.parent / "droplet_AInalysis",  # GitHub/droplet_AInalysis
-    _SCRIPT_DIR.parent.parent.parent / "droplet_AInalysis",  # Fallback
-    Path("/Users/twenzel/Documents/GitHub/droplet_AInalysis"),  # Absolute path fallback
-]
+_SCRIPT_DIR = Path(__file__).parent.resolve()
+
+
+def _resolve_droplet_dataset_base(
+    env_value: Optional[str] = None, repo_root: Optional[Path] = None
+) -> Optional[Path]:
+    """
+    Resolve the base path for droplet sample data.
+
+    Priority:
+    1) Env var RIO_DROPLET_TESTDATA_DIR (if set and exists)
+    2) Repo-relative fallback: <repo>/software/tests/data/droplet (if exists)
+    3) None (will trigger synthetic backgrounds/droplets)
+    """
+
+    env_path = env_value if env_value is not None else os.getenv("RIO_DROPLET_TESTDATA_DIR")
+    if env_path:
+        candidate = Path(env_path).expanduser().resolve()
+        if candidate.exists():
+            return candidate
+
+    root = repo_root if repo_root is not None else _SCRIPT_DIR.parent.parent
+    fallback = root / "software" / "tests" / "data" / "droplet"
+    if fallback.exists():
+        return fallback
+
+    return None
+
+
 _DROPLET_ANALYSIS_PATH = None
 _BACKGROUNDS_PATH = None
 _DROPLETS_PATH = None
 
-for root in _POSSIBLE_ROOTS:
-    candidate = root / "training_field" / "real_samples"
-    if candidate.exists():
-        _DROPLET_ANALYSIS_PATH = candidate
-        _BACKGROUNDS_PATH = candidate / "backgrounds"
-        _DROPLETS_PATH = candidate / "droplets"
-        break
+_DATASET_BASE = _resolve_droplet_dataset_base()
+if _DATASET_BASE:
+    _DROPLET_ANALYSIS_PATH = _DATASET_BASE
+    _BACKGROUNDS_PATH = _DATASET_BASE / "backgrounds"
+    _DROPLETS_PATH = _DATASET_BASE / "droplets"
 
 # Try to import real camera classes (will fail on non-Pi systems, that's OK)
 try:
