@@ -346,6 +346,9 @@ class SimulatedCamera(BaseCamera):
             # Remove droplets that left the frame (optimized: iterate backwards)
             droplets_to_remove = []
             for i in range(len(self.droplet_positions) - 1, -1, -1):
+                # Safeguard against length mismatches
+                if i >= len(self.droplet_sizes):
+                    continue
                 pos = self.droplet_positions[i]
                 radius = self.droplet_sizes[i]
                 # Check if completely outside frame (with margin)
@@ -381,8 +384,30 @@ class SimulatedCamera(BaseCamera):
                 else:
                     break  # Don't force spawn every frame
 
+            # Ensure all droplet arrays stay in sync (defensive against length mismatches)
+            n = min(
+                len(self.droplet_positions),
+                len(self.droplet_velocities),
+                len(self.droplet_sizes),
+                len(self.droplet_aspect_ratios),
+                len(self.droplet_templates_idx),
+                len(self.droplet_intensities),
+            )
+            if n < len(self.droplet_positions):
+                self.droplet_positions = self.droplet_positions[:n]
+            if n < len(self.droplet_velocities):
+                self.droplet_velocities = self.droplet_velocities[:n]
+            if n < len(self.droplet_sizes):
+                self.droplet_sizes = self.droplet_sizes[:n]
+            if n < len(self.droplet_aspect_ratios):
+                self.droplet_aspect_ratios = self.droplet_aspect_ratios[:n]
+            if n < len(self.droplet_templates_idx):
+                self.droplet_templates_idx = self.droplet_templates_idx[:n]
+            if n < len(self.droplet_intensities):
+                self.droplet_intensities = self.droplet_intensities[:n]
+
             # Update droplet positions (no collision detection for performance)
-            for i in range(len(self.droplet_positions)):
+            for i in range(n):
                 pos = self.droplet_positions[i]
                 vel = self.droplet_velocities[i]
                 radius = self.droplet_sizes[i]
@@ -560,7 +585,7 @@ class SimulatedCamera(BaseCamera):
 
     def _capture_loop(self):
         """Main capture loop (runs in background thread)."""
-        frame_time = 1.0 / self.fps
+        frame_time = 1.0 / max(1, self.fps)
 
         while self.cam_running_event and self.cam_running_event.is_set():
             start_time = time.time()
@@ -575,11 +600,10 @@ class SimulatedCamera(BaseCamera):
                 except Exception as e:
                     logger.error(f"Frame callback error: {e}")
 
-            # Maintain frame rate
+            # Maintain frame rate with a small minimum sleep to avoid tight loops
             elapsed = time.time() - start_time
-            sleep_time = max(0, frame_time - elapsed)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+            sleep_time = max(0.005, frame_time - elapsed)
+            time.sleep(sleep_time)
 
     def get_frame_array(self) -> Optional[np.ndarray]:
         """

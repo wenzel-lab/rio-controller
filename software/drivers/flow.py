@@ -156,8 +156,8 @@ class PiFlow:
     def get_id(self):
         valid, data = self.packet_query(self.PACKET_TYPE_GET_ID, [])
         if valid:
-            id = bytes(data[1:-1]).decode("ascii")
-            id_valid = id == self.DEVICE_ID
+            id_str = bytes(data[1:-1]).decode("ascii")
+            id_valid = id_str == self.DEVICE_ID
             try:
                 checksum_okay = data[0] == 0
             except Exception:
@@ -165,6 +165,7 @@ class PiFlow:
         else:
             id_str = ""
             id_valid = False
+            checksum_okay = False
         return (valid and checksum_okay, id_str, id_valid)
 
     def set_pressure_all(self, pressures_mbar):

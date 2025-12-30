@@ -8,6 +8,8 @@ Werkzeug>=3.0.0,<4.0.0
 Jinja2>=3.1.0
 MarkupSafe>=3.0.0
 itsdangerous>=2.2.0
+gevent>=23.0.0,<25.0.0
+gevent-websocket>=0.10.1
 eventlet>=0.38.0
 
 # Image processing

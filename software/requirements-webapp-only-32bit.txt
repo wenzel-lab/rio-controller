@@ -9,14 +9,15 @@ Werkzeug>=2.0.0,<4.0.0
 Jinja2>=3.0.0
 MarkupSafe>=2.0.0
 itsdangerous>=2.0.0
+gevent>=23.0.0,<25.0.0
+gevent-websocket>=0.10.1
 
 # WebSocket support (compatible with Socket.IO client v2/v3/v4)
 # Upgraded versions compatible with Flask-SocketIO 5.4+
-python-socketio>=5.11.0  # Upgraded from 4.7.1
+python-socketio>=5.14.0
 python-engineio>=4.9.0  # Upgraded from 3.13.2 - Version 4.x required for python-socketio 5.x
 
 # Eventlet for async support (required for Flask-SocketIO)
-# Note: Install in venv to override system version and avoid distutils compatibility issues
 eventlet>=0.33.0,<1.0.0
 
 # Image processing (for droplet detection - NEW)

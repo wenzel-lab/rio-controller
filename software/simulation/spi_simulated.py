@@ -153,19 +153,18 @@ class SimulatedGPIO:
 class SimulatedSPIDev:
     """Mock SPI device (replaces spidev.SpiDev)."""
 
-    def __init__(self):
+    def __init__(self, handler=None):
         self.bus = None
         self.device = None
         self.mode = 0
         self.max_speed_hz = 0
         self._transfers = []  # Log of all transfers
+        self._handler = handler  # Reference to SimulatedSPIHandler for routing
 
     def open(self, bus, device):
         """Open SPI device."""
         self.bus = bus
         self.device = device
-        # Silent in simulation (too verbose)
-        # Uncomment for debugging: print(f"[SimulatedSPI] Opened bus={bus}, device={device}")
 
     def xfer2(self, data: List[int]) -> List[int]:
         """
@@ -175,20 +174,23 @@ class SimulatedSPIDev:
         """
         self._transfers.append(data.copy())
 
-        # Get the current selected device from the handler
-        # We need to access the handler's current_device
-        # For now, return a mock response - the handler will route this
-        response = [0] * len(data)
+        # If no handler, return mock response (shouldn't happen)
+        if self._handler is None:
+            return [0] * len(data)
 
-        # If this looks like a packet (STX byte = 2), try to route it
+        # Check if this is a read request (single zero byte)
+        if len(data) == 1 and data[0] == 0:
+            # Read operation - return stored response from handler
+            return self._handler.get_stored_response()
+
+        # Check if this is a packet (STX byte = 2)
         if len(data) >= 3 and data[0] == 2:  # STX byte
-            # Extract packet type
-            if len(data) >= 3:
-                packet_type = data[2]
-                # Return a basic response - actual routing happens in handler
-                response = [2, len(data), packet_type] + [0] * (len(data) - 4) + [0]
+            # Route packet through handler
+            response = self._handler.route_packet(data)
+            return response
 
-        return response
+        # Default: echo data back
+        return data
 
     def close(self):
         """Close SPI device."""
@@ -251,6 +253,15 @@ class SimulatedSPIHandler:
         self._simulated_flow = None
         self._simulated_strobe = None
         self._simulated_heaters: dict[int, Any] = {}  # port -> heater instance
+
+        # Store last response for read operations
+        self._stored_response: List[int] = []
+
+        # Create SPI device with handler reference
+        self.spi = SimulatedSPIDev(handler=self)
+        self.spi.open(bus, 0)
+        self.spi.mode = mode
+        self.spi.max_speed_hz = speed_hz
 
         logger.info(f"SimulatedSPIHandler initialized (bus={bus}, mode={mode}, speed={speed_hz}Hz)")
 
@@ -320,8 +331,9 @@ class SimulatedSPIHandler:
         Releases the SPI bus lock, allowing other threads to access it.
         """
         try:
-            self.pi_lock.release()
-            logger.debug("SPI lock released")
+            if self.pi_lock.locked():
+                self.pi_lock.release()
+                logger.debug("SPI lock released")
         except Exception as e:
             logger.error(f"Error releasing SPI lock: {e}")
 
@@ -357,3 +369,97 @@ class SimulatedSPIHandler:
         for _ in range(bytes_):
             data.extend(self.spi.xfer2([0]))
         return data
+
+    def get_stored_response(self) -> List[int]:
+        """
+        Get stored response from last packet operation.
+
+        Returns:
+            Stored response bytes, or [0] if no response stored
+        """
+        if self._stored_response:
+            # Return one byte at a time (SPI read behavior)
+            if len(self._stored_response) > 0:
+                byte = self._stored_response.pop(0)
+                return [byte]
+        # Return 0 if no response (PIC not ready)
+        return [0]
+
+    def route_packet(self, packet: List[int]) -> List[int]:
+        """
+        Route SPI packet to appropriate simulated device.
+
+        Args:
+            packet: SPI packet bytes [STX, size, type, ...data, checksum]
+
+        Returns:
+            Response packet bytes (empty for write, will be read later)
+        """
+        if len(packet) < 3:
+            self._stored_response = []
+            return []
+
+        # Extract packet components
+        stx = packet[0]
+        if stx != 2:  # STX byte
+            self._stored_response = []
+            return []
+
+        size = packet[1] if len(packet) > 1 else 0
+        packet_type = packet[2] if len(packet) > 2 else 0
+        data = packet[3:-1] if len(packet) > 4 else []  # Skip STX, size, type, checksum
+
+        # Route to appropriate device based on current_device
+        response_data = []
+        valid = False
+
+        try:
+            if self.current_device == 24:  # PORT_STROBE
+                if self._simulated_strobe is None:
+                    from simulation.strobe_simulated import SimulatedStrobe
+                    self._simulated_strobe = SimulatedStrobe(device_port=24, reply_pause_s=0.1)
+                valid, response_data = self._simulated_strobe.packet_query(packet_type, data)
+
+            elif self.current_device == 26:  # PORT_FLOW
+                if self._simulated_flow is None:
+                    from simulation.flow_simulated import SimulatedFlow
+                    self._simulated_flow = SimulatedFlow(device_port=26, reply_pause_s=0.1)
+                valid, response_data = self._simulated_flow.packet_query(packet_type, data)
+
+            elif self.current_device in [31, 33, 32, 36]:  # PORT_HEATER1-4
+                port = self.current_device
+                if port not in self._simulated_heaters:
+                    from simulation.heater_simulated import SimulatedHeater
+                    self._simulated_heaters[port] = SimulatedHeater(device_port=port, reply_pause_s=0.05)
+                valid, response_data = self._simulated_heaters[port].packet_query(packet_type, data)
+
+            else:
+                logger.warning(f"No simulated device for port {self.current_device}")
+                valid = False
+                response_data = []
+
+        except Exception as e:
+            logger.error(f"Error routing packet to device {self.current_device}: {e}")
+            valid = False
+            response_data = []
+
+        # Format response packet: [STX, size, type, ...data, checksum]
+        if valid and response_data:
+            response = [2]  # STX
+            response.append(len(response_data) + 4)  # size (type + data + checksum)
+            response.append(packet_type)  # echo packet type
+            response.extend(response_data)
+            # Calculate checksum
+            checksum = (-(sum(response) & 0xFF)) & 0xFF
+            response.append(checksum)
+            # Store response for read operations (packet_read will read this)
+            self._stored_response = response.copy()
+            # Return empty for write operation (response will be read via xfer2([0]))
+            return []
+        else:
+            # Invalid response - store error packet
+            error_response = [2, 4, packet_type, 0xFF, 0]  # STX, size, type, error, checksum
+            checksum = (-(sum(error_response) & 0xFF)) & 0xFF
+            error_response[-1] = checksum
+            self._stored_response = error_response.copy()
+            return []

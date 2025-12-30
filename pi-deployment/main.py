@@ -29,7 +29,31 @@ import logging
 from threading import Event
 from flask import Flask
 from flask_socketio import SocketIO
-import eventlet
+
+# Environment flags
+SIMULATION_MODE = os.getenv("RIO_SIMULATION", "false").lower() == "true"
+NO_GEVENT_PATCH = os.getenv("RIO_NO_GEVENT_PATCH", "false").lower() == "true"
+
+# Prefer gevent to avoid eventlet deprecation; fallback to default if not available.
+_async_mode_default = None
+if not SIMULATION_MODE and not NO_GEVENT_PATCH:
+    try:
+        import gevent.monkey
+
+        gevent.monkey.patch_all()
+        _async_mode_default = "gevent"
+    except ImportError:
+        _async_mode_default = None
+
+# In simulation, avoid gevent patching and use threading async mode
+if SIMULATION_MODE:
+    _async_mode_default = "threading"
+
+# Standard library version lookup to avoid pkg_resources deprecation
+try:
+    import importlib.metadata as importlib_metadata
+except ImportError:
+    import importlib_metadata  # type: ignore
 
 # Add current directory to path for imports (we're now at software/ level)
 software_dir = os.path.dirname(os.path.abspath(__file__))
@@ -69,9 +93,6 @@ if rio_webapp_dir not in sys.path:
     sys.path.insert(0, rio_webapp_dir)
 from routes import register_routes, create_background_update_task  # noqa: E402
 
-# Configure eventlet monkey patching
-eventlet.monkey_patch(os=True, select=True, socket=True, thread=False, time=True, psycopg=True)
-
 # Configure logging
 # Use configurable log level (default: WARNING for production, can override with RIO_LOG_LEVEL)
 # But use INFO at startup to catch initialization issues
@@ -90,6 +111,9 @@ logger = logging.getLogger(__name__)
 # Reduce Socket.IO and Engine.IO logging verbosity (too noisy at INFO level)
 logging.getLogger("socketio.server").setLevel(logging.WARNING)
 logging.getLogger("engineio.server").setLevel(logging.WARNING)
+# In simulation, suppress werkzeug dev server warning noise
+if SIMULATION_MODE:
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 # Log startup immediately to verify logging works
 logger.info("=" * 60)
@@ -129,16 +153,16 @@ try:
     try:
         import socketio
         import engineio
-        import pkg_resources
-        # python-socketio 5.x may not have __version__, use pkg_resources
-        try:
-            socketio_version = socketio.__version__
-        except AttributeError:
-            socketio_version = pkg_resources.get_distribution('python-socketio').version
-        try:
-            engineio_version = engineio.__version__
-        except AttributeError:
-            engineio_version = pkg_resources.get_distribution('python-engineio').version
+
+        def _pkg_version(name: str) -> str:
+            try:
+                return importlib_metadata.version(name)
+            except Exception:
+                return "unknown"
+
+        socketio_version = getattr(socketio, "__version__", _pkg_version("python-socketio"))
+        engineio_version = getattr(engineio, "__version__", _pkg_version("python-engineio"))
+
         logger.info(f"Socket.IO versions: python-socketio={socketio_version}, python-engineio={engineio_version}")
         logger.info(f"python-socketio location: {socketio.__file__}")
         logger.info(f"python-engineio location: {engineio.__file__}")
@@ -146,8 +170,13 @@ try:
         logger.warning(f"Could not check Socket.IO versions: {e}")
     
     # Flask-SocketIO 5.x: allowEIO3 for backward compatibility with older clients
-    # This helps with protocol negotiation
-    socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*", allowEIO3=True)
+    # Prefer gevent if available to avoid eventlet deprecation warnings
+    socketio = SocketIO(
+        app,
+        async_mode=_async_mode_default,
+        cors_allowed_origins="*",
+        allowEIO3=True,
+    )
     logger.info("Step 3: SocketIO instance created successfully")
 except Exception as e:
     logger.error(f"Step 3: SocketIO creation failed: {e}")
@@ -276,7 +305,13 @@ if __name__ == "__main__":
     socketio.start_background_task(background_task)
 
     try:
-        socketio.run(app, host="0.0.0.0", port=port, debug=False)
+        socketio.run(
+            app,
+            host="0.0.0.0",
+            port=port,
+            debug=False,
+            allow_unsafe_werkzeug=(_async_mode_default == "threading"),
+        )
     except KeyboardInterrupt:
         logger.info("Server shutting down...")
         exit_event.set()

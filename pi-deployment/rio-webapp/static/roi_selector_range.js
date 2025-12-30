@@ -71,51 +71,85 @@ class ROISelectorRange {
         this.ctx = this.canvas.getContext('2d');
         this.updateCanvasSize();
         
+        const updateAll = () => {
+            this.updateCanvasSize();
+            // Ensure sliders match the latest layout
+            requestAnimationFrame(() => {
+                this.updateSliderDimensions();
+                if (this.customVerticalSlider) {
+                    this.customVerticalSlider.cachedRect = null;
+                    this.customVerticalSlider.updateDisplay();
+                }
+            });
+        };
+
         this.img.addEventListener('load', () => {
-            this.updateCanvasSize();
-            // Delay slider update to ensure image is fully rendered
-            setTimeout(() => {
-                this.updateSliderDimensions();
-                // Force update of custom vertical slider display
-                if (this.customVerticalSlider) {
-                    this.customVerticalSlider.updateDisplay();
-                }
-            }, 100);
+            updateAll();
         });
-        window.addEventListener('resize', () => {
-            this.updateCanvasSize();
-            setTimeout(() => {
-                this.updateSliderDimensions();
-                // Force update of custom vertical slider display
-                if (this.customVerticalSlider) {
-                    this.customVerticalSlider.updateDisplay();
-                }
-            }, 100);
-        });
+
+        // Use ResizeObserver for reliable layout updates (modern browsers)
+        if (window.ResizeObserver) {
+            const ro = new ResizeObserver(() => updateAll());
+            ro.observe(this.img);
+        } else {
+            window.addEventListener('resize', () => updateAll());
+        }
     }
     
     updateCanvasSize() {
         if (!this.canvas || !this.img) return;
-        
+
+        // Use device-pixel-ratio aware sizing for sharp overlay and correct scaling
         const rect = this.img.getBoundingClientRect();
-        this.canvas.width = rect.width;
-        this.canvas.height = rect.height;
+        const dpr = window.devicePixelRatio || 1;
+        this.dpr = dpr;
+
+        // Source dimensions: prefer provided maxWidth/maxHeight, fallback to natural
+        const sourceW = this.maxWidth || this.img.naturalWidth || rect.width;
+        const sourceH = this.maxHeight || this.img.naturalHeight || rect.height;
+
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = rect.height * dpr;
         this.canvas.style.width = rect.width + 'px';
         this.canvas.style.height = rect.height + 'px';
-        
+
+        if (this.ctx) {
+            this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        // Sync max sizes to source to keep ROI scaling accurate
+        if (sourceW > 0 && sourceH > 0) {
+            this.maxWidth = sourceW;
+            this.maxHeight = sourceH;
+            // Update slider limits to match the new intrinsic size
+            const xSlider = $('#roi_x_range_slider');
+            if (xSlider.length && xSlider.slider('instance')) {
+                xSlider.slider('option', 'max', this.maxWidth);
+            }
+            if (this.customVerticalSlider) {
+                this.customVerticalSlider.maxValue = this.maxHeight;
+                this.customVerticalSlider.updateDisplay();
+            }
+        }
+
         // Update slider dimensions to match image
         this.updateSliderDimensions();
-        
+
         this.draw();
     }
     
     updateSliderDimensions() {
         if (!this.img) return;
         
+        // Display dimensions from rendered image
         const rect = this.img.getBoundingClientRect();
-        const imgHeight = rect.height;
-        const imgWidth = rect.width;
-        
+        let imgHeight = rect.height;
+        let imgWidth = rect.width;
+
+        // Ensure minimum dimensions
+        if (imgHeight < 50) imgHeight = 50;
+        if (imgWidth < 50) imgWidth = 50;
+
         // Update custom vertical Y-axis slider to match image height
         if (this.customVerticalSlider) {
             this.customVerticalSlider.updateDimensions(imgHeight);
@@ -149,13 +183,47 @@ class ROISelectorRange {
             sliderElement.slider('destroy');
         }
         
-        // Get initial height from image if available
+        // Get initial height from image with multiple fallback methods (Chrome compatibility)
         let initialHeight = 300; // Default fallback
         if (this.img) {
+            // Method 1: getBoundingClientRect (primary)
             const imgRect = this.img.getBoundingClientRect();
             if (imgRect.height > 0) {
                 initialHeight = imgRect.height;
+            } else {
+                // Method 2: offsetHeight
+                const offsetH = this.img.offsetHeight;
+                if (offsetH > 0) {
+                    initialHeight = offsetH;
+                } else {
+                    // Method 3: clientHeight
+                    const clientH = this.img.clientHeight;
+                    if (clientH > 0) {
+                        initialHeight = clientH;
+                    } else {
+                        // Method 4: computed style
+                        const style = window.getComputedStyle(this.img);
+                        const styleH = parseFloat(style.height);
+                        if (styleH > 0) {
+                            initialHeight = styleH;
+                        } else {
+                            // Method 5: naturalHeight scaled to display
+                            if (this.img.naturalHeight > 0 && this.img.naturalWidth > 0) {
+                                const imgWidth = this.img.offsetWidth || this.img.clientWidth || parseFloat(window.getComputedStyle(this.img).width);
+                                if (imgWidth > 0) {
+                                    const scale = imgWidth / this.img.naturalWidth;
+                                    initialHeight = this.img.naturalHeight * scale;
+                                }
+                            }
+                        }
+                    }
+                }
             }
+        }
+        
+        // Ensure minimum height
+        if (initialHeight < 100) {
+            initialHeight = 300; // Fallback to safe minimum
         }
         
         // Create custom slider structure
@@ -242,40 +310,97 @@ class ROISelectorRange {
             value1: initialYMin,
             value2: initialYMax,
             dragging: null,
+            cachedRect: null, // Cache getBoundingClientRect for performance
             updateDimensions: (height) => {
-                sliderElement.css('height', height + 'px');
+                // Ensure minimum height
+                const safeHeight = Math.max(100, height);
+                sliderElement.css('height', safeHeight + 'px');
+                // Clear cached rect when dimensions change
+                this.customVerticalSlider.cachedRect = null;
                 this.customVerticalSlider.updateDisplay();
             },
+            getHeight: () => {
+                // Multiple methods to get slider height (Chrome compatibility)
+                const elem = sliderElement[0];
+                if (!elem) return 100;
+                
+                // Method 1: jQuery height (includes padding)
+                let h = sliderElement.height();
+                if (h > 0) return h;
+                
+                // Method 2: offsetHeight
+                h = elem.offsetHeight;
+                if (h > 0) return h;
+                
+                // Method 3: clientHeight
+                h = elem.clientHeight;
+                if (h > 0) return h;
+                
+                // Method 4: getBoundingClientRect
+                const rect = elem.getBoundingClientRect();
+                if (rect.height > 0) return rect.height;
+                
+                // Method 5: computed style
+                const style = window.getComputedStyle(elem);
+                h = parseFloat(style.height);
+                if (h > 0) return h;
+                
+                // Fallback
+                return 300;
+            },
             updateDisplay: () => {
-                const height = sliderElement.height();
+                const height = this.customVerticalSlider.getHeight();
                 const max = this.customVerticalSlider.maxValue;
                 const val1 = this.customVerticalSlider.value1;
                 const val2 = this.customVerticalSlider.value2;
+                
+                // Ensure valid height
+                if (height <= 0) {
+                    console.warn('Vertical slider height is 0, using fallback');
+                    return;
+                }
                 
                 // Convert values to positions (top = 0, bottom = max)
                 const pos1 = (val1 / max) * height;
                 const pos2 = (val2 / max) * height;
                 
-                // Update handles
-                handle1.css('top', (pos1 - 10) + 'px');
-                handle2.css('top', (pos2 - 10) + 'px');
+                // Update handles (clamp to valid positions)
+                const handleOffset = 10; // Half handle height
+                handle1.css('top', Math.max(0, Math.min(height - handleOffset * 2, pos1 - handleOffset)) + 'px');
+                handle2.css('top', Math.max(0, Math.min(height - handleOffset * 2, pos2 - handleOffset)) + 'px');
                 
                 // Update range highlight
                 const topPos = Math.min(pos1, pos2);
                 const rangeHeight = Math.abs(pos2 - pos1);
                 range.css({
-                    'top': topPos + 'px',
-                    'height': rangeHeight + 'px'
+                    'top': Math.max(0, topPos) + 'px',
+                    'height': Math.max(0, Math.min(height, rangeHeight)) + 'px'
                 });
             },
             valueToPosition: (value) => {
-                const height = sliderElement.height();
+                const height = this.customVerticalSlider.getHeight();
                 return (value / this.customVerticalSlider.maxValue) * height;
             },
             positionToValue: (position) => {
-                const height = sliderElement.height();
+                const height = this.customVerticalSlider.getHeight();
+                if (height <= 0) return 0;
                 const value = (position / height) * this.customVerticalSlider.maxValue;
                 return Math.max(0, Math.min(this.customVerticalSlider.maxValue, Math.round(value)));
+            },
+            getBoundingRect: () => {
+                // Cache rect during drag operations for performance
+                if (this.customVerticalSlider.dragging && this.customVerticalSlider.cachedRect) {
+                    return this.customVerticalSlider.cachedRect;
+                }
+                const elem = sliderElement[0];
+                if (!elem) return null;
+                const rect = elem.getBoundingClientRect();
+                // Validate rect
+                if (rect.height > 0 && rect.width > 0) {
+                    this.customVerticalSlider.cachedRect = rect;
+                    return rect;
+                }
+                return null;
             }
         };
         
@@ -297,20 +422,42 @@ class ROISelectorRange {
             if (!this.customVerticalSlider.dragging) return;
             e.preventDefault();
             
-            const rect = sliderElement[0].getBoundingClientRect();
-            const y = e.clientY - rect.top;
-            const value = this.customVerticalSlider.positionToValue(y);
+            const rect = this.customVerticalSlider.getBoundingRect();
+            if (!rect) {
+                // Recalculate if cached rect is invalid
+                this.customVerticalSlider.cachedRect = null;
+                const newRect = this.customVerticalSlider.getBoundingRect();
+                if (!newRect) return; // Can't proceed without valid rect
+            }
             
-            // In vertical slider: top handle (handle1) = y_min, bottom handle (handle2) = y_max
-            // Image coordinates: top = 0 (small value), bottom = max (large value)
-            if (this.customVerticalSlider.dragging === handle1) {
-                // Top handle controls y_min (must be <= y_max)
-                this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
-                this.y_min = this.customVerticalSlider.value1;
+            const rectToUse = this.customVerticalSlider.cachedRect || sliderElement[0].getBoundingClientRect();
+            const y = e.clientY - rectToUse.top;
+            
+            // Validate y position is within bounds
+            if (y < 0 || y > rectToUse.height) {
+                // Clamp to bounds
+                const clampedY = Math.max(0, Math.min(rectToUse.height, y));
+                const value = this.customVerticalSlider.positionToValue(clampedY);
+                
+                // In vertical slider: top handle (handle1) = y_min, bottom handle (handle2) = y_max
+                if (this.customVerticalSlider.dragging === handle1) {
+                    this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
+                    this.y_min = this.customVerticalSlider.value1;
+                } else {
+                    this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
+                    this.y_max = this.customVerticalSlider.value2;
+                }
             } else {
-                // Bottom handle controls y_max (must be >= y_min)
-                this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
-                this.y_max = this.customVerticalSlider.value2;
+                const value = this.customVerticalSlider.positionToValue(y);
+                
+                // In vertical slider: top handle (handle1) = y_min, bottom handle (handle2) = y_max
+                if (this.customVerticalSlider.dragging === handle1) {
+                    this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
+                    this.y_min = this.customVerticalSlider.value1;
+                } else {
+                    this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
+                    this.y_max = this.customVerticalSlider.value2;
+                }
             }
             
             this.customVerticalSlider.updateDisplay();
@@ -319,6 +466,7 @@ class ROISelectorRange {
         
         const handleMouseUp = (e) => {
             this.customVerticalSlider.dragging = null;
+            this.customVerticalSlider.cachedRect = null; // Clear cache on mouse up
             $(document).off('mousemove.verticalSlider');
             $(document).off('mouseup.verticalSlider');
         };
@@ -340,17 +488,27 @@ class ROISelectorRange {
             if (!this.customVerticalSlider.dragging) return;
             e.preventDefault();
             const touch = e.originalEvent.touches[0];
-            const rect = sliderElement[0].getBoundingClientRect();
-            const y = touch.clientY - rect.top;
-            const value = this.customVerticalSlider.positionToValue(y);
+            if (!touch) return;
+            
+            const rect = this.customVerticalSlider.getBoundingRect();
+            if (!rect) {
+                this.customVerticalSlider.cachedRect = null;
+                const newRect = this.customVerticalSlider.getBoundingRect();
+                if (!newRect) return;
+            }
+            
+            const rectToUse = this.customVerticalSlider.cachedRect || sliderElement[0].getBoundingClientRect();
+            const y = touch.clientY - rectToUse.top;
+            
+            // Validate y position is within bounds
+            const clampedY = Math.max(0, Math.min(rectToUse.height, y));
+            const value = this.customVerticalSlider.positionToValue(clampedY);
             
             // In vertical slider: top handle (handle1) = y_min, bottom handle (handle2) = y_max
             if (this.customVerticalSlider.dragging === handle1) {
-                // Top handle controls y_min (must be <= y_max)
                 this.customVerticalSlider.value1 = Math.min(value, this.customVerticalSlider.value2);
                 this.y_min = this.customVerticalSlider.value1;
             } else {
-                // Bottom handle controls y_max (must be >= y_min)
                 this.customVerticalSlider.value2 = Math.max(value, this.customVerticalSlider.value1);
                 this.y_max = this.customVerticalSlider.value2;
             }
@@ -361,6 +519,7 @@ class ROISelectorRange {
         
         const handleTouchEnd = (e) => {
             this.customVerticalSlider.dragging = null;
+            this.customVerticalSlider.cachedRect = null; // Clear cache on touch end
             $(document).off('touchmove.verticalSlider');
             $(document).off('touchend.verticalSlider');
         };
@@ -370,9 +529,18 @@ class ROISelectorRange {
         
         // Click on track to move nearest handle
         track.on('click', (e) => {
-            const rect = sliderElement[0].getBoundingClientRect();
-            const y = e.clientY - rect.top;
-            const value = this.customVerticalSlider.positionToValue(y);
+            const rect = this.customVerticalSlider.getBoundingRect();
+            if (!rect) {
+                // Recalculate if needed
+                this.customVerticalSlider.cachedRect = null;
+                const newRect = this.customVerticalSlider.getBoundingRect();
+                if (!newRect) return;
+            }
+            
+            const rectToUse = this.customVerticalSlider.cachedRect || sliderElement[0].getBoundingClientRect();
+            const y = e.clientY - rectToUse.top;
+            const clampedY = Math.max(0, Math.min(rectToUse.height, y));
+            const value = this.customVerticalSlider.positionToValue(clampedY);
             
             const dist1 = Math.abs(value - this.customVerticalSlider.value1);
             const dist2 = Math.abs(value - this.customVerticalSlider.value2);
@@ -541,8 +709,11 @@ class ROISelectorRange {
         if (!this.roi.width || !this.roi.height) return;
         
         // Calculate scale from image to canvas
-        const scaleX = this.canvas.width / this.maxWidth;
-        const scaleY = this.canvas.height / this.maxHeight;
+        const dpr = this.dpr || (window.devicePixelRatio || 1);
+        const displayW = this.canvas.width / dpr;
+        const displayH = this.canvas.height / dpr;
+        const scaleX = displayW / this.maxWidth;
+        const scaleY = displayH / this.maxHeight;
         
         const x = this.roi.x * scaleX;
         const y = this.roi.y * scaleY;

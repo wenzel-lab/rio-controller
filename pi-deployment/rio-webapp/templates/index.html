@@ -136,12 +136,13 @@
         }
         .camera-container {
             position: relative;
-            display: inline-block;
-            max-width: 100%;
+            display: block;
+            width: 100%;
+            max-width: none;
         }
         #camera_image {
             display: block;
-            max-width: 100%;
+            width: 100%;
             height: auto;
         }
         #roi_canvas {
@@ -158,13 +159,20 @@
             align-items: center;
             justify-content: center;
             min-height: 300px; /* Minimum height for initial render */
+            height: auto; /* Allow height to adjust */
         }
-        /* Custom vertical slider styling */
+        /* Custom vertical slider styling - Chrome compatibility */
         #roi_y_range_slider {
-            min-height: 100px; /* Minimum height */
+            min-height: 100px !important; /* Minimum height - important for Chrome */
             width: 20px !important;
             margin: 0 auto;
             display: block;
+            position: relative; /* Ensure positioning context */
+            box-sizing: border-box; /* Include padding/border in height */
+        }
+        /* Ensure slider is visible and has proper dimensions in Chrome */
+        #roi_y_range_slider:empty {
+            min-height: 300px; /* Fallback if empty */
         }
         /* X-axis slider - matches image width */
         #roi_x_range_slider {

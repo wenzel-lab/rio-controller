@@ -145,7 +145,11 @@ class SimulatedFlow:
 
     def _handle_get_id(self, data: List[int]) -> Tuple[bool, List[int]]:
         """Handle GET_ID packet."""
-        return True, list(self.DEVICE_ID.encode("ascii"))
+        # Return status byte 0 + device ID bytes + trailing status byte 0
+        payload = [0]
+        payload.extend(list(self.DEVICE_ID.encode("ascii")))
+        payload.append(0)
+        return True, payload
 
     def _handle_set_pressure_target(self, data: List[int]) -> Tuple[bool, List[int]]:
         """Handle SET_PRESSURE_TARGET packet."""
