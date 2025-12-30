@@ -13,6 +13,11 @@ import os
 # Import droplet_detection module (directory has hyphen, so use importlib)
 import importlib.util  # noqa: E402
 
+SKIP_DATA_MSG = (
+    "Droplet test data not available. Set RIO_DROPLET_TESTDATA_DIR or provide data under "
+    "software/tests/data/droplet."
+)
+
 software_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 droplet_detection_path = os.path.join(software_dir, "droplet-detection")
 if os.path.exists(droplet_detection_path):

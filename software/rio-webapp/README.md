@@ -22,6 +22,7 @@ This folder is the web-facing layer: Flask routes, Socket.IO integration, HTML t
   - browser-side JavaScript (ROI selection widgets, droplet histogram rendering, etc.)
   - current template usage (as of this commit):
     - ROI selector script loaded by `templates/index.html` is `static/roi_selector_range.js`
+    - `roi_selector_range.js` is the authoritative ROI script (others have been removed)
     - droplet histogram rendering is `static/droplet_histogram.js`
 
 ## Interfaces to other layers (where the boundaries are)

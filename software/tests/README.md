@@ -102,6 +102,11 @@ python -m tests.test_all
 
 This suite is most useful when read “bottom-up”:
 
+- **Tier 1 (routine, simulation by default)**: fast CI/AI-friendly, uses `RIO_SIMULATION=true`. Covers imports, drivers (simulated), controllers, web layer smoke, and droplet detection algorithms.
+- **Tier 2 (integration + optional datasets)**: still simulation, but may need optional data (e.g., droplet images). If absent, tests must skip with a clear reason.
+- **Tier 3 (hardware/Pi-only)**: opt-in, marked tests that should not run by default. Run manually on hardware when needed.
+
+Logical stacking:
 - **Imports + environment sanity**: `test_imports.py`
 - **Drivers layer** (`software/drivers/`): SPI packet framing and driver APIs
 - **Simulation layer** (`software/simulation/`): drop-in “no hardware” replacements

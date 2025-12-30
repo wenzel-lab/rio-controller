@@ -138,7 +138,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
         3. Verifies measurements are valid
         """
         if len(self.test_images) == 0:
-            self.skipTest("No test images available")
+            self.skipTest(
+                "No test images available. Set RIO_DROPLET_TESTDATA_DIR or place images under "
+                "software/tests/data/droplet."
+            )
 
         print("\n=== Testing Measurement on Real Images ===")
 
@@ -242,7 +245,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
         3. Measurements are consistent
         """
         if len(self.test_images) == 0:
-            self.skipTest("No test images available")
+            self.skipTest(
+                "No test images available. Set RIO_DROPLET_TESTDATA_DIR or place images under "
+                "software/tests/data/droplet."
+            )
 
         print("\n=== Testing Full Pipeline with Offset Correction ===")
 
@@ -290,7 +296,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
                 continue
 
         # If we get here, no droplets were detected
-        self.skipTest("No droplets detected in test images (may need different config)")
+        self.skipTest(
+            "No droplets detected in test images (may need different config). Provide images via "
+            "RIO_DROPLET_TESTDATA_DIR or software/tests/data/droplet."
+        )
 
     def test_offset_correction_consistency(self):
         """
@@ -299,7 +308,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
         Verifies that applying the same offset multiple times gives same results.
         """
         if len(self.test_images) == 0:
-            self.skipTest("No test images available")
+            self.skipTest(
+                "No test images available. Set RIO_DROPLET_TESTDATA_DIR or place images under "
+                "software/tests/data/droplet."
+            )
 
         print("\n=== Testing Offset Correction Consistency ===")
 
@@ -322,7 +334,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
         contours = self.segmenter.detect_contours(mask)
 
         if len(contours) == 0:
-            self.skipTest("No contours detected in test image")
+            self.skipTest(
+                "No contours detected in test image. Ensure dataset is present in "
+                "RIO_DROPLET_TESTDATA_DIR or software/tests/data/droplet."
+            )
 
         # Measure with same offset multiple times
         offset = -1.5
@@ -349,7 +364,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
         - Statistics make sense
         """
         if len(self.test_images) == 0:
-            self.skipTest("No test images available")
+            self.skipTest(
+                "No test images available. Set RIO_DROPLET_TESTDATA_DIR or place images under "
+                "software/tests/data/droplet."
+            )
 
         print("\n=== Testing Measurement Statistics ===")
 
@@ -392,7 +410,10 @@ class TestMeasurementWithAInalysisData(unittest.TestCase):
             print(
                 "  Note: No droplets detected (images may not contain droplets or need different config)"
             )
-            self.skipTest("No droplets measured in test images")
+            self.skipTest(
+                "No droplets measured in test images. Ensure dataset is present in "
+                "RIO_DROPLET_TESTDATA_DIR or software/tests/data/droplet."
+            )
 
         # Verify statistics are reasonable
         print(f"  Measured {len(all_diameters)} droplets total")
