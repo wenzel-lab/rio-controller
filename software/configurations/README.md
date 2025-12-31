@@ -52,7 +52,7 @@ Where configuration is consumed in code:
   - `RIO_STROBE_CONTROL_MODE=strobe-centric|camera-centric` (strobe orchestration policy)
   - `RIO_DROPLET_ANALYSIS_ENABLED=true|false` (enable droplet controller + UI)
   - `RIO_FLOW_ENABLED` / `RIO_HEATER_ENABLED` (explicitly show/hide tabs in the UI; see `software/rio-webapp/routes.py`)
-- `RIO_ROI_MODE=software|hardware` (ROI policy; software default. Hardware ROI applies only on camera backends that support it; otherwise it falls back to software ROI.)
+  - `RIO_ROI_MODE=software|hardware` (ROI policy; software default. Hardware ROI applies only on camera backends that support it; otherwise it falls back to software ROI.)
 
 Example:
 ```bash
@@ -61,6 +61,7 @@ export RIO_SIMULATION=false
 export RIO_DROPLET_ANALYSIS_ENABLED=true
 export RIO_FLOW_ENABLED=false      # Hide flow control tab (for strobe-only configs)
 export RIO_HEATER_ENABLED=false    # Hide heater tab (for strobe-only configs)
+export RIO_ROI_MODE=software
 python main.py
 ```
 

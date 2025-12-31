@@ -686,6 +686,13 @@ class SimulatedCamera(BaseCamera):
             self.stop()
             self.start()
 
+    def set_roi_hardware(self, roi: tuple[int, int, int, int]) -> bool:
+        """
+        Simulation does not support hardware ROI; always return False so callers
+        can fall back to software ROI without repeated warnings.
+        """
+        return False
+
     def set_frame_callback(self, callback: Optional[Callable[[], None]]):
         """Set frame callback (called on each frame capture)."""
         self.frame_callback = callback

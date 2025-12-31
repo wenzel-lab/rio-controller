@@ -984,10 +984,13 @@ class Camera:
                         f"Hardware ROI requested but failed ({e}); falling back to software ROI."
                     )
             else:
-                logger.warning(
-                    "Hardware ROI requested but camera backend does not support set_roi_hardware; "
-                    "falling back to software ROI."
-                )
+                # Log once per session to avoid log spam in simulation/backends without support
+                if not getattr(self, "_roi_hardware_unsupported_logged", False):
+                    logger.warning(
+                        "Hardware ROI requested but camera backend does not support set_roi_hardware; "
+                        "falling back to software ROI."
+                    )
+                    self._roi_hardware_unsupported_logged = True
 
         self.roi_mode_active = active_mode
 

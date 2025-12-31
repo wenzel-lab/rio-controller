@@ -77,3 +77,21 @@ def test_roi_hardware_mode_fallback_when_backend_rejects(monkeypatch):
     assert dummy.set_calls == [(1, 1, 2, 2)]
     assert ctrl.roi_mode_active == ROI_MODE_SOFTWARE  # fallback
     assert ctrl.socketio.events[-1][1]["mode"] == ROI_MODE_SOFTWARE
+
+
+def test_roi_hardware_mode_backend_missing_method(monkeypatch):
+    class CameraNoHardware:
+        def validate_and_snap_roi(self, roi):
+            return roi
+
+        def get_roi_constraints(self):
+            return {}
+
+    dummy = CameraNoHardware()
+    ctrl = _make_controller(ROI_MODE_HARDWARE, dummy)
+    ctrl._handle_roi_set({"parameters": {"x": 3, "y": 4, "width": 30, "height": 40}})
+
+    assert ctrl.roi_mode_active == ROI_MODE_SOFTWARE  # fallback
+    assert ctrl.roi == {"x": 3, "y": 4, "width": 30, "height": 40}
+    assert ctrl.socketio.events[-1][1]["mode"] == ROI_MODE_SOFTWARE
+    assert getattr(ctrl, "_roi_hardware_unsupported_logged", False) is True
