@@ -22,12 +22,6 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
 
-## Imports and path bootstrap (beginner-friendly)
-
-- You should not need to touch `PYTHONPATH` or add `sys.path` in modules.
-- Runtime: `python main.py` calls `path_bootstrap.bootstrap_runtime()` for you.
-- Tests: `RIO_SIMULATION=true python -m pytest` picks up `software/conftest.py`, which calls `path_bootstrap.bootstrap_tests()` once.
-- ROI modes: default is software ROI; set `RIO_ROI_MODE=hardware` to request hardware ROI when the active camera backend supports it (falls back to software if not).
 
 ## Runtime wiring (how the software fits together)
 
@@ -44,6 +38,8 @@ The main runtime entry point is **`software/main.py`**, which wires the layers t
   - Socket.IO handlers live in `rio-webapp/controllers/` and call into the device controllers above.
   - HTTP routes (and some `/api/droplet/*` endpoints) are registered via `rio-webapp/routes.py`.
 
+- You should not need to touch `PYTHONPATH` or add `sys.path` in modules Runtime: `python main.py` calls `path_bootstrap.bootstrap_runtime()` for you.
+
 If you’re auditing logic, reading order that matches the runtime is:
 `main.py` → `rio-webapp/routes.py` + `rio-webapp/controllers/*` → `controllers/*` → `drivers/*` → firmware projects under `../hardware-modules/*/*_pic/`.
 
@@ -58,8 +54,8 @@ If you’re auditing logic, reading order that matches the runtime is:
 2. **Setup with Mamba/Conda** (Recommended):
    ```bash
    # Create and activate environment
-   mamba create -n rio-controller python=3.10 -y
-   mamba activate rio-controller
+   mamba create -n rio-simulation python=3.10 -y
+   mamba activate rio-simulation
    
    # Install dependencies based on your platform:
    cd software
@@ -97,6 +93,7 @@ If you’re auditing logic, reading order that matches the runtime is:
    export RIO_PORT=5001
    python main.py
    ```
+   ROI modes: default is software ROI; set `RIO_ROI_MODE=hardware` to request hardware ROI when the active camera backend supports it (falls back to software if not).
 
 3. **Access the web interface**:
    - Open your browser to `http://localhost:5000` (or your specified port)
@@ -106,6 +103,17 @@ If you’re auditing logic, reading order that matches the runtime is:
      - **Flow Control**: Pressure and flow control for 4 channels
      - **Heaters**: Temperature and stirring control for 4 heaters
      - **Droplet Detection**: Real-time droplet detection with histogram visualization
+
+### Creating and copying the Pi deployment bundle (from your Mac/PC)
+
+Even in simulation-first workflows, you eventually need to generate the deployable Pi bundle. The following commands (adjust paths where neccessary) will generate a deployable bundle without the simulation files from the repo root on your Mac/PC and copy them over to your Raspberry Pi by SSH connection:
+```bash
+cd /Users/twenzel/Documents/GitHub/rio-controller
+./create-pi-deployment.sh
+rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' \
+  pi-deployment/ pi@raspberrypi.local:~/rio-controller/
+```
+After syncing, follow `pi-deployment/README.md` on the Pi to run `setup.sh` (first time) and `run.sh`/`python main.py`.
 
 ### Simulation Mode
 
@@ -117,6 +125,8 @@ cd software
 ./setup-simulation.sh    # First time setup
 ./run-simulation.sh      # Run simulation
 ```
+
+Need custom parameters for simulation (frame size, ROI defaults, feature flags)? See `configurations/README.md` for the environment-variable profiles and examples you can export before running.
 
 **Option 2: Manual setup**
 ```bash
