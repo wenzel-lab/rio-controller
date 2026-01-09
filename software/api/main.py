@@ -253,10 +253,18 @@ def create_app() -> FastAPI:
                 CHANNEL_CONFIG[topic] = {}
             for k, v in incoming.items():
                 if k not in CHANNEL_CONFIG[topic]:
-                    CHANNEL_CONFIG[topic][k] = {"enabled": True, "name": "", "liquid_type": ""}
+                    CHANNEL_CONFIG[topic][k] = {
+                        "enabled": True,
+                        "name": "",
+                        "liquid_type": "",
+                        "calibration_factor": 1.0,
+                    }
                 CHANNEL_CONFIG[topic][k]["enabled"] = bool(v.enabled)
                 CHANNEL_CONFIG[topic][k]["name"] = v.name or ""
                 CHANNEL_CONFIG[topic][k]["liquid_type"] = v.liquid_type or ""
+                # calibration factor stays in-memory for now (future: persist)
+                if getattr(v, "calibration_factor", None) is not None:
+                    CHANNEL_CONFIG[topic][k]["calibration_factor"] = float(v.calibration_factor)
         return ChannelConfigResponse(channels=CHANNEL_CONFIG)  # type: ignore[arg-type]
 
     # ----------------------------
