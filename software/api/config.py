@@ -26,5 +26,3 @@ class APISettings:
 
 
 settings = APISettings()
-
-

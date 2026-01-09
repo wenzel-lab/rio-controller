@@ -53,8 +53,18 @@ class DummyHeater:
 def test_aggregator_flow_calibration_applied():
     channel_config = {
         "flow": {
-            "0": {"enabled": True, "name": "oil", "liquid_type": "mineral_oil", "calibration_factor": 2.0},
-            "1": {"enabled": True, "name": "cells", "liquid_type": "aqueous", "calibration_factor": 1.0},
+            "0": {
+                "enabled": True,
+                "name": "oil",
+                "liquid_type": "mineral_oil",
+                "calibration_factor": 2.0,
+            },
+            "1": {
+                "enabled": True,
+                "name": "cells",
+                "liquid_type": "aqueous",
+                "calibration_factor": 1.0,
+            },
         },
         "pressure": {},
         "heater": {},
@@ -83,4 +93,3 @@ def async_lambda(coro):
     import asyncio
 
     return asyncio.get_event_loop().run_until_complete(coro)
-

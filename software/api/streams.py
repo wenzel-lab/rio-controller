@@ -34,7 +34,7 @@ class CaptureConfig:
     topics: List[str] = field(default_factory=list)
     channels: Dict[str, List[int]] = field(default_factory=dict)
     path: Optional[Path] = None
-    writer: Optional[csv.writer] = None
+    writer: Any = None  # csv.writer object
     file_handle: Any = None
 
 
@@ -103,7 +103,9 @@ class Aggregator:
         pressure_targets: list[float] = self.flow.pressure_mbar_targets
         flow_targets: list[float] = self.flow.flow_ul_hr_targets
         control_modes_fw: list[int] = self.flow.control_modes
-        control_modes_ui: list[int] = [CONTROL_MODE_FIRMWARE_TO_UI.get(m, 0) for m in control_modes_fw]
+        control_modes_ui: list[int] = [
+            CONTROL_MODE_FIRMWARE_TO_UI.get(m, 0) for m in control_modes_fw
+        ]
 
         for i in chans:
             ok_p, p_val = self.flow.flow.get_pressure_actual(i)
@@ -185,7 +187,9 @@ class Aggregator:
             return 1.0
 
     # Capture support
-    def start_capture(self, topics: List[str], channels: Dict[str, List[int]], path: str | None = None):
+    def start_capture(
+        self, topics: List[str], channels: Dict[str, List[int]], path: str | None = None
+    ):
         if self.capture.enabled:
             self.stop_capture()
         if path is None:
@@ -195,7 +199,12 @@ class Aggregator:
         writer = csv.writer(fh)
         writer.writerow(["ts", "topic", "channels", "payload_json"])
         self.capture = CaptureConfig(
-            enabled=True, topics=topics, channels=channels, path=Path(path), writer=writer, file_handle=fh
+            enabled=True,
+            topics=topics,
+            channels=channels,
+            path=Path(path),
+            writer=writer,
+            file_handle=fh,
         )
 
     def stop_capture(self):
@@ -230,4 +239,3 @@ class Aggregator:
             )
         except Exception:
             return
-

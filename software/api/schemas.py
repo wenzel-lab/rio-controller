@@ -136,4 +136,60 @@ class StrobeTimingRequest(BaseModel):
     wait_ns: int | None = None
 
 
+# Pump (syringe pump)
+class PumpSetFlowRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")  # A, B, C, or D
+    flow: float = Field(..., gt=0)
 
+
+class PumpSetDiameterRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    diameter: float = Field(..., gt=0)
+
+
+class PumpSetDirectionRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    direction: int = Field(..., ge=-1, le=1)  # -1 withdraw, 1 infuse
+
+
+class PumpSetStateRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    state: bool  # True = RUN, False = STOP
+
+
+class PumpSetUnitRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    unit: str = Field(..., pattern="^(UL/MIN|UL/HR|ML/MIN|ML/HR)$")
+
+
+class PumpSetGearboxRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    gearbox: str = Field(..., pattern="^(1:1|25:1|100:1)$")
+
+
+class PumpSetMicrostepRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    microstep: str = Field(..., pattern="^(1/8|1/16|1/32|1/64)$")
+
+
+class PumpSetThreadrodRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    threadrod: str = Field(..., pattern="^(1-START|4-START)$")
+
+
+class PumpSetEnableRequest(BaseModel):
+    pump: str = Field(..., pattern="^[A-D]$")
+    enabled: bool
+
+
+class PumpState(BaseModel):
+    pump: str
+    flow: float | None = None
+    diameter: float | None = None
+    direction: int | None = None  # -1 withdraw, 1 infuse
+    state: bool | None = None  # True = running, False = stopped
+    unit: str | None = None
+    gearbox: str | None = None
+    microstep: str | None = None
+    threadrod: str | None = None
+    enabled: bool | None = None

@@ -11,6 +11,7 @@ Rio API server (skeleton + controller wiring).
 import logging
 import os
 from threading import Event
+from typing import Any
 
 import uvicorn
 import yaml
@@ -41,6 +42,16 @@ from api.schemas import (
     HeaterStateItem,
     CaptureStartRequest,
     CaptureStatusResponse,
+    PumpSetFlowRequest,
+    PumpSetDiameterRequest,
+    PumpSetDirectionRequest,
+    PumpSetStateRequest,
+    PumpSetUnitRequest,
+    PumpSetGearboxRequest,
+    PumpSetMicrostepRequest,
+    PumpSetThreadrodRequest,
+    PumpSetEnableRequest,
+    PumpState,
 )
 from api.streams import Aggregator
 
@@ -87,9 +98,9 @@ class _DummySocketIO:
         return handler
 
 
-def _init_controllers():
+def _init_controllers() -> tuple[dict[str, bool], dict[str, Any]]:
     """Initialize controllers (simulation-safe) and return capability flags + instances."""
-    cap = {
+    cap: dict[str, bool] = {
         "flow": False,
         "pressure": False,
         "heater": False,
@@ -98,7 +109,7 @@ def _init_controllers():
         "droplet": False,
         "pump": False,
     }
-    controllers = {}
+    controllers: dict[str, Any] = {}
 
     # SPI init
     spi_init(0, 2, 30000)
@@ -247,7 +258,9 @@ def create_app() -> FastAPI:
     @app.get("/api/system/capabilities", response_model=CapabilitiesResponse)
     def capabilities() -> CapabilitiesResponse:
         notes = {"warning": "Controllers are instantiated; API methods not yet exposed."}
-        return CapabilitiesResponse(modules=CAPABILITIES, simulation=settings.simulation, notes=notes)
+        return CapabilitiesResponse(
+            modules=CAPABILITIES, simulation=settings.simulation, notes=notes
+        )
 
     # ----------------------------
     # Channel metadata (enable/naming)
@@ -255,7 +268,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config/channels", response_model=ChannelConfigResponse)
     def get_channels() -> ChannelConfigResponse:
-        return ChannelConfigResponse(channels=CHANNEL_CONFIG)  # type: ignore[arg-type]
+        return ChannelConfigResponse(channels=CHANNEL_CONFIG)
 
     @app.post("/api/config/channels", response_model=ChannelConfigResponse)
     def set_channels(config: ChannelConfig) -> ChannelConfigResponse:
@@ -280,7 +293,7 @@ def create_app() -> FastAPI:
                 # calibration factor stays in-memory for now (future: persist)
                 if getattr(v, "calibration_factor", None) is not None:
                     CHANNEL_CONFIG[topic][k]["calibration_factor"] = float(v.calibration_factor)
-        return ChannelConfigResponse(channels=CHANNEL_CONFIG)  # type: ignore[arg-type]
+        return ChannelConfigResponse(channels=CHANNEL_CONFIG)
 
     # ----------------------------
     # Flow / Pressure endpoints
@@ -288,18 +301,17 @@ def create_app() -> FastAPI:
 
     @app.get("/api/control/flow/state", response_model=FlowState)
     def flow_state() -> FlowState:
-        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
 
-        num = flow.flow.NUM_CONTROLLERS
-        pressure_actuals: list[float] = []
-        flow_actuals: list[float] = []
-        for i in range(num):
-            ok_p, p_val = flow.flow.get_pressure_actual(i)
-            pressure_actuals.append(p_val if ok_p else 0.0)
-            ok_f, f_val = flow.flow.get_flow_actual(i)
-            flow_actuals.append(f_val if ok_f else 0.0)
+        # Get all values at once (returns tuple: valid, list[float])
+        ok_p, pressure_actuals = flow.flow.get_pressure_actual()
+        if not ok_p:
+            pressure_actuals = [0.0] * flow.flow.NUM_CONTROLLERS
+        ok_f, flow_actuals = flow.flow.get_flow_actual()
+        if not ok_f:
+            flow_actuals = [0.0] * flow.flow.NUM_CONTROLLERS
 
         # update cached targets/modes
         flow.get_pressure_targets()
@@ -317,7 +329,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/flow/set_pressure")
     def flow_set_pressure(req: FlowSetPressureRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_pressure(req.index, req.pressure_mbar)
@@ -327,7 +339,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/flow/set_flow")
     def flow_set_flow(req: FlowSetFlowRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_flow(req.index, req.flow_ul_hr)
@@ -337,7 +349,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/flow/set_mode")
     def flow_set_mode(req: FlowSetModeRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(req.mode_ui, 0)
@@ -348,7 +360,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/flow/set_pi_consts")
     def flow_set_pi(req: FlowSetPIRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_flow_pi_consts(req.index, [req.p, req.i])
@@ -362,7 +374,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/control/heater/state", response_model=HeaterState)
     def heater_state():
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
         if heaters is None:
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         items: list[HeaterStateItem] = []
@@ -382,7 +394,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/heater/set_temp")
     def heater_set_temp(req: HeaterSetTempRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
         if heaters is None or req.index >= len(heaters):
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_temp(req.temp_c)
@@ -390,7 +402,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/heater/pid")
     def heater_set_pid(req: HeaterSetPidRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
         if heaters is None or req.index >= len(heaters):
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_pid_running(1 if req.enabled else 0)
@@ -399,7 +411,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/heater/stir")
     def heater_set_stir(req: HeaterSetStirRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
         if heaters is None or req.index >= len(heaters):
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_stir_running(1 if req.enabled else 0)
@@ -412,7 +424,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/streams/camera/snapshot")
     def camera_snapshot():
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         if cam.thread is None or not cam.thread.is_alive():
@@ -424,10 +436,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/camera/set_resolution")
     def camera_set_resolution(req: CameraResolutionRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
-        params = {}
+        params: dict[str, Any] = {}
         if req.preset:
             params["preset"] = req.preset
         if req.width and req.height:
@@ -438,10 +450,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/camera/set_snapshot_resolution")
     def camera_set_snapshot_resolution(req: CameraSnapshotResolutionRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
-        params = {"mode": req.mode}
+        params: dict[str, Any] = {"mode": req.mode}
         if req.width and req.height:
             params["width"] = int(req.width)
             params["height"] = int(req.height)
@@ -450,7 +462,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/camera/roi")
     def camera_set_roi(req: CameraROIRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_roi({"cmd": CMD_SET, "parameters": {"x": req.x, "y": req.y, "w": req.w, "h": req.h}})
@@ -458,7 +470,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/camera/roi/clear")
     def camera_clear_roi():
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
@@ -466,7 +478,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/strobe/enable")
     def strobe_enable(req: StrobeEnableRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if req.on else 0}})
@@ -474,7 +486,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/strobe/hold")
     def strobe_hold(req: StrobeEnableRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if req.on else 0}})
@@ -482,7 +494,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/control/strobe/timing")
     def strobe_timing(req: StrobeTimingRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        cam: Camera | None = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params = {"period_ns": int(req.period_ns)}
@@ -505,7 +517,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Droplet controller unavailable")
         ok = droplet.start()
         if not ok:
-            raise HTTPException(status_code=400, detail="Failed to start droplet detection (check ROI)")
+            raise HTTPException(
+                status_code=400, detail="Failed to start droplet detection (check ROI)"
+            )
         return {"ok": True}
 
     @app.post("/api/control/droplet/stop")
@@ -551,6 +565,100 @@ def create_app() -> FastAPI:
         return droplet.get_performance_metrics()
 
     # ----------------------------
+    # Pump (syringe pump) endpoints
+    # ----------------------------
+
+    def _get_pump():
+        """Get pump controller if available."""
+        return CONTROLLERS.get("pump")
+
+    @app.get("/api/control/pump/state/{pump}")
+    def pump_state(pump: str):
+        """Get current state for a pump (A, B, C, or D)."""
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        if pump not in ["A", "B", "C", "D"]:
+            raise HTTPException(status_code=400, detail="Pump must be A, B, C, or D")
+        # When pump controller is implemented, call methods like:
+        # flow = pump_ctrl.get_flow(pump)
+        # diameter = pump_ctrl.get_diameter(pump)
+        # etc.
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_flow")
+    def pump_set_flow(req: PumpSetFlowRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_flow(req.pump, req.flow)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_diameter")
+    def pump_set_diameter(req: PumpSetDiameterRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_diameter(req.pump, req.diameter)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_direction")
+    def pump_set_direction(req: PumpSetDirectionRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_direction(req.pump, req.direction)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_state")
+    def pump_set_state(req: PumpSetStateRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_state(req.pump, req.state)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_unit")
+    def pump_set_unit(req: PumpSetUnitRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_unit(req.pump, req.unit)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_gearbox")
+    def pump_set_gearbox(req: PumpSetGearboxRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_gearbox(req.pump, req.gearbox)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_microstep")
+    def pump_set_microstep(req: PumpSetMicrostepRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_microstep(req.pump, req.microstep)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_threadrod")
+    def pump_set_threadrod(req: PumpSetThreadrodRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_threadrod(req.pump, req.threadrod)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_enable")
+    def pump_set_enable(req: PumpSetEnableRequest):
+        pump_ctrl = _get_pump()
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        # When implemented: ok = pump_ctrl.set_enable(req.pump, req.enabled)
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    # ----------------------------
     # WS Aggregator
     # ----------------------------
 
@@ -594,5 +702,3 @@ if __name__ == "__main__":
         port=settings.port,
         reload=False,
     )
-
-
