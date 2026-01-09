@@ -21,6 +21,7 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Simulation layer: [`simulation/README.md`](simulation/README.md)
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
+- API interface (experimental): see **API server (experimental)** below
 
 ### Runtime wiring (how the software fits together)
 
@@ -143,6 +144,32 @@ The `setup-simulation.sh` script creates a conda/mamba environment named **`rio-
 Note: `setup-simulation.sh` also creates a `rio-config.yaml` file for simulation settings, but **the main app currently selects simulation via `RIO_SIMULATION=true`**; `rio-config.yaml` is not a primary runtime configuration source for `main.py`.
 
 This enables simulated SPI, GPIO, camera, and device controllers, allowing you to test the web interface and logic without physical hardware.
+
+---
+
+## API server (experimental)
+
+The network API (FastAPI/LabThings) lives under `software/api/`. It is an interface
+layer only; device controllers and drivers remain unchanged.
+
+- Install API extras (from `software/`):
+
+```bash
+pip install -r requirements-api.txt
+```
+
+- Run (simulation example):
+
+```bash
+export RIO_SIMULATION=true
+python -m api.main  # default port 5001
+```
+
+- Endpoints available in the skeleton:
+  - `GET /api/system/health`
+  - `GET /api/system/capabilities`
+
+Later steps will expose full control/streaming surfaces.
 
 ---
 
