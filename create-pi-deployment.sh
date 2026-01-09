@@ -63,6 +63,8 @@ cp -r "$SOURCE_DIR/configurations" "$DEPLOY_DIR/"
 
 # Requirements file
 cp "$SOURCE_DIR/requirements-webapp-only-32bit.txt" "$DEPLOY_DIR/"
+# API requirements (optional API server on Pi)
+cp "$SOURCE_DIR/requirements-api.txt" "$DEPLOY_DIR/" 2>/dev/null || true
 
 # Create setup script for Pi
 cat > "$DEPLOY_DIR/setup.sh" << 'EOF'
@@ -92,6 +94,10 @@ echo "      Using --user flag to avoid permission issues (installs to ~/.local/l
 echo ""
 if [ -f "requirements-webapp-only-32bit.txt" ]; then
     python3 -m pip install --user -r requirements-webapp-only-32bit.txt
+    if [ -f "requirements-api.txt" ]; then
+        echo "Installing API requirements (optional API server)..."
+        python3 -m pip install --user -r requirements-api.txt
+    fi
 else
     echo "Warning: requirements file not found, installing manually..."
     python3 -m pip install --user "Flask>=2.0.0,<4.0.0"
