@@ -13,11 +13,25 @@ import os
 from threading import Event
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from api.config import settings
-from api.schemas import HealthResponse, CapabilitiesResponse
+from api.schemas import (
+    HealthResponse,
+    CapabilitiesResponse,
+    FlowSetPressureRequest,
+    FlowSetFlowRequest,
+    FlowSetModeRequest,
+    FlowSetPIRequest,
+    FlowState,
+    HeaterSetTempRequest,
+    HeaterSetPidRequest,
+    HeaterSetStirRequest,
+    HeaterState,
+    HeaterStateItem,
+)
 
 # Path/bootstrap and controller imports (align with software/main.py)
 from path_bootstrap import bootstrap_runtime
@@ -35,6 +49,7 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
+from config import CONTROL_MODE_UI_TO_FIRMWARE, CONTROL_MODE_FIRMWARE_TO_UI  # noqa: E402
 
 
 logger = logging.getLogger("api")
@@ -139,6 +154,146 @@ def create_app() -> FastAPI:
     def capabilities() -> CapabilitiesResponse:
         notes = {"warning": "Controllers are instantiated; API methods not yet exposed."}
         return CapabilitiesResponse(modules=CAPABILITIES, simulation=settings.simulation, notes=notes)
+
+    # ----------------------------
+    # Flow / Pressure endpoints
+    # ----------------------------
+
+    @app.get("/api/control/flow/state", response_model=FlowState)
+    def flow_state() -> FlowState:
+        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+
+        num = flow.flow.NUM_CONTROLLERS
+        pressure_actuals: list[float] = []
+        flow_actuals: list[float] = []
+        for i in range(num):
+            ok_p, p_val = flow.flow.get_pressure_actual(i)
+            pressure_actuals.append(p_val if ok_p else 0.0)
+            ok_f, f_val = flow.flow.get_flow_actual(i)
+            flow_actuals.append(f_val if ok_f else 0.0)
+
+        # update cached targets/modes
+        flow.get_pressure_targets()
+        flow.get_flow_targets()
+        flow.get_control_modes()
+
+        return FlowState(
+            pressure_targets_mbar=flow.pressure_mbar_targets,
+            pressure_actuals_mbar=pressure_actuals,
+            flow_targets_ul_hr=flow.flow_ul_hr_targets,
+            flow_actuals_ul_hr=flow_actuals,
+            control_modes_ui=[CONTROL_MODE_FIRMWARE_TO_UI.get(m, 0) for m in flow.control_modes],
+            control_modes_text=flow.control_modes_text,
+        )
+
+    @app.post("/api/control/flow/set_pressure")
+    def flow_set_pressure(req: FlowSetPressureRequest):
+        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        ok = flow.set_pressure(req.index, req.pressure_mbar)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pressure")
+        return {"ok": True}
+
+    @app.post("/api/control/flow/set_flow")
+    def flow_set_flow(req: FlowSetFlowRequest):
+        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        ok = flow.set_flow(req.index, req.flow_ul_hr)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set flow")
+        return {"ok": True}
+
+    @app.post("/api/control/flow/set_mode")
+    def flow_set_mode(req: FlowSetModeRequest):
+        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(req.mode_ui, 0)
+        ok = flow.set_control_mode(req.index, firmware_mode)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set control mode")
+        return {"ok": True}
+
+    @app.post("/api/control/flow/set_pi_consts")
+    def flow_set_pi(req: FlowSetPIRequest):
+        flow: FlowWeb | None = CONTROLLERS.get("flow")  # type: ignore[assignment]
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        ok = flow.set_flow_pi_consts(req.index, [req.p, req.i])
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set PI consts")
+        return {"ok": True}
+
+    # ----------------------------
+    # Heater endpoints
+    # ----------------------------
+
+    @app.get("/api/control/heater/state", response_model=HeaterState)
+    def heater_state():
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        if heaters is None:
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        items: list[HeaterStateItem] = []
+        for h in heaters:
+            h.update()
+            items.append(
+                HeaterStateItem(
+                    temp_c_actual=h.temp_c_actual,
+                    temp_c_target=h.temp_c_target,
+                    pid_enabled=h.pid_enabled,
+                    stir_enabled=h.stir_enabled,
+                    autotuning=h.autotuning,
+                    status_text=h.status_text,
+                )
+            )
+        return HeaterState(heaters=items)
+
+    @app.post("/api/control/heater/set_temp")
+    def heater_set_temp(req: HeaterSetTempRequest):
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_temp(req.temp_c)
+        return {"ok": True}
+
+    @app.post("/api/control/heater/pid")
+    def heater_set_pid(req: HeaterSetPidRequest):
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_pid_running(1 if req.enabled else 0)
+        heaters[req.index].pid_enabled = req.enabled
+        return {"ok": True}
+
+    @app.post("/api/control/heater/stir")
+    def heater_set_stir(req: HeaterSetStirRequest):
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")  # type: ignore[assignment]
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_stir_running(1 if req.enabled else 0)
+        heaters[req.index].stir_enabled = req.enabled
+        return {"ok": True}
+
+    # ----------------------------
+    # Camera snapshot
+    # ----------------------------
+
+    @app.get("/api/streams/camera/snapshot")
+    def camera_snapshot():
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        if cam.thread is None or not cam.thread.is_alive():
+            cam.initialize()
+        frame = cam.get_frame()
+        if not frame:
+            raise HTTPException(status_code=503, detail="No frame available")
+        return Response(content=frame, media_type="image/jpeg")
 
     return app
 

@@ -19,4 +19,16 @@ Notes:
 - Controllers are not yet wired into the API; capabilities are placeholder. Future steps will instantiate controllers and Things.
 - API default port is 5001 (`RIO_API_PORT` override).
 
+## 2026-01-09 — Initial REST wiring (flow/heater/camera snapshot)
+
+- `api.main`: now boots runtime, initializes SPI, instantiates controllers (FlowWeb, heater_web x4, Camera/PiStrobeCam, optional droplet); capabilities reflect actual init success.
+- Added initial REST endpoints:
+  - `GET /api/control/flow/state`
+  - `POST /api/control/flow/set_pressure`, `/set_flow`, `/set_mode`, `/set_pi_consts`
+  - `GET /api/control/heater/state`
+  - `POST /api/control/heater/set_temp`, `/pid`, `/stir`
+  - `GET /api/streams/camera/snapshot`
+- Added request/response models in `api.schemas` for flow/heater state and setters.
+- Deployment remains unchanged from previous step (requirements-api included).
+
 
