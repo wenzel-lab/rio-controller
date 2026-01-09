@@ -11,6 +11,9 @@ This log records implementation steps for the new network API layer (branch: `ne
   - `__init__.py` (interface-layer notice)
 - Added `software/requirements-api.txt` with pinned API deps (`fastapi==0.95.2`, `uvicorn[standard]==0.21.1`, `labthings-fastapi==0.0.6`, `pydantic==1.10.14`, `typing_extensions>=4.7.0`).
 - Updated `software/README.md` to list the experimental API and how to run the skeleton.
+- Wired controllers into API skeleton (v0.2.0):
+  - `api.main` now bootstraps runtime, initializes SPI, and instantiates FlowWeb, heater_web, Camera/PiStrobeCam (with DummySocketIO), and optional droplet controller (if enabled). Capabilities now reflect actual init success.
+- Deployment: `create-pi-deployment.sh` now copies `requirements-api.txt` and installs it if present.
 
 Notes:
 - Controllers are not yet wired into the API; capabilities are placeholder. Future steps will instantiate controllers and Things.
