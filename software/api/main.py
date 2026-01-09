@@ -139,7 +139,7 @@ CAPABILITIES, CONTROLLERS = _init_controllers()
 def _default_channel_map() -> dict[str, dict[str, dict[str, str | bool]]]:
     # channels 0-3 for flow/pressure; 0-3 for heater
     def _make(n: int):
-        return {str(i): {"enabled": True, "name": ""} for i in range(n)}
+        return {str(i): {"enabled": True, "name": "", "liquid_type": ""} for i in range(n)}
 
     return {
         "flow": _make(4),
@@ -191,9 +191,10 @@ def create_app() -> FastAPI:
                 CHANNEL_CONFIG[topic] = {}
             for k, v in incoming.items():
                 if k not in CHANNEL_CONFIG[topic]:
-                    CHANNEL_CONFIG[topic][k] = {"enabled": True, "name": ""}
+                    CHANNEL_CONFIG[topic][k] = {"enabled": True, "name": "", "liquid_type": ""}
                 CHANNEL_CONFIG[topic][k]["enabled"] = bool(v.enabled)
                 CHANNEL_CONFIG[topic][k]["name"] = v.name or ""
+                CHANNEL_CONFIG[topic][k]["liquid_type"] = v.liquid_type or ""
         return ChannelConfigResponse(channels=CHANNEL_CONFIG)  # type: ignore[arg-type]
 
     # ----------------------------

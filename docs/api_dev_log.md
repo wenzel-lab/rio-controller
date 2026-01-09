@@ -38,4 +38,12 @@ Notes:
   - `POST /api/config/channels` (merge patch for enable/name per channel, topics: flow/pressure/heater)
 - Updated `api.schemas` with channel models.
 
+## 2026-01-09 — UI channel naming + liquid type
+
+- `software/rio-webapp/templates/index.html`:
+  - Flow cards now show editable channel name and liquid type (mineral oil/fluorinated/aquaeous/custom).
+  - Name/liquid labels displayed in card header.
+  - Added JS to fetch `/api/config/channels` and to save per-channel metadata via `POST /api/config/channels`.
+- API channel model now includes `liquid_type` (and optional calibration_factor placeholder).
+
 

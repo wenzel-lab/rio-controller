@@ -79,6 +79,8 @@ class HeaterState(BaseModel):
 class ChannelInfo(BaseModel):
     enabled: bool = True
     name: str = ""
+    liquid_type: str = ""  # e.g., mineral_oil, fluorinated_novec, aqueous, custom
+    calibration_factor: float | None = None
 
 
 class ChannelConfig(BaseModel):
