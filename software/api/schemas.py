@@ -107,4 +107,33 @@ class CaptureStatusResponse(BaseModel):
     channels: Dict[str, List[int]] | None = None
 
 
+# Camera / Strobe / ROI requests
+class CameraResolutionRequest(BaseModel):
+    preset: str | None = None  # matches config.CAMERA_RESOLUTION_PRESETS keys
+    width: int | None = None
+    height: int | None = None
+
+
+class CameraSnapshotResolutionRequest(BaseModel):
+    mode: str  # display|full|custom
+    width: int | None = None
+    height: int | None = None
+
+
+class CameraROIRequest(BaseModel):
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+class StrobeEnableRequest(BaseModel):
+    on: bool
+
+
+class StrobeTimingRequest(BaseModel):
+    period_ns: int
+    wait_ns: int | None = None
+
+
 

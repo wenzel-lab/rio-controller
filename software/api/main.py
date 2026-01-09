@@ -24,6 +24,11 @@ from api.schemas import (
     CapabilitiesResponse,
     ChannelConfig,
     ChannelConfigResponse,
+    CameraResolutionRequest,
+    CameraSnapshotResolutionRequest,
+    CameraROIRequest,
+    StrobeEnableRequest,
+    StrobeTimingRequest,
     FlowSetPressureRequest,
     FlowSetFlowRequest,
     FlowSetModeRequest,
@@ -55,7 +60,17 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
-from config import CONTROL_MODE_UI_TO_FIRMWARE, CONTROL_MODE_FIRMWARE_TO_UI  # noqa: E402
+from config import (  # noqa: E402
+    CONTROL_MODE_UI_TO_FIRMWARE,
+    CONTROL_MODE_FIRMWARE_TO_UI,
+    CMD_SET_RESOLUTION,
+    CMD_SET_SNAPSHOT_RESOLUTION,
+    CMD_SET,
+    CMD_CLEAR,
+    CMD_TIMING,
+    CMD_ENABLE,
+    CMD_HOLD,
+)
 
 
 logger = logging.getLogger("api")
@@ -406,6 +421,134 @@ def create_app() -> FastAPI:
         if not frame:
             raise HTTPException(status_code=503, detail="No frame available")
         return Response(content=frame, media_type="image/jpeg")
+
+    @app.post("/api/control/camera/set_resolution")
+    def camera_set_resolution(req: CameraResolutionRequest):
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        params = {}
+        if req.preset:
+            params["preset"] = req.preset
+        if req.width and req.height:
+            params["width"] = int(req.width)
+            params["height"] = int(req.height)
+        cam.on_cam({"cmd": CMD_SET_RESOLUTION, "parameters": params})
+        return {"ok": True}
+
+    @app.post("/api/control/camera/set_snapshot_resolution")
+    def camera_set_snapshot_resolution(req: CameraSnapshotResolutionRequest):
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        params = {"mode": req.mode}
+        if req.width and req.height:
+            params["width"] = int(req.width)
+            params["height"] = int(req.height)
+        cam.on_cam({"cmd": CMD_SET_SNAPSHOT_RESOLUTION, "parameters": params})
+        return {"ok": True}
+
+    @app.post("/api/control/camera/roi")
+    def camera_set_roi(req: CameraROIRequest):
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_roi({"cmd": CMD_SET, "parameters": {"x": req.x, "y": req.y, "w": req.w, "h": req.h}})
+        return {"ok": True}
+
+    @app.post("/api/control/camera/roi/clear")
+    def camera_clear_roi():
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
+        return {"ok": True}
+
+    @app.post("/api/control/strobe/enable")
+    def strobe_enable(req: StrobeEnableRequest):
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if req.on else 0}})
+        return {"ok": True}
+
+    @app.post("/api/control/strobe/hold")
+    def strobe_hold(req: StrobeEnableRequest):
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if req.on else 0}})
+        return {"ok": True}
+
+    @app.post("/api/control/strobe/timing")
+    def strobe_timing(req: StrobeTimingRequest):
+        cam: Camera | None = CONTROLLERS.get("camera")  # type: ignore[assignment]
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        params = {"period_ns": int(req.period_ns)}
+        if req.wait_ns is not None:
+            params["wait_ns"] = int(req.wait_ns)
+        cam.on_strobe({"cmd": CMD_TIMING, "parameters": params})
+        return {"ok": True}
+
+    # ----------------------------
+    # Droplet endpoints
+    # ----------------------------
+
+    def _get_droplet():
+        return CONTROLLERS.get("droplet")
+
+    @app.post("/api/control/droplet/start")
+    def droplet_start():
+        droplet = _get_droplet()
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        ok = droplet.start()
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to start droplet detection (check ROI)")
+        return {"ok": True}
+
+    @app.post("/api/control/droplet/stop")
+    def droplet_stop():
+        droplet = _get_droplet()
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        droplet.stop()
+        return {"ok": True}
+
+    @app.get("/api/control/droplet/status")
+    def droplet_status():
+        droplet = _get_droplet()
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return {
+            "running": droplet.running,
+            "frame_count": droplet.frame_count,
+            "droplet_count_total": droplet.droplet_count_total,
+            "processing_rate_hz": round(getattr(droplet, "processing_rate_hz", 0.0), 2),
+            "statistics": droplet.get_statistics(),
+        }
+
+    @app.get("/api/control/droplet/histogram")
+    def droplet_histogram():
+        droplet = _get_droplet()
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return droplet.get_histogram()
+
+    @app.get("/api/control/droplet/statistics")
+    def droplet_statistics():
+        droplet = _get_droplet()
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return droplet.get_statistics()
+
+    @app.get("/api/control/droplet/performance")
+    def droplet_performance():
+        droplet = _get_droplet()
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return droplet.get_performance_metrics()
 
     # ----------------------------
     # WS Aggregator
