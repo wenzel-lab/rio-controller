@@ -75,4 +75,20 @@ class HeaterState(BaseModel):
     heaters: List[HeaterStateItem]
 
 
+# Channel metadata (enable + naming)
+class ChannelInfo(BaseModel):
+    enabled: bool = True
+    name: str = ""
+
+
+class ChannelConfig(BaseModel):
+    flow: Dict[str, ChannelInfo] | None = None
+    pressure: Dict[str, ChannelInfo] | None = None
+    heater: Dict[str, ChannelInfo] | None = None
+
+
+class ChannelConfigResponse(BaseModel):
+    channels: ChannelConfig
+
+
 

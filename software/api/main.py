@@ -21,6 +21,8 @@ from api.config import settings
 from api.schemas import (
     HealthResponse,
     CapabilitiesResponse,
+    ChannelConfig,
+    ChannelConfigResponse,
     FlowSetPressureRequest,
     FlowSetFlowRequest,
     FlowSetModeRequest,
@@ -133,6 +135,21 @@ def _init_controllers():
 # Initialize controllers once at import time (simple singleton style)
 CAPABILITIES, CONTROLLERS = _init_controllers()
 
+# In-memory channel config (will later be persisted/configurable)
+def _default_channel_map() -> dict[str, dict[str, dict[str, str | bool]]]:
+    # channels 0-3 for flow/pressure; 0-3 for heater
+    def _make(n: int):
+        return {str(i): {"enabled": True, "name": ""} for i in range(n)}
+
+    return {
+        "flow": _make(4),
+        "pressure": _make(4),
+        "heater": _make(4),
+    }
+
+
+CHANNEL_CONFIG: dict[str, dict[str, dict[str, str | bool]]] = _default_channel_map()
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Rio API", version="0.2.0 (controllers wired)")
@@ -154,6 +171,30 @@ def create_app() -> FastAPI:
     def capabilities() -> CapabilitiesResponse:
         notes = {"warning": "Controllers are instantiated; API methods not yet exposed."}
         return CapabilitiesResponse(modules=CAPABILITIES, simulation=settings.simulation, notes=notes)
+
+    # ----------------------------
+    # Channel metadata (enable/naming)
+    # ----------------------------
+
+    @app.get("/api/config/channels", response_model=ChannelConfigResponse)
+    def get_channels() -> ChannelConfigResponse:
+        return ChannelConfigResponse(channels=CHANNEL_CONFIG)  # type: ignore[arg-type]
+
+    @app.post("/api/config/channels", response_model=ChannelConfigResponse)
+    def set_channels(config: ChannelConfig) -> ChannelConfigResponse:
+        # shallow merge; keys absent are left as-is
+        for topic in ("flow", "pressure", "heater"):
+            incoming = getattr(config, topic)
+            if incoming is None:
+                continue
+            if topic not in CHANNEL_CONFIG:
+                CHANNEL_CONFIG[topic] = {}
+            for k, v in incoming.items():
+                if k not in CHANNEL_CONFIG[topic]:
+                    CHANNEL_CONFIG[topic][k] = {"enabled": True, "name": ""}
+                CHANNEL_CONFIG[topic][k]["enabled"] = bool(v.enabled)
+                CHANNEL_CONFIG[topic][k]["name"] = v.name or ""
+        return ChannelConfigResponse(channels=CHANNEL_CONFIG)  # type: ignore[arg-type]
 
     # ----------------------------
     # Flow / Pressure endpoints

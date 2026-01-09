@@ -31,4 +31,11 @@ Notes:
 - Added request/response models in `api.schemas` for flow/heater state and setters.
 - Deployment remains unchanged from previous step (requirements-api included).
 
+## 2026-01-09 — Channel metadata endpoints
+
+- Added channel metadata models and in-memory config:
+  - `GET /api/config/channels`
+  - `POST /api/config/channels` (merge patch for enable/name per channel, topics: flow/pressure/heater)
+- Updated `api.schemas` with channel models.
+
 
