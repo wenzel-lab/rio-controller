@@ -13,6 +13,7 @@ import os
 from threading import Event
 
 import uvicorn
+import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -138,11 +139,48 @@ def _init_controllers():
 # Initialize controllers once at import time (simple singleton style)
 CAPABILITIES, CONTROLLERS = _init_controllers()
 
-# In-memory channel config (will later be persisted/configurable)
-def _default_channel_map() -> dict[str, dict[str, dict[str, str | bool]]]:
+# Load channel metadata from main config file (single user-facing file)
+CONFIG_FILE_PATH = os.getenv("RIO_CONFIG_FILE", "rio-config.yaml")
+
+
+def _load_channels_from_yaml() -> dict[str, dict[str, dict[str, Any]]]:
+    """
+    Load channel metadata (enable/name/liquid_type/calibration_factor) from the main config YAML.
+    Example structure:
+    channels:
+      flow:
+        "0":
+          liquid_type: mineral_oil
+          calibration_factor: 1.05
+          name: oil
+        "1":
+          liquid_type: aqueous
+      pressure:
+        "0":
+          calibration_factor: 1.00
+      heater:
+        "0":
+          name: tip-heater
+    """
+    if not os.path.exists(CONFIG_FILE_PATH):
+        return {}
+    try:
+        with open(CONFIG_FILE_PATH, "r") as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("channels", {}) or {}
+    except Exception as e:
+        logger.warning("Failed to load channel config from %s: %s", CONFIG_FILE_PATH, e)
+        return {}
+
+
+# In-memory channel config (merge defaults + YAML)
+def _default_channel_map() -> dict[str, dict[str, dict[str, Any]]]:
     # channels 0-3 for flow/pressure; 0-3 for heater
     def _make(n: int):
-        return {str(i): {"enabled": True, "name": "", "liquid_type": ""} for i in range(n)}
+        return {
+            str(i): {"enabled": True, "name": "", "liquid_type": "", "calibration_factor": 1.0}
+            for i in range(n)
+        }
 
     return {
         "flow": _make(4),
@@ -151,7 +189,23 @@ def _default_channel_map() -> dict[str, dict[str, dict[str, str | bool]]]:
     }
 
 
-CHANNEL_CONFIG: dict[str, dict[str, dict[str, str | bool]]] = _default_channel_map()
+CHANNEL_CONFIG: dict[str, dict[str, dict[str, Any]]] = _default_channel_map()
+_yaml_channels = _load_channels_from_yaml()
+for topic, entries in _yaml_channels.items():
+    if topic not in CHANNEL_CONFIG:
+        CHANNEL_CONFIG[topic] = {}
+    for k, v in entries.items():
+        if k not in CHANNEL_CONFIG[topic]:
+            CHANNEL_CONFIG[topic][k] = {
+                "enabled": True,
+                "name": "",
+                "liquid_type": "",
+                "calibration_factor": 1.0,
+            }
+        for field in ("enabled", "name", "liquid_type", "calibration_factor"):
+            if field in v and v[field] is not None:
+                CHANNEL_CONFIG[topic][k][field] = v[field]
+
 AGGREGATOR = Aggregator(
     flow=CONTROLLERS.get("flow"),
     heaters=CONTROLLERS.get("heaters"),

@@ -46,4 +46,12 @@ Notes:
   - Added JS to fetch `/api/config/channels` and to save per-channel metadata via `POST /api/config/channels`.
 - API channel model now includes `liquid_type` (and optional calibration_factor placeholder).
 
+## 2026-01-09 — WS aggregator + capture + YAML channel calibration load
+
+- Added `software/api/streams.py`:
+  - `WS /api/streams/aggregate` (flow/pressure/heater topics, channel selection, calibration factor applied if set).
+  - Capture control: `POST /api/data/capture/start`, `/stop`, `GET /api/data/capture/status` (CSV, off by default).
+- API now loads channel metadata (including `liquid_type` and `calibration_factor`) from the main config YAML (`RIO_CONFIG_FILE` or `rio-config.yaml`) into defaults; still allows runtime overrides via `/api/config/channels` (runtime only).
+- Added PyYAML to API requirements.
+
 
