@@ -93,4 +93,18 @@ class ChannelConfigResponse(BaseModel):
     channels: ChannelConfig
 
 
+# Capture control
+class CaptureStartRequest(BaseModel):
+    topics: List[str]
+    channels: Dict[str, List[int]] | None = None
+    path: str | None = None
+
+
+class CaptureStatusResponse(BaseModel):
+    enabled: bool
+    path: str | None = None
+    topics: List[str] = []
+    channels: Dict[str, List[int]] | None = None
+
+
 

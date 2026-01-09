@@ -33,7 +33,10 @@ from api.schemas import (
     HeaterSetStirRequest,
     HeaterState,
     HeaterStateItem,
+    CaptureStartRequest,
+    CaptureStatusResponse,
 )
+from api.streams import Aggregator
 
 # Path/bootstrap and controller imports (align with software/main.py)
 from path_bootstrap import bootstrap_runtime
@@ -149,6 +152,11 @@ def _default_channel_map() -> dict[str, dict[str, dict[str, str | bool]]]:
 
 
 CHANNEL_CONFIG: dict[str, dict[str, dict[str, str | bool]]] = _default_channel_map()
+AGGREGATOR = Aggregator(
+    flow=CONTROLLERS.get("flow"),
+    heaters=CONTROLLERS.get("heaters"),
+    channel_config=CHANNEL_CONFIG,
+)
 
 
 def create_app() -> FastAPI:
@@ -336,6 +344,37 @@ def create_app() -> FastAPI:
         if not frame:
             raise HTTPException(status_code=503, detail="No frame available")
         return Response(content=frame, media_type="image/jpeg")
+
+    # ----------------------------
+    # WS Aggregator
+    # ----------------------------
+
+    @app.websocket("/api/streams/aggregate")
+    async def aggregate_ws(websocket):
+        await AGGREGATOR.handle_ws(websocket)
+
+    # ----------------------------
+    # Capture control (flow/pressure/heater)
+    # ----------------------------
+
+    @app.post("/api/data/capture/start", response_model=CaptureStatusResponse)
+    def capture_start(req: CaptureStartRequest):
+        topics = req.topics
+        channels = req.channels or {}
+        AGGREGATOR.start_capture(topics, channels, req.path)
+        status = AGGREGATOR.capture_status()
+        return CaptureStatusResponse(**status)
+
+    @app.post("/api/data/capture/stop", response_model=CaptureStatusResponse)
+    def capture_stop():
+        AGGREGATOR.stop_capture()
+        status = AGGREGATOR.capture_status()
+        return CaptureStatusResponse(**status)
+
+    @app.get("/api/data/capture/status", response_model=CaptureStatusResponse)
+    def capture_status():
+        status = AGGREGATOR.capture_status()
+        return CaptureStatusResponse(**status)
 
     return app
 
