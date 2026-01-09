@@ -72,7 +72,8 @@ $RECYCLE.BIN/
 # Runtime outputs
 software/home/pi/snapshots/
 
-# Generated deployment bundle (build artifact)
-pi-deployment/
+# Generated deployment bundle files (but keep the structure)
+# Note: pi-deployment/ is now tracked in git, but exclude generated timestamps
+pi-deployment/DEPLOYMENT_INFO.txt
 
 /docs

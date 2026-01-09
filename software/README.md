@@ -22,8 +22,7 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
 
-
-## Runtime wiring (how the software fits together)
+### Runtime wiring (how the software fits together)
 
 The main runtime entry point is **`software/main.py`**, which wires the layers together in a fairly direct way:
 
@@ -43,53 +42,68 @@ The main runtime entry point is **`software/main.py`**, which wires the layers t
 If you’re auditing logic, reading order that matches the runtime is:
 `main.py` → `rio-webapp/routes.py` + `rio-webapp/controllers/*` → `controllers/*` → `drivers/*` → firmware projects under `../hardware-modules/*/*_pic/`.
 
-## Launching the Software
+## Setup and Deployment
+
+**IMPORTANT:** Choose the correct setup based on your platform:
+
+- **Mac/PC/Ubuntu (Development)**: See [Development Setup (Mac/PC/Ubuntu)](#development-setup-macpcubuntu) below
+  - Uses mamba/conda virtual environments
+  - For simulation and development
+  - **NOT for Raspberry Pi deployment**
+
+- **Raspberry Pi (Production)**: See [Raspberry Pi Deployment](#raspberry-pi-deployment) below
+  - Uses system Python (no virtual environment)
+  - For actual hardware operation
+  - Follow instructions in `../pi-deployment/README.md`
+
+---
+
+## Development Setup (Mac/PC/Ubuntu)
+
+**This section is for development on Mac/PC/Ubuntu only. For Raspberry Pi deployment, skip to the [Raspberry Pi Deployment](#raspberry-pi-deployment) section.**
 
 ### Prerequisites
 
 1. **Python Environment**: Python 3.8+ recommended
-   - **Recommended**: Use mamba/conda environment (see below)
-   - **Never install to system Python root** - always use a virtual environment
+   - **Required**: Use mamba/conda environment (see below)
+   - **Never install to system Python root** - always use a virtual environment for development
 
-2. **Setup with Mamba/Conda** (Recommended):
+2. **Setup with Mamba/Conda** (Required for Development):
    ```bash
    # Create and activate environment
    mamba create -n rio-simulation python=3.10 -y
    mamba activate rio-simulation
    
-   # Install dependencies based on your platform:
+   # Install dependencies for simulation mode (Mac/PC/Ubuntu):
    cd software
-   
-   # For Raspberry Pi 32-bit:
-   pip install -r requirements_32bit.txt
-   
-   # For Raspberry Pi 64-bit:
-   pip install -r requirements_64bit.txt
-   
-   # For simulation (Mac/PC/Ubuntu):
    pip install -r requirements-simulation.txt
    ```
 
 3. **Hardware vs Simulation**:
-   - **Real Hardware**: Requires Raspberry Pi with SPI/GPIO access
-   - **Simulation Mode**: Set environment variable `RIO_SIMULATION=true` to run without hardware
+   - **Development/Simulation**: Set environment variable `RIO_SIMULATION=true` to run without hardware
+   - **Real Hardware**: Requires Raspberry Pi deployment (see [Raspberry Pi Deployment](#raspberry-pi-deployment) below)
 
-### Running the Web Application
+### Running the Development Application (Simulation Mode)
+
+**Note:** This runs in simulation mode on Mac/PC. For actual hardware, see [Raspberry Pi Deployment](#raspberry-pi-deployment).
 
 1. **Navigate to the software directory**:
    ```bash
    cd software
    ```
 
-2. **Run the application**:
+2. **Run the application in simulation mode**:
    ```bash
    # Default port (5000)
+   export RIO_SIMULATION=true
    python main.py
    
    # Custom port
+   export RIO_SIMULATION=true
    python main.py 5001
    
    # Using environment variable
+   export RIO_SIMULATION=true
    export RIO_PORT=5001
    python main.py
    ```
@@ -104,18 +118,7 @@ If you’re auditing logic, reading order that matches the runtime is:
      - **Heaters**: Temperature and stirring control for 4 heaters
      - **Droplet Detection**: Real-time droplet detection with histogram visualization
 
-### Creating and copying the Pi deployment bundle (from your Mac/PC)
-
-Even in simulation-first workflows, you eventually need to generate the deployable Pi bundle. The following commands (adjust paths where neccessary) will generate a deployable bundle without the simulation files from the repo root on your Mac/PC and copy them over to your Raspberry Pi by SSH connection:
-```bash
-cd /Users/twenzel/Documents/GitHub/rio-controller
-./create-pi-deployment.sh
-rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' \
-  pi-deployment/ pi@raspberrypi.local:~/rio-controller/
-```
-After syncing, follow `pi-deployment/README.md` on the Pi to run `setup.sh` (first time) and `run.sh`/`python main.py`.
-
-### Simulation Mode
+### Simulation Mode (Quick Start)
 
 To run without hardware (for testing on a Mac/PC):
 
@@ -141,18 +144,64 @@ Note: `setup-simulation.sh` also creates a `rio-config.yaml` file for simulation
 
 This enables simulated SPI, GPIO, camera, and device controllers, allowing you to test the web interface and logic without physical hardware.
 
-### Pre-Flight Check
+---
 
-Before running the application, verify all dependencies are installed:
+## Raspberry Pi Deployment
+
+**This section is for deploying to actual Raspberry Pi hardware. For Mac/PC development, see [Development Setup (Mac/PC/Ubuntu)](#development-setup-macpcubuntu) above.**
+
+**IMPORTANT:** 
+- **DO NOT use mamba/conda on Raspberry Pi** - use system Python
+- **DO NOT create virtual environments on Pi** - install to system Python
+- Follow the instructions in `../pi-deployment/README.md` for complete deployment steps
+
+### Creating the Pi Deployment Bundle (from Mac/PC)
+
+**On your Mac/PC (not on the Pi):** Generate the deployment bundle and copy it to your Raspberry Pi:
+
+**Linux/Mac:**
+```bash
+cd /path/to/rio-controller
+./create-pi-deployment.sh
+rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' \
+  pi-deployment/ pi@raspberrypi.local:~/rio-controller/
+```
+
+**Windows:**
+```cmd
+cd C:\path\to\rio-controller
+create-pi-deployment.bat
+# Then use your preferred method to copy pi-deployment/ to the Pi (e.g., WinSCP, SCP)
+```
+
+After syncing, **SSH to your Pi** and follow the instructions in `pi-deployment/README.md`:
+- Run `./setup.sh` (first time only - installs packages to system Python)
+- Run `./run.sh` or `python main.py` (to start the application)
+
+### Key Differences: Development vs Production
+
+| Aspect | Mac/PC Development | Raspberry Pi Production |
+|--------|-------------------|------------------------|
+| Python Environment | mamba/conda virtual environment | System Python (no venv) |
+| Installation | `pip install -r requirements-simulation.txt` | `python3 -m pip install --user -r requirements-webapp-only-32bit.txt` |
+| Hardware | Simulated | Real hardware |
+| Mode | `RIO_SIMULATION=true` | `RIO_SIMULATION=false` |
+| Dependencies | See `requirements-simulation.txt` | See `pi-deployment/requirements-webapp-only-32bit.txt` |
+
+### Pre-Flight Check (Development Only)
+
+Before running the application in development mode, verify all dependencies are installed:
 
 ```bash
-# In your mamba environment
+# Activate your mamba environment
 mamba activate rio-simulation
 cd software
 python tests/test_imports.py
 ```
 
 This will check all external and internal dependencies. All checks should pass (✓) before running `main.py`.
+
+**Note:** For Raspberry Pi deployment, the setup script (`pi-deployment/setup.sh`) handles dependency verification automatically.
 
 ### Running Tests
 
