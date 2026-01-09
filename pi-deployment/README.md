@@ -147,6 +147,22 @@ ps aux | grep "python.*main.py"
 kill <PID>
 ```
 
+**If an old autostart webserver from a legacy install is running** (often `/home/pi/webapp/pi_webapp.py` or another app name), stop it first so port 5000 is free:
+```bash
+ps aux | grep python       # find legacy webserver processes
+pkill -f "python.*pi_webapp.py"   # adjust the pattern if the process name differs
+```
+
+If it respawns automatically, it’s likely managed by `systemd` or `cron`. Disable it:
+```bash
+sudo systemctl list-units | grep webapp   # find the unit name
+sudo systemctl stop <unit>.service
+sudo systemctl disable <unit>.service
+
+crontab -l          # check user crontab for old start commands
+sudo crontab -l     # check root crontab
+```
+
 ### Start Application
 
 ```bash
