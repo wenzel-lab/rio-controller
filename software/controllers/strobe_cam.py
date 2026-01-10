@@ -72,7 +72,7 @@ class PiStrobeCam:
         Args:
             port: GPIO port number for SPI device selection
             reply_pause_s: SPI reply pause time in seconds
-            trigger_gpio_pin: GPIO pin number for PIC trigger (BCM numbering)
+            trigger_gpio_pin: GPIO pin number for PIC trigger (BOARD numbering)
         """
         logger.info(f"Initializing PiStrobeCam (port={port}, trigger_pin={trigger_gpio_pin})")
 
@@ -144,7 +144,7 @@ class PiStrobeCam:
         # Initialize GPIO for PIC trigger (only needed for new mode with hardware trigger)
         if self.hardware_trigger_mode:
             try:
-                GPIO.setmode(GPIO.BCM)
+                GPIO.setmode(GPIO.BOARD)
                 GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
                 GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
                 logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")

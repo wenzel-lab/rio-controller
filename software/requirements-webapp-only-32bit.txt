@@ -21,21 +21,27 @@ python-engineio>=4.9.0  # Upgraded from 3.13.2 - Version 4.x required for python
 eventlet>=0.33.0,<1.0.0
 
 # Image processing (for droplet detection and camera operations)
-# Use headless version for Raspberry Pi (faster installation, pre-built wheels available)
-opencv-python-headless>=4.5.0,<5.0.0
-numpy>=1.19.0,<2.0.0  # Required for OpenCV and droplet detection (numpy 2.0+ requires 64-bit)
+# IMPORTANT: Install OpenCV from apt (fast, pre-built): sudo apt-get install -y python3-opencv
+# Do NOT install opencv-python-headless from pip - it builds from source (very slow, hours).
+# If python3-opencv is not available, uncomment the line below (but expect long build time):
+# opencv-python-headless<4.9  # Only if python3-opencv from apt is not available
+numpy<2.0.0  # Prefer apt: sudo apt-get install -y python3-numpy
 Pillow>=9.0.0  # Required for image processing in camera modules
 
 # Configuration file support
 PyYAML>=6.0
 
-# Note: The following hardware packages should already be installed system-wide via apt:
-# - spidev==3.6 (install: sudo apt-get install python3-spidev)
-# - RPi.GPIO==0.7.1 (install: sudo apt-get install python3-rpi.gpio)
-# - picamera==1.13 (install: sudo apt-get install python3-picamera)
-
+# Note: The following system packages should be installed via apt BEFORE installing Python packages:
+# Hardware packages:
+#   sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy python3-opencv
+# BLAS/LAPACK for droplet detection (provides libcblas.so.3):
+#   sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3
+# IMPORTANT: Install python3-opencv from apt (fast, pre-built). Do NOT install opencv-python-headless from pip.
+#
 # Installation instructions for Raspberry Pi:
-# This file installs to system Python (NO virtual environment):
+# Step 1: Install system packages (see above)
+# Step 2: Install Python packages to system Python (NO virtual environment):
+#   python3 -m pip install --user --upgrade pip wheel
 #   python3 -m pip install --user -r requirements-webapp-only-32bit.txt
 # Or with sudo for system-wide installation:
 #   sudo python3 -m pip install -r requirements-webapp-only-32bit.txt

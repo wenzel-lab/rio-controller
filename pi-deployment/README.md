@@ -9,7 +9,7 @@ If you’re reviewing code logic, use this folder to understand *what is shipped
 ## System Requirements
 
 - **Raspberry Pi OS** (32-bit or 64-bit)
-- **Python 3.8+** (system Python - we do not use virtual environments on Pi)
+- **Python 3.8+** (system Python - do NOT use virtual environments on Pi)
 - **System packages** should be installed via apt (see Hardware Requirements below)
 
 ## What’s in this folder (structure)
@@ -38,24 +38,47 @@ This folder intentionally mirrors the runtime-relevant parts of `software/`:
 
 **Prerequisites:** Ensure you've copied all files from `pi-deployment/` to `~/rio-controller/` on your Pi (see [Copying Deployment to Pi](#copying-deployment-to-pi) below).
 
+**Option A: Automated setup (if `setup.sh` is present)**
 ```bash
 cd ~/rio-controller
 ./setup.sh
 ```
 
-This installs from `requirements-webapp-only-32bit.txt` using **system Python** and verifies the install. The script uses `python3 -m pip install --user` which installs packages to `~/.local/lib/python3.x/site-packages/` (no sudo required).
+**Option B: Manual setup (always works)**
+See manual installation steps below - this is equivalent and works even if `setup.sh` is missing.
 
-**If `setup.sh` is missing:** Re-sync the deployment package from your Mac/PC (see "Sync Code" below) or install manually:
+This installs system packages (apt) and Python packages from `requirements-webapp-only-32bit.txt` using **system Python**. The script uses `python3 -m pip install --user` which installs packages to `~/.local/lib/python3.x/site-packages/` (no sudo required for Python packages).
+
+**If `setup.sh` is missing or you prefer manual installation:** Install system packages and Python dependencies manually:
 
 ```bash
-# Upgrade pip first
+# Step 1: Install system packages (apt) - required for hardware and droplet detection
+sudo apt-get update
+sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy
+sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3
+
+# Step 2: Verify libcblas.so.3 is available (for droplet detection)
+ldconfig -p | grep cblas  # Should show libcblas.so.3
+
+# Step 3: Upgrade pip
 python3 -m pip install --user --upgrade pip wheel
 
-# Install packages to user directory (no sudo needed)
+# Step 4: Install Python packages to user directory (no sudo needed)
 python3 -m pip install --user -r requirements-webapp-only-32bit.txt
 
-# Verify installation
+# Step 5: Verify installation
 python3 -m pip list --user | grep -E "Flask|SocketIO|opencv|numpy|Pillow"
+
+# Step 6: Clean GPIO state (if needed)
+python3 - <<'PY'
+import RPi.GPIO as GPIO
+GPIO.setwarnings(False)
+try:
+    GPIO.cleanup()
+    GPIO.setmode(GPIO.BOARD)
+except:
+    pass
+PY
 ```
 
 **Troubleshooting permission issues:**
@@ -142,36 +165,39 @@ ssh pi@raspberrypi.local
 # Stop running instance
 pkill -f "python.*main.py"
 
+# If an old autostart webserver from a legacy install is running (e.g., pi_webapp.py), stop it first:
+pkill -f "python.*pi_webapp.py"
+ps aux | grep python  # verify no legacy webapp remains
+
 # Or find and kill manually:
 ps aux | grep "python.*main.py"
 kill <PID>
 ```
 
-**If an old autostart webserver from a legacy install is running** (often `/home/pi/webapp/pi_webapp.py` or another app name), stop it first so port 5000 is free:
-```bash
-ps aux | grep python       # find legacy webserver processes
-pkill -f "python.*pi_webapp.py"   # adjust the pattern if the process name differs
-```
-
-If it respawns automatically, it’s likely managed by `systemd` or `cron`. Disable it:
-```bash
-sudo systemctl list-units | grep webapp   # find the unit name
-sudo systemctl stop <unit>.service
-sudo systemctl disable <unit>.service
-
-crontab -l          # check user crontab for old start commands
-sudo crontab -l     # check root crontab
-```
-
 ### Start Application
 
+**Navigate to the deployment directory:**
 ```bash
 cd ~/rio-controller
-export RIO_STROBE_CONTROL_MODE=strobe-centric
+```
+
+**Option 1: Use the run script (recommended)**
+```bash
+./run.sh
+```
+
+**Option 2: Run manually**
+```bash
+export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric
 export RIO_SIMULATION=false
 export RIO_DROPLET_ANALYSIS_ENABLED=true
+export RIO_FLOW_ENABLED=false      # Hide flow tab if not used
+export RIO_HEATER_ENABLED=false    # Hide heater tab if not used
 python main.py
 ```
+
+**Access the web interface:**
+- Open your browser to `http://raspberrypi.local:5000` (or `http://<PI_IP_ADDRESS>:5000`)
 
 ### Copying Deployment to Pi
 
@@ -266,23 +292,61 @@ create-pi-deployment.bat
 
 **Note:** The setup process is the same whether you use SSH or USB stick - once files are copied to `~/rio-controller/` on the Pi, follow the [Quick Start](#quick-start) instructions above.
 
-
-Note: `create-pi-deployment.sh` **regenerates** this folder. If you hand-edit files under `pi-deployment/`, those edits will be overwritten the next time the bundle is generated.
-
-**Avoid nested folders:** do **not** rsync to `~/rio-controller/pi-deployment/` — that creates `~/rio-controller/pi-deployment/pi-deployment/...`.
-
-If you only see an empty folder on the Pi, or you ended up with nested `pi-deployment/`, you likely ran `rsync` from the Pi instead of the Mac (or used the wrong destination path). Fix by removing the nested folder and re-syncing from your Mac/PC:
-
-```bash
-ssh pi@raspberrypi.local
-rm -rf ~/rio-controller/pi-deployment
-exit
-
-cd /path/to/rio-controller
-./deploy-to-pi.sh raspberrypi.local
-```
+**Important Notes:**
+- `create-pi-deployment.sh` (Linux/Mac) or `create-pi-deployment.bat` (Windows) **regenerates** this folder. If you hand-edit files under `pi-deployment/`, those edits will be overwritten the next time the bundle is generated.
+- **Avoid nested folders:** When copying, make sure to copy the *contents* of `pi-deployment/` to `~/rio-controller/`, not the folder itself. The destination should be `~/rio-controller/main.py`, not `~/rio-controller/pi-deployment/main.py`.
+- If you see an empty folder on the Pi or nested `pi-deployment/`, you copied incorrectly. Fix by removing and re-copying with the correct path.
 
 ## Troubleshooting
+
+### Network/DNS/SSL Issues (fresh Pi setup)
+**Problem:** \`apt-get update\` or \`pip install\` fails with "Temporary failure resolving" or SSL certificate errors.
+
+**Common causes:**
+- System clock is incorrect (very common on fresh Pi - causes SSL cert verification to fail)
+- No internet connection or DNS misconfigured
+
+**Fix:**
+\`\`\`bash
+# Fix system clock (requires network):
+sudo date -s "\$(date -R)"
+# Or set manually if offline:
+sudo date -s "2025-01-09 12:00:00"
+
+# Retry installation
+\`\`\`
+
+### Dependencies (numpy/OpenCV)
+- Pinned in requirements: \`opencv-python-headless<4.9\`, \`numpy<2.0\`. Prefer apt \`python3-numpy\` to avoid slow builds.
+
+### Droplet detection: missing libcblas.so.3
+Install ATLAS BLAS/LAPACK (provides libcblas.so.3):
+\`\`\`bash
+sudo apt-get update
+sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3
+ldconfig -p | grep cblas  # confirm libcblas.so.3 is present
+\`\`\`
+**If packages not found:** Ensure Raspberry Pi Foundation apt repository is configured. Check:
+\`\`\`bash
+grep -r "raspberrypi.org" /etc/apt/sources.list /etc/apt/sources.list.d/
+\`\`\`
+If missing, add: \`deb http://archive.raspberrypi.org/debian/ bullseye main\` to \`/etc/apt/sources.list.d/raspberrypi.list\`
+
+### Legacy camera (picamera)
+- **Manual setup required:** Use \`sudo raspi-config\` → Interface Options → Legacy Camera → Enable; then reboot.
+- Test: \`raspistill -v -o test.jpg\`
+- Use \`python3-picamera\` (picamera2 not used on this setup).
+
+### GPIO mode conflicts
+- App uses BOARD numbering for GPIO. If another process set BCM, clean up:
+\`\`\`bash
+sudo pkill -f python
+python3 - <<'PY'
+import RPi.GPIO as GPIO
+GPIO.cleanup()
+GPIO.setmode(GPIO.BOARD)
+PY
+\`\`\`
 
 ### Enable Debug Logging
 

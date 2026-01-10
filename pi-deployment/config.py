@@ -46,12 +46,14 @@ SNAPSHOT_RESOLUTION_FULL = "full"  # Use full sensor resolution
 SNAPSHOT_RESOLUTION_CUSTOM = "custom"  # Use custom resolution
 
 # Strobe Configuration
+# Use BOARD numbering to stay consistent with other GPIO users (SPI handler pins use BOARD)
+# Pin 12 (board) == BCM 18
 STROBE_DEFAULT_PERIOD_NS = 20000  # 20 microseconds
 STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds
 STROBE_PRE_PADDING_NS = 32  # Pre-padding before strobe pulse
 STROBE_POST_PADDING_NS = 20000000  # Post-padding after strobe pulse
 STROBE_TRIGGER_PULSE_US = 0.000001  # 1 microsecond trigger pulse
-STROBE_TRIGGER_GPIO_PIN = 18  # GPIO pin for PIC trigger (BCM numbering)
+STROBE_TRIGGER_GPIO_PIN = 12  # GPIO pin for PIC trigger (BOARD numbering; was BCM 18)
 STROBE_REPLY_PAUSE_S = 0.1  # SPI reply pause time
 
 # Strobe Control Mode

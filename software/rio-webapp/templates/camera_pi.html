@@ -1,6 +1,7 @@
 {% macro js_functions( cam, strobe ) %}
   var strobe = {{strobe|tojson}}
   var cam = {{cam|tojson}}
+  var strobeInputDirty = { period: false, wait: false }
   
   function strobe_update_init()
   {
@@ -22,8 +23,8 @@
       $('#btn_strobe_hold').removeClass('btn-secondary btn-success');
       $('#btn_strobe_hold').addClass( strobe.hold ? 'btn-success' : 'btn-secondary' );
       
-      // Update period input
-      if (strobe.period_ns) {
+      // Update period input unless user is editing
+      if (strobe.period_ns && !strobeInputDirty.period) {
         $('#input_strobe_period_us').val( (strobe.period_ns / 1000).toFixed(0) );
       }
       
@@ -107,6 +108,14 @@
 {% macro js_doc_ready() %}
   strobe_update_init();
   cam_update();
+
+  // Prevent server refresh from overwriting user edits while focused
+  $('#input_strobe_period_us')
+    .on('focus', function() { strobeInputDirty.period = true; })
+    .on('blur', function() { strobeInputDirty.period = false; });
+  $('#input_strobe_wait_us')
+    .on('focus', function() { strobeInputDirty.wait = true; })
+    .on('blur', function() { strobeInputDirty.wait = false; });
   
   // NOTE: ROI selector is handled by roi_selector_range.js in index.html
   // The old freehand/canvas selector code has been removed.

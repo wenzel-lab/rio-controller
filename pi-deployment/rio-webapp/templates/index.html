@@ -407,8 +407,29 @@
                         {% for flow in flows %}
                         <div class="card mb-3">
                             <div class="card-body">
-                                <h5 class="card-title">Flow Controller {{loop.index}}</h5>
+                                <h5 class="card-title">
+                                    Flow Controller {{loop.index}}
+                                    <small class="text-muted" id="flow{{loop.index}}_name_label"></small>
+                                    <small class="text-muted" id="flow{{loop.index}}_liquid_label"></small>
+                                </h5>
                                 <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Channel Name</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" id="input_flow{{loop.index}}_name" class="form-control" placeholder="e.g., oil">
+                                            <button class="btn btn-outline-primary" onclick="flow_save_channel_meta({{loop.index-1}})">Save</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Liquid Type</label>
+                                        <select id="select_flow{{loop.index}}_liquid" class="form-select form-select-sm" onchange="flow_save_channel_meta({{loop.index-1}})">
+                                            <option value="">(unspecified)</option>
+                                            <option value="mineral_oil">Mineral oil</option>
+                                            <option value="fluorinated_novec">Fluorinated (Novec)</option>
+                                            <option value="aqueous">Aqueous</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                    </div>
                                     <div class="col-md-3">
                                         <label class="form-label">Status</label>
                                         <p id="flow{{loop.index}}_status" class="form-control-plaintext"></p>
@@ -634,6 +655,7 @@
         
         var heaters = {{heaters|tojson}};
         var flows = {{flows|tojson}};
+        var channelConfig = null;
         
         // ROI update function
         function updateROIInfo() {
@@ -740,7 +762,46 @@
                 var firmwareMode = flows[i].control_mode;
                 $('#flow' + (i + 1) + '_control_mode').html(flows[i].control_modes[firmwareMode]);
                 $("input:radio[name=input_flow" + (i + 1) + "_control_mode][value='" + firmwareMode + "']").prop("checked", true);
+                // Apply channel metadata if loaded
+                if (channelConfig && channelConfig.flow && channelConfig.flow[i.toString()]) {
+                    var meta = channelConfig.flow[i.toString()];
+                    $('#flow' + (i + 1) + '_name_label').text(meta.name ? '— ' + meta.name : '');
+                    $('#flow' + (i + 1) + '_liquid_label').text(meta.liquid_type ? '(' + meta.liquid_type + ')' : '');
+                    $('#input_flow' + (i + 1) + '_name').val(meta.name || '');
+                    $('#select_flow' + (i + 1) + '_liquid').val(meta.liquid_type || '');
+                }
             }
+        }
+
+        // Channel metadata fetch/save
+        function load_channel_config() {
+            fetch('/api/config/channels')
+                .then(resp => resp.json())
+                .then(data => {
+                    channelConfig = data.channels;
+                    flows_update();
+                })
+                .catch(err => console.error('Failed to load channel config', err));
+        }
+
+        function flow_save_channel_meta(idx) {
+            var name = $('#input_flow' + (idx + 1) + '_name').val();
+            var liquid = $('#select_flow' + (idx + 1) + '_liquid').val();
+            var payload = {
+                flow: {}
+            };
+            payload.flow[idx.toString()] = {enabled: true, name: name, liquid_type: liquid};
+            fetch('/api/config/channels', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                channelConfig = data.channels;
+                flows_update();
+            })
+            .catch(err => console.error('Failed to save channel config', err));
         }
         
         // Socket.IO event handlers
@@ -749,6 +810,7 @@
             
             heaters_update_init();
             flows_update_init();
+            load_channel_config();
             heaters_update();
             flows_update();
             
