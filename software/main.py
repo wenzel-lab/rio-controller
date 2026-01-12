@@ -26,6 +26,7 @@ Usage:
 
 import os
 import logging
+import warnings
 from threading import Event
 from flask import Flask
 from flask_socketio import SocketIO
@@ -42,6 +43,9 @@ if not SIMULATION_MODE and not NO_GEVENT_PATCH:
     try:
         import gevent.monkey
 
+        # Suppress MonkeyPatchWarning - it's harmless but noisy
+        # Filter must be set before patching (gevent uses warnings.warn())
+        warnings.filterwarnings("ignore", message=".*Monkey-patching.*")
         gevent.monkey.patch_all()
         _async_mode_default = "gevent"
     except ImportError:
@@ -97,6 +101,8 @@ logger = logging.getLogger(__name__)
 # Reduce Socket.IO and Engine.IO logging verbosity (too noisy at INFO level)
 logging.getLogger("socketio.server").setLevel(logging.WARNING)
 logging.getLogger("engineio.server").setLevel(logging.WARNING)
+# Suppress picamera2 error messages (expected when using legacy camera mode)
+logging.getLogger("picamera2").setLevel(logging.CRITICAL)
 # In simulation, suppress werkzeug dev server warning noise
 if SIMULATION_MODE:
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -283,14 +289,22 @@ if __name__ == "__main__":
     port = args.port
 
     logger.info(f"Starting Rio microfluidics controller on port {port}...")
-    logger.info(f"If port is in use, kill the process with: lsof -ti:{port} | xargs kill -9")
-    logger.info("Or use a different port: python main.py <PORT_NUMBER>")
 
     # Start background update thread
     background_task = create_background_update_task(
-        socketio, view_model, heaters, flow, cam, debug_data, droplet_web_controller
+        socketio, view_model, heaters, flow, cam, debug_data, exit_event, droplet_web_controller
     )
     socketio.start_background_task(background_task)
+
+    # Print friendly startup message (use print with flush to ensure it appears)
+    import sys
+    print("", file=sys.stderr, flush=True)
+    print("=" * 60, file=sys.stderr, flush=True)
+    print("Rio Microfluidics Controller is now running", file=sys.stderr, flush=True)
+    print(f"Access the web interface at: http://raspberrypi.local:{port}", file=sys.stderr, flush=True)
+    print("Press Ctrl+C to stop the server", file=sys.stderr, flush=True)
+    print("=" * 60, file=sys.stderr, flush=True)
+    print("", file=sys.stderr, flush=True)
 
     try:
         socketio.run(
@@ -299,9 +313,13 @@ if __name__ == "__main__":
             port=port,
             debug=False,
             allow_unsafe_werkzeug=(_async_mode_default == "threading"),
+            use_reloader=False,  # Disable reloader to ensure signal handling works
         )
     except KeyboardInterrupt:
-        logger.info("Server shutting down...")
+        logger.info("Received KeyboardInterrupt, shutting down...")
         exit_event.set()
-    finally:
+        # Don't use time.sleep here - gevent handles shutdown
         logger.info("Server stopped")
+    finally:
+        # Ensure exit_event is set for any cleanup
+        exit_event.set()

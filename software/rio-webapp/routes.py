@@ -402,6 +402,7 @@ def create_background_update_task(
     flow,
     cam,
     debug_data: dict,
+    exit_event: Any,
     droplet_web_controller: Optional[Any] = None,
 ):
     """
@@ -417,6 +418,8 @@ def create_background_update_task(
         flow: Flow device controller
         cam: Camera device controller
         debug_data: Dictionary for debug information (mutated)
+        exit_event: Event to signal shutdown
+        droplet_web_controller: Optional droplet web controller
 
     Returns:
         Function that can be used as a background task
@@ -429,33 +432,49 @@ def create_background_update_task(
         Updates device data and emits to WebSocket clients at regular intervals.
         Uses ViewModel to format data for clients.
         """
-        while True:
+        while not exit_event.is_set():
             try:
                 time.sleep(1.0)
+                
+                # Check exit_event again after sleep (may have changed during sleep)
+                if exit_event.is_set():
+                    logger.debug("Background update loop exiting (exit event set)")
+                    break
+                
                 debug_data["update_count"] += 1
 
-                # Update hardware device controllers
-                cam.update_strobe_data()
-                for heater in heaters:
-                    heater.update()
-                flow.update()
+                # Update hardware device controllers (only if not shutting down)
+                if not exit_event.is_set():
+                    try:
+                        cam.update_strobe_data()
+                        for heater in heaters:
+                            heater.update()
+                        flow.update()
+                    except KeyboardInterrupt:
+                        # KeyboardInterrupt means shutdown - exit loop
+                        logger.debug("Background update loop interrupted (shutdown)")
+                        break
 
-                # Format data for clients
+                # Format data for clients (only if not shutting down)
+                if exit_event.is_set():
+                    break
+                
                 heaters_data = view_model.format_heater_data(heaters)
                 flows_data = view_model.format_flow_data(flow)
                 camera_data = view_model.format_camera_data(cam)
                 strobe_data = view_model.format_strobe_data(cam)
                 debug_formatted = view_model.format_debug_data(debug_data["update_count"])
 
-                # Emit updates to all connected clients
-                socketio.emit("heaters", heaters_data)
-                socketio.emit("flows", flows_data)
-                socketio.emit("cam", camera_data)
-                socketio.emit("strobe", strobe_data)
-                socketio.emit("debug", debug_formatted)
+                # Emit updates to all connected clients (only if not shutting down)
+                if not exit_event.is_set():
+                    socketio.emit("heaters", heaters_data)
+                    socketio.emit("flows", flows_data)
+                    socketio.emit("cam", camera_data)
+                    socketio.emit("strobe", strobe_data)
+                    socketio.emit("debug", debug_formatted)
 
                 # Emit droplet detection updates (if controller available and running)
-                if droplet_web_controller is not None:
+                if droplet_web_controller is not None and not exit_event.is_set():
                     try:
                         # Only emit if detection is actually running
                         if (
@@ -468,8 +487,13 @@ def create_background_update_task(
                     except Exception as e:
                         # Don't break background loop if droplet detection has issues
                         logger.debug(f"Error in droplet update loop: {e}")
+            except KeyboardInterrupt:
+                # KeyboardInterrupt means shutdown - exit loop gracefully
+                logger.debug("Background update loop interrupted (shutdown)")
+                break
             except Exception as e:
                 logger.error(f"Error in background update loop: {e}")
-                time.sleep(1.0)
+                if not exit_event.is_set():
+                    time.sleep(1.0)
 
     return background_update_loop
