@@ -163,7 +163,7 @@ pip install -r requirements-api.txt
 
 ```bash
 export RIO_SIMULATION=true
-python -m api.main  # default port 5001
+python -m api.main  # default port 8000
 ```
 
 - Endpoints available in the skeleton:
