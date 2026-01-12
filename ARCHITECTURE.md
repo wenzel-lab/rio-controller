@@ -110,7 +110,7 @@ At runtime, the software is layered roughly as:
 - **Drivers** (`software/drivers/`): low-level SPI/GPIO and device-specific hardware access; camera abstraction.
 - **Device controllers** (`software/controllers/`): state + business logic orchestrating drivers (flow, heater, camera, strobe integration, droplet detector controller).
 - **Web app** (`software/rio-webapp/`): Flask routes/templates/static assets and WebSocket handlers; presents the UI and translates user commands into controller calls.
-- **API interface** (`software/api/`): FastAPI-based network API layer for external control (Jupyter notebooks, scripts, remote clients).
+- **API interface** (`software/api/`): LabThings/WoT-based network API layer for external control (Jupyter notebooks, scripts, remote clients). Exposes controllers as WoT-compliant Things.
 - **Client library** (`software/client/`): Python client library and Jupyter notebooks for API interaction.
 - **Droplet detection pipeline** (`software/droplet-detection/`): image-processing pipeline and utilities (tests/benchmarks/optimization live alongside this code in `software/`).
 - **Simulation** (`software/simulation/`): drop-in replacements so development/testing can run without physical hardware.

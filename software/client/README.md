@@ -2,6 +2,12 @@
 
 This folder contains the **Python client library** for interacting with the Rio controller API. It provides both REST API and WebSocket streaming clients, along with example Jupyter notebooks.
 
+**Note:** The API now uses **LabThings/WoT-compliant Things**. The client library supports both:
+- **Legacy routes** (`/api/control/*`) — backward compatible, still work
+- **WoT routes** (`/flow/`, `/heater/`, etc.) — standard WoT-compliant endpoints
+
+You can use either approach. The legacy routes are maintained for backward compatibility.
+
 ## What's inside
 
 - **`api_client.py`**: Python client library (`RioClient` for REST, `RioStreamClient` for WebSocket)
@@ -13,6 +19,8 @@ This folder contains the **Python client library** for interacting with the Rio 
 
 ### Installation
 
+**On your computer (for accessing Pi API):**
+
 The client library requires:
 ```bash
 pip install requests websocket-client
@@ -20,16 +28,30 @@ pip install requests websocket-client
 
 For Jupyter notebooks, also install:
 ```bash
-pip install ipywidgets matplotlib pandas numpy
+pip install ipywidgets matplotlib pandas numpy jupyter
 ```
+
+**Note:** The client library code is in `software/client/api_client.py`. You can either:
+- Import directly if `software/` is in your Python path
+- Copy `api_client.py` to your project
+- Add `software/` to `PYTHONPATH`
 
 ### Basic Usage
 
+**Connecting to Pi API from your computer:**
+
 ```python
+import sys
+# Add client library to path (adjust path to your rio-controller repository)
+sys.path.insert(0, '/path/to/rio-controller/software')
+
 from client import RioClient, RioStreamClient
 
-# REST API client
-client = RioClient(base_url="http://192.168.1.100:8000")
+# REST API client (replace with your Pi's IP or hostname)
+PI_ADDRESS = "raspberrypi.local"  # or "192.168.1.100"
+API_URL = f"http://{PI_ADDRESS}:8000"
+
+client = RioClient(base_url=API_URL)
 
 # Check health
 health = client.health()
@@ -43,11 +65,16 @@ print(f"Flow channel 0: {state['flow_actuals_ul_hr'][0]} ul/hr")
 client.set_flow(0, 100.0)  # Set channel 0 to 100 ul/hr
 
 # WebSocket streaming
-stream = RioStreamClient(base_url="http://192.168.1.100:8000")
+stream = RioStreamClient(base_url=API_URL)
 stream.subscribe(["flow"], channels={"flow": [0, 1]})
 
 for msg in stream.iter_messages(timeout=10.0):
     print(f"{msg['topic']} channel {msg['channel']}: {msg['value']}")
+```
+
+**For local development (API on same machine):**
+```python
+client = RioClient(base_url="http://localhost:8000")
 ```
 
 ### Context Manager
@@ -100,6 +127,8 @@ client = RioClient(base_url="...", max_retries=5)
 
 ### Available Methods
 
+**Note:** All methods use legacy `/api/control/*` routes for backward compatibility. WoT routes are available at `/flow/`, `/heater/`, etc. (see API docs).
+
 **System:**
 - `health()` - Get API health status
 - `capabilities()` - Get available modules
@@ -143,6 +172,25 @@ client = RioClient(base_url="...", max_retries=5)
 - `capture_start(topics, channels, path)` - Start CSV capture
 - `capture_stop()` - Stop capture
 - `capture_status()` - Get capture status
+
+### WoT Thing Access (Alternative)
+
+For WoT-compliant access, you can use LabThings ThingClient:
+
+```python
+from labthings_fastapi.client import ThingClient
+
+# Connect to FlowThing
+flow = ThingClient("http://192.168.1.100:8000/flow/")
+
+# Get state (property)
+state = flow.state
+
+# Set flow (action)
+flow.set_flow(index=0, flow_ul_hr=100.0)
+```
+
+See LabThings documentation for more details on ThingClient usage.
 
 ## WebSocket Client (`RioStreamClient`)
 

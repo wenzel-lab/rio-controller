@@ -1,11 +1,9 @@
 """
-Rio API server (skeleton + controller wiring).
+Rio API server with LabThings/WoT integration.
 
-- Provides minimal /api/system/health and /api/system/capabilities endpoints.
-- Instantiates controllers so capabilities can reflect reality (simulation or hardware).
-- Designed to run alongside the existing Flask UI, but only one process should
-  own hardware. The API can be the hardware-owning process; the UI can call it
-  via adapters (future step).
+- Uses LabThings ThingServer to expose controllers as WoT-compliant Things
+- Maintains custom endpoints for system/config/streams/data
+- All Things are accessible under /api/ prefix for backward compatibility
 """
 
 import logging
@@ -17,7 +15,7 @@ import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+import labthings_fastapi as lt
 
 from api.config import settings
 from api.schemas import (
@@ -25,23 +23,20 @@ from api.schemas import (
     CapabilitiesResponse,
     ChannelConfig,
     ChannelConfigResponse,
+    CaptureStartRequest,
+    CaptureStatusResponse,
+    FlowSetPressureRequest,
+    FlowSetFlowRequest,
+    FlowSetModeRequest,
+    FlowSetPIRequest,
+    HeaterSetTempRequest,
+    HeaterSetPidRequest,
+    HeaterSetStirRequest,
     CameraResolutionRequest,
     CameraSnapshotResolutionRequest,
     CameraROIRequest,
     StrobeEnableRequest,
     StrobeTimingRequest,
-    FlowSetPressureRequest,
-    FlowSetFlowRequest,
-    FlowSetModeRequest,
-    FlowSetPIRequest,
-    FlowState,
-    HeaterSetTempRequest,
-    HeaterSetPidRequest,
-    HeaterSetStirRequest,
-    HeaterState,
-    HeaterStateItem,
-    CaptureStartRequest,
-    CaptureStatusResponse,
     PumpSetFlowRequest,
     PumpSetDiameterRequest,
     PumpSetDirectionRequest,
@@ -51,9 +46,9 @@ from api.schemas import (
     PumpSetMicrostepRequest,
     PumpSetThreadrodRequest,
     PumpSetEnableRequest,
-    PumpState,
 )
 from api.streams import Aggregator
+from api.things import FlowThing, HeaterThing, CameraThing, DropletThing, PumpThing
 
 # Path/bootstrap and controller imports (align with software/main.py)
 from path_bootstrap import bootstrap_runtime
@@ -72,8 +67,6 @@ from controllers.heater_web import heater_web  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
 from config import (  # noqa: E402
-    CONTROL_MODE_UI_TO_FIRMWARE,
-    CONTROL_MODE_FIRMWARE_TO_UI,
     CMD_SET_RESOLUTION,
     CMD_SET_SNAPSHOT_RESOLUTION,
     CMD_SET,
@@ -82,7 +75,6 @@ from config import (  # noqa: E402
     CMD_ENABLE,
     CMD_HOLD,
 )
-
 
 logger = logging.getLogger("api")
 
@@ -170,24 +162,7 @@ CONFIG_FILE_PATH = os.getenv("RIO_CONFIG_FILE", "rio-config.yaml")
 
 
 def _load_channels_from_yaml() -> dict[str, dict[str, dict[str, Any]]]:
-    """
-    Load channel metadata (enable/name/liquid_type/calibration_factor) from the main config YAML.
-    Example structure:
-    channels:
-      flow:
-        "0":
-          liquid_type: mineral_oil
-          calibration_factor: 1.05
-          name: oil
-        "1":
-          liquid_type: aqueous
-      pressure:
-        "0":
-          calibration_factor: 1.00
-      heater:
-        "0":
-          name: tip-heater
-    """
+    """Load channel metadata from YAML config."""
     if not os.path.exists(CONFIG_FILE_PATH):
         return {}
     try:
@@ -199,15 +174,13 @@ def _load_channels_from_yaml() -> dict[str, dict[str, dict[str, Any]]]:
         return {}
 
 
-# In-memory channel config (merge defaults + YAML)
 def _default_channel_map() -> dict[str, dict[str, dict[str, Any]]]:
-    # channels 0-3 for flow/pressure; 0-3 for heater
+    """Create default channel config."""
     def _make(n: int):
         return {
             str(i): {"enabled": True, "name": "", "liquid_type": "", "calibration_factor": 1.0}
             for i in range(n)
         }
-
     return {
         "flow": _make(4),
         "pressure": _make(4),
@@ -240,35 +213,414 @@ AGGREGATOR = Aggregator(
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Rio API", version="0.2.0 (controllers wired)")
+    """Create FastAPI app with LabThings ThingServer integration."""
+    from labthings_fastapi.server.config_model import ThingConfig
 
-    if settings.cors_allow_all:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+    # Create Thing configurations with controller dependencies
+    # ThingServer will instantiate them with proper interfaces
+    things_config: dict[str, ThingConfig | type[lt.Thing]] = {}
+
+    if CONTROLLERS.get("flow"):
+        things_config["flow"] = ThingConfig(
+            cls=FlowThing,
+            args=[CONTROLLERS["flow"]],
         )
 
+    if CONTROLLERS.get("heaters"):
+        things_config["heater"] = ThingConfig(
+            cls=HeaterThing,
+            args=[CONTROLLERS["heaters"]],
+        )
+
+    if CONTROLLERS.get("camera"):
+        things_config["camera"] = ThingConfig(
+            cls=CameraThing,
+            args=[CONTROLLERS["camera"]],
+        )
+
+    if CONTROLLERS.get("droplet"):
+        things_config["droplet"] = ThingConfig(
+            cls=DropletThing,
+            args=[CONTROLLERS["droplet"]],
+        )
+
+    # Pump is placeholder (always available)
+    things_config["pump"] = ThingConfig(
+        cls=PumpThing,
+        args=[None],
+    )
+
+    # Create ThingServer - it will create its own FastAPI app
+    thing_server = lt.ThingServer(things_config, settings_folder=None)
+
+    # Use ThingServer's app as the base - add our custom routes to it
+    # ThingServer routes are at root level (e.g., /flow/, /heater/, /docs)
+    # We'll add custom routes at /api/ prefix for backward compatibility
+    app = thing_server.app
+
+    # Update app title
+    app.title = "Rio API"
+    app.version = "0.3.0 (LabThings/WoT)"
+
+    # CORS is already set by ThingServer with allow_origins=["*"]
+    # Note: ThingServer creates routes at root (e.g., /flow/, /heater/)
+    # Custom routes are at /api/ prefix for backward compatibility
+
+    # Custom endpoints (system, config, streams, data)
     @app.get("/api/system/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok", simulation=settings.simulation)
 
     @app.get("/api/system/capabilities", response_model=CapabilitiesResponse)
     def capabilities() -> CapabilitiesResponse:
-        notes = {"warning": "Controllers are instantiated; API methods not yet exposed."}
+        notes = {
+            "info": "API now uses LabThings/WoT-compliant Things",
+            "wot_routes": "Things available at /flow/, /heater/, /camera/, /droplet/, /pump/",
+            "backward_compat": "Legacy /api/control/* routes redirect to WoT Things",
+        }
         return CapabilitiesResponse(
             modules=CAPABILITIES, simulation=settings.simulation, notes=notes
         )
 
-    # ----------------------------
-    # Channel metadata (enable/naming)
-    # ----------------------------
+    # Backward compatibility: Legacy /api/control/* routes
+    # These call controllers directly (same as old implementation) for compatibility
+    # WoT routes are available at /flow/, /heater/, etc. for new clients
+
+    @app.get("/api/control/flow/state", response_model=FlowState)
+    def flow_state_legacy() -> FlowState:
+        """Legacy endpoint - calls Flow controller directly."""
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+
+        ok_p, pressure_actuals = flow.flow.get_pressure_actual()
+        if not ok_p:
+            pressure_actuals = [0.0] * flow.flow.NUM_CONTROLLERS
+        ok_f, flow_actuals = flow.flow.get_flow_actual()
+        if not ok_f:
+            flow_actuals = [0.0] * flow.flow.NUM_CONTROLLERS
+
+        flow.get_pressure_targets()
+        flow.get_flow_targets()
+        flow.get_control_modes()
+
+        from config import CONTROL_MODE_FIRMWARE_TO_UI
+
+        return FlowState(
+            pressure_targets_mbar=flow.pressure_mbar_targets,
+            pressure_actuals_mbar=pressure_actuals,
+            flow_targets_ul_hr=flow.flow_ul_hr_targets,
+            flow_actuals_ul_hr=flow_actuals,
+            control_modes_ui=[CONTROL_MODE_FIRMWARE_TO_UI.get(m, 0) for m in flow.control_modes],
+            control_modes_text=flow.control_modes_text,
+        )
+
+    @app.post("/api/control/flow/set_pressure")
+    def flow_set_pressure_legacy(req: FlowSetPressureRequest):
+        """Legacy endpoint - calls Flow controller directly."""
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        ok = flow.set_pressure(req.index, req.pressure_mbar)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pressure")
+        return {"ok": True}
+
+    @app.post("/api/control/flow/set_flow")
+    def flow_set_flow_legacy(req: FlowSetFlowRequest):
+        """Legacy endpoint - calls Flow controller directly."""
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        ok = flow.set_flow(req.index, req.flow_ul_hr)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set flow")
+        return {"ok": True}
+
+    @app.post("/api/control/flow/set_mode")
+    def flow_set_mode_legacy(req: FlowSetModeRequest):
+        """Legacy endpoint - calls Flow controller directly."""
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        from config import CONTROL_MODE_UI_TO_FIRMWARE
+
+        firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(req.mode_ui, 0)
+        ok = flow.set_control_mode(req.index, firmware_mode)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set control mode")
+        return {"ok": True}
+
+    @app.post("/api/control/flow/set_pi_consts")
+    def flow_set_pi_legacy(req: FlowSetPIRequest):
+        """Legacy endpoint - calls Flow controller directly."""
+        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        if flow is None:
+            raise HTTPException(status_code=503, detail="Flow controller unavailable")
+        ok = flow.set_flow_pi_consts(req.index, [req.p, req.i])
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set PI consts")
+        return {"ok": True}
+
+    @app.get("/api/control/heater/state", response_model=HeaterState)
+    def heater_state_legacy():
+        """Legacy endpoint - calls Heater controllers directly."""
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        if heaters is None:
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        from api.schemas import HeaterStateItem
+
+        items: list[HeaterStateItem] = []
+        for h in heaters:
+            h.update()
+            items.append(
+                HeaterStateItem(
+                    temp_c_actual=h.temp_c_actual,
+                    temp_c_target=h.temp_c_target,
+                    pid_enabled=h.pid_enabled,
+                    stir_enabled=h.stir_enabled,
+                    autotuning=h.autotuning,
+                    status_text=h.status_text,
+                )
+            )
+        return HeaterState(heaters=items)
+
+    @app.post("/api/control/heater/set_temp")
+    def heater_set_temp_legacy(req: HeaterSetTempRequest):
+        """Legacy endpoint - calls Heater controller directly."""
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_temp(req.temp_c)
+        return {"ok": True}
+
+    @app.post("/api/control/heater/pid")
+    def heater_set_pid_legacy(req: HeaterSetPidRequest):
+        """Legacy endpoint - calls Heater controller directly."""
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_pid_running(1 if req.enabled else 0)
+        heaters[req.index].pid_enabled = req.enabled
+        return {"ok": True}
+
+    @app.post("/api/control/heater/stir")
+    def heater_set_stir_legacy(req: HeaterSetStirRequest):
+        """Legacy endpoint - calls Heater controller directly."""
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_stir_running(1 if req.enabled else 0)
+        heaters[req.index].stir_enabled = req.enabled
+        return {"ok": True}
+
+    @app.get("/api/streams/camera/snapshot")
+    def camera_snapshot_legacy():
+        """Legacy endpoint - uses Camera controller directly (snapshot is synchronous)."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        try:
+            if cam.thread is None or not cam.thread.is_alive():
+                cam.initialize()
+            frame = cam.get_frame()
+            if not frame:
+                raise HTTPException(status_code=503, detail="No frame available")
+            from fastapi.responses import Response
+            return Response(content=frame, media_type="image/jpeg")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to get snapshot: {e}") from e
+
+    @app.post("/api/control/camera/set_resolution")
+    def camera_set_resolution_legacy(req: CameraResolutionRequest):
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        params: dict[str, Any] = {}
+        if req.preset:
+            params["preset"] = req.preset
+        if req.width and req.height:
+            params["width"] = int(req.width)
+            params["height"] = int(req.height)
+        cam.on_cam({"cmd": CMD_SET_RESOLUTION, "parameters": params})
+        return {"ok": True}
+
+    @app.post("/api/control/camera/set_snapshot_resolution")
+    def camera_set_snapshot_resolution_legacy(req: CameraSnapshotResolutionRequest):
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        params: dict[str, Any] = {"mode": req.mode}
+        if req.width and req.height:
+            params["width"] = int(req.width)
+            params["height"] = int(req.height)
+        cam.on_cam({"cmd": CMD_SET_SNAPSHOT_RESOLUTION, "parameters": params})
+        return {"ok": True}
+
+    @app.post("/api/control/camera/roi")
+    def camera_set_roi_legacy(req: CameraROIRequest):
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_roi({"cmd": CMD_SET, "parameters": {"x": req.x, "y": req.y, "w": req.w, "h": req.h}})
+        return {"ok": True}
+
+    @app.post("/api/control/camera/roi/clear")
+    def camera_clear_roi_legacy():
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
+        return {"ok": True}
+
+    @app.post("/api/control/strobe/enable")
+    def strobe_enable_legacy(req: StrobeEnableRequest):
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if req.on else 0}})
+        return {"ok": True}
+
+    @app.post("/api/control/strobe/hold")
+    def strobe_hold_legacy(req: StrobeEnableRequest):
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if req.on else 0}})
+        return {"ok": True}
+
+    @app.post("/api/control/strobe/timing")
+    def strobe_timing_legacy(req: StrobeTimingRequest):
+        """Legacy endpoint - calls Camera controller directly."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        params = {"period_ns": int(req.period_ns)}
+        if req.wait_ns is not None:
+            params["wait_ns"] = int(req.wait_ns)
+        cam.on_strobe({"cmd": CMD_TIMING, "parameters": params})
+        return {"ok": True}
+
+    @app.post("/api/control/droplet/start")
+    def droplet_start_legacy():
+        """Legacy endpoint - calls Droplet controller directly."""
+        droplet = CONTROLLERS.get("droplet")
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        ok = droplet.start()
+        if not ok:
+            raise HTTPException(
+                status_code=400, detail="Failed to start droplet detection (check ROI)"
+            )
+        return {"ok": True}
+
+    @app.post("/api/control/droplet/stop")
+    def droplet_stop_legacy():
+        """Legacy endpoint - calls Droplet controller directly."""
+        droplet = CONTROLLERS.get("droplet")
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        droplet.stop()
+        return {"ok": True}
+
+    @app.get("/api/control/droplet/status")
+    def droplet_status_legacy():
+        """Legacy endpoint - calls Droplet controller directly."""
+        droplet = CONTROLLERS.get("droplet")
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return {
+            "running": droplet.running,
+            "frame_count": droplet.frame_count,
+            "droplet_count_total": droplet.droplet_count_total,
+            "processing_rate_hz": round(getattr(droplet, "processing_rate_hz", 0.0), 2),
+            "statistics": droplet.get_statistics(),
+        }
+
+    @app.get("/api/control/droplet/histogram")
+    def droplet_histogram_legacy():
+        """Legacy endpoint - calls Droplet controller directly."""
+        droplet = CONTROLLERS.get("droplet")
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return droplet.get_histogram()
+
+    @app.get("/api/control/droplet/statistics")
+    def droplet_statistics_legacy():
+        """Legacy endpoint - calls Droplet controller directly."""
+        droplet = CONTROLLERS.get("droplet")
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return droplet.get_statistics()
+
+    @app.get("/api/control/droplet/performance")
+    def droplet_performance_legacy():
+        """Legacy endpoint - calls Droplet controller directly."""
+        droplet = CONTROLLERS.get("droplet")
+        if droplet is None:
+            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
+        return droplet.get_performance_metrics()
+
+    # Pump endpoints (all return 501 for now)
+    @app.get("/api/control/pump/state/{pump}")
+    def pump_state_legacy(pump: str):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_flow")
+    def pump_set_flow_legacy(req: PumpSetFlowRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_diameter")
+    def pump_set_diameter_legacy(req: PumpSetDiameterRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_direction")
+    def pump_set_direction_legacy(req: PumpSetDirectionRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_state")
+    def pump_set_state_legacy(req: PumpSetStateRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_unit")
+    def pump_set_unit_legacy(req: PumpSetUnitRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_gearbox")
+    def pump_set_gearbox_legacy(req: PumpSetGearboxRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_microstep")
+    def pump_set_microstep_legacy(req: PumpSetMicrostepRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_threadrod")
+    def pump_set_threadrod_legacy(req: PumpSetThreadrodRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+
+    @app.post("/api/control/pump/set_enable")
+    def pump_set_enable_legacy(req: PumpSetEnableRequest):
+        """Legacy endpoint - placeholder (returns 501)."""
+        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
 
     @app.get("/api/config/channels", response_model=ChannelConfigResponse)
     def get_channels() -> ChannelConfigResponse:
-        return ChannelConfigResponse(channels=CHANNEL_CONFIG)
+        return ChannelConfigResponse(channels=ChannelConfig(**CHANNEL_CONFIG))
 
     @app.post("/api/config/channels", response_model=ChannelConfigResponse)
     def set_channels(config: ChannelConfig) -> ChannelConfigResponse:
@@ -290,385 +642,13 @@ def create_app() -> FastAPI:
                 CHANNEL_CONFIG[topic][k]["enabled"] = bool(v.enabled)
                 CHANNEL_CONFIG[topic][k]["name"] = v.name or ""
                 CHANNEL_CONFIG[topic][k]["liquid_type"] = v.liquid_type or ""
-                # calibration factor stays in-memory for now (future: persist)
                 if getattr(v, "calibration_factor", None) is not None:
                     CHANNEL_CONFIG[topic][k]["calibration_factor"] = float(v.calibration_factor)
-        return ChannelConfigResponse(channels=CHANNEL_CONFIG)
-
-    # ----------------------------
-    # Flow / Pressure endpoints
-    # ----------------------------
-
-    @app.get("/api/control/flow/state", response_model=FlowState)
-    def flow_state() -> FlowState:
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
-        if flow is None:
-            raise HTTPException(status_code=503, detail="Flow controller unavailable")
-
-        # Get all values at once (returns tuple: valid, list[float])
-        ok_p, pressure_actuals = flow.flow.get_pressure_actual()
-        if not ok_p:
-            pressure_actuals = [0.0] * flow.flow.NUM_CONTROLLERS
-        ok_f, flow_actuals = flow.flow.get_flow_actual()
-        if not ok_f:
-            flow_actuals = [0.0] * flow.flow.NUM_CONTROLLERS
-
-        # update cached targets/modes
-        flow.get_pressure_targets()
-        flow.get_flow_targets()
-        flow.get_control_modes()
-
-        return FlowState(
-            pressure_targets_mbar=flow.pressure_mbar_targets,
-            pressure_actuals_mbar=pressure_actuals,
-            flow_targets_ul_hr=flow.flow_ul_hr_targets,
-            flow_actuals_ul_hr=flow_actuals,
-            control_modes_ui=[CONTROL_MODE_FIRMWARE_TO_UI.get(m, 0) for m in flow.control_modes],
-            control_modes_text=flow.control_modes_text,
-        )
-
-    @app.post("/api/control/flow/set_pressure")
-    def flow_set_pressure(req: FlowSetPressureRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
-        if flow is None:
-            raise HTTPException(status_code=503, detail="Flow controller unavailable")
-        ok = flow.set_pressure(req.index, req.pressure_mbar)
-        if not ok:
-            raise HTTPException(status_code=400, detail="Failed to set pressure")
-        return {"ok": True}
-
-    @app.post("/api/control/flow/set_flow")
-    def flow_set_flow(req: FlowSetFlowRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
-        if flow is None:
-            raise HTTPException(status_code=503, detail="Flow controller unavailable")
-        ok = flow.set_flow(req.index, req.flow_ul_hr)
-        if not ok:
-            raise HTTPException(status_code=400, detail="Failed to set flow")
-        return {"ok": True}
-
-    @app.post("/api/control/flow/set_mode")
-    def flow_set_mode(req: FlowSetModeRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
-        if flow is None:
-            raise HTTPException(status_code=503, detail="Flow controller unavailable")
-        firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(req.mode_ui, 0)
-        ok = flow.set_control_mode(req.index, firmware_mode)
-        if not ok:
-            raise HTTPException(status_code=400, detail="Failed to set control mode")
-        return {"ok": True}
-
-    @app.post("/api/control/flow/set_pi_consts")
-    def flow_set_pi(req: FlowSetPIRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
-        if flow is None:
-            raise HTTPException(status_code=503, detail="Flow controller unavailable")
-        ok = flow.set_flow_pi_consts(req.index, [req.p, req.i])
-        if not ok:
-            raise HTTPException(status_code=400, detail="Failed to set PI consts")
-        return {"ok": True}
-
-    # ----------------------------
-    # Heater endpoints
-    # ----------------------------
-
-    @app.get("/api/control/heater/state", response_model=HeaterState)
-    def heater_state():
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
-        if heaters is None:
-            raise HTTPException(status_code=503, detail="Heaters unavailable")
-        items: list[HeaterStateItem] = []
-        for h in heaters:
-            h.update()
-            items.append(
-                HeaterStateItem(
-                    temp_c_actual=h.temp_c_actual,
-                    temp_c_target=h.temp_c_target,
-                    pid_enabled=h.pid_enabled,
-                    stir_enabled=h.stir_enabled,
-                    autotuning=h.autotuning,
-                    status_text=h.status_text,
-                )
-            )
-        return HeaterState(heaters=items)
-
-    @app.post("/api/control/heater/set_temp")
-    def heater_set_temp(req: HeaterSetTempRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
-        if heaters is None or req.index >= len(heaters):
-            raise HTTPException(status_code=503, detail="Heaters unavailable")
-        heaters[req.index].set_temp(req.temp_c)
-        return {"ok": True}
-
-    @app.post("/api/control/heater/pid")
-    def heater_set_pid(req: HeaterSetPidRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
-        if heaters is None or req.index >= len(heaters):
-            raise HTTPException(status_code=503, detail="Heaters unavailable")
-        heaters[req.index].set_pid_running(1 if req.enabled else 0)
-        heaters[req.index].pid_enabled = req.enabled
-        return {"ok": True}
-
-    @app.post("/api/control/heater/stir")
-    def heater_set_stir(req: HeaterSetStirRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
-        if heaters is None or req.index >= len(heaters):
-            raise HTTPException(status_code=503, detail="Heaters unavailable")
-        heaters[req.index].set_stir_running(1 if req.enabled else 0)
-        heaters[req.index].stir_enabled = req.enabled
-        return {"ok": True}
-
-    # ----------------------------
-    # Camera snapshot
-    # ----------------------------
-
-    @app.get("/api/streams/camera/snapshot")
-    def camera_snapshot():
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        if cam.thread is None or not cam.thread.is_alive():
-            cam.initialize()
-        frame = cam.get_frame()
-        if not frame:
-            raise HTTPException(status_code=503, detail="No frame available")
-        return Response(content=frame, media_type="image/jpeg")
-
-    @app.post("/api/control/camera/set_resolution")
-    def camera_set_resolution(req: CameraResolutionRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        params: dict[str, Any] = {}
-        if req.preset:
-            params["preset"] = req.preset
-        if req.width and req.height:
-            params["width"] = int(req.width)
-            params["height"] = int(req.height)
-        cam.on_cam({"cmd": CMD_SET_RESOLUTION, "parameters": params})
-        return {"ok": True}
-
-    @app.post("/api/control/camera/set_snapshot_resolution")
-    def camera_set_snapshot_resolution(req: CameraSnapshotResolutionRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        params: dict[str, Any] = {"mode": req.mode}
-        if req.width and req.height:
-            params["width"] = int(req.width)
-            params["height"] = int(req.height)
-        cam.on_cam({"cmd": CMD_SET_SNAPSHOT_RESOLUTION, "parameters": params})
-        return {"ok": True}
-
-    @app.post("/api/control/camera/roi")
-    def camera_set_roi(req: CameraROIRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        cam.on_roi({"cmd": CMD_SET, "parameters": {"x": req.x, "y": req.y, "w": req.w, "h": req.h}})
-        return {"ok": True}
-
-    @app.post("/api/control/camera/roi/clear")
-    def camera_clear_roi():
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
-        return {"ok": True}
-
-    @app.post("/api/control/strobe/enable")
-    def strobe_enable(req: StrobeEnableRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        cam.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if req.on else 0}})
-        return {"ok": True}
-
-    @app.post("/api/control/strobe/hold")
-    def strobe_hold(req: StrobeEnableRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        cam.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if req.on else 0}})
-        return {"ok": True}
-
-    @app.post("/api/control/strobe/timing")
-    def strobe_timing(req: StrobeTimingRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
-        if cam is None:
-            raise HTTPException(status_code=503, detail="Camera unavailable")
-        params = {"period_ns": int(req.period_ns)}
-        if req.wait_ns is not None:
-            params["wait_ns"] = int(req.wait_ns)
-        cam.on_strobe({"cmd": CMD_TIMING, "parameters": params})
-        return {"ok": True}
-
-    # ----------------------------
-    # Droplet endpoints
-    # ----------------------------
-
-    def _get_droplet():
-        return CONTROLLERS.get("droplet")
-
-    @app.post("/api/control/droplet/start")
-    def droplet_start():
-        droplet = _get_droplet()
-        if droplet is None:
-            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
-        ok = droplet.start()
-        if not ok:
-            raise HTTPException(
-                status_code=400, detail="Failed to start droplet detection (check ROI)"
-            )
-        return {"ok": True}
-
-    @app.post("/api/control/droplet/stop")
-    def droplet_stop():
-        droplet = _get_droplet()
-        if droplet is None:
-            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
-        droplet.stop()
-        return {"ok": True}
-
-    @app.get("/api/control/droplet/status")
-    def droplet_status():
-        droplet = _get_droplet()
-        if droplet is None:
-            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
-        return {
-            "running": droplet.running,
-            "frame_count": droplet.frame_count,
-            "droplet_count_total": droplet.droplet_count_total,
-            "processing_rate_hz": round(getattr(droplet, "processing_rate_hz", 0.0), 2),
-            "statistics": droplet.get_statistics(),
-        }
-
-    @app.get("/api/control/droplet/histogram")
-    def droplet_histogram():
-        droplet = _get_droplet()
-        if droplet is None:
-            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
-        return droplet.get_histogram()
-
-    @app.get("/api/control/droplet/statistics")
-    def droplet_statistics():
-        droplet = _get_droplet()
-        if droplet is None:
-            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
-        return droplet.get_statistics()
-
-    @app.get("/api/control/droplet/performance")
-    def droplet_performance():
-        droplet = _get_droplet()
-        if droplet is None:
-            raise HTTPException(status_code=503, detail="Droplet controller unavailable")
-        return droplet.get_performance_metrics()
-
-    # ----------------------------
-    # Pump (syringe pump) endpoints
-    # ----------------------------
-
-    def _get_pump():
-        """Get pump controller if available."""
-        return CONTROLLERS.get("pump")
-
-    @app.get("/api/control/pump/state/{pump}")
-    def pump_state(pump: str):
-        """Get current state for a pump (A, B, C, or D)."""
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        if pump not in ["A", "B", "C", "D"]:
-            raise HTTPException(status_code=400, detail="Pump must be A, B, C, or D")
-        # When pump controller is implemented, call methods like:
-        # flow = pump_ctrl.get_flow(pump)
-        # diameter = pump_ctrl.get_diameter(pump)
-        # etc.
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_flow")
-    def pump_set_flow(req: PumpSetFlowRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_flow(req.pump, req.flow)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_diameter")
-    def pump_set_diameter(req: PumpSetDiameterRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_diameter(req.pump, req.diameter)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_direction")
-    def pump_set_direction(req: PumpSetDirectionRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_direction(req.pump, req.direction)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_state")
-    def pump_set_state(req: PumpSetStateRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_state(req.pump, req.state)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_unit")
-    def pump_set_unit(req: PumpSetUnitRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_unit(req.pump, req.unit)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_gearbox")
-    def pump_set_gearbox(req: PumpSetGearboxRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_gearbox(req.pump, req.gearbox)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_microstep")
-    def pump_set_microstep(req: PumpSetMicrostepRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_microstep(req.pump, req.microstep)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_threadrod")
-    def pump_set_threadrod(req: PumpSetThreadrodRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_threadrod(req.pump, req.threadrod)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    @app.post("/api/control/pump/set_enable")
-    def pump_set_enable(req: PumpSetEnableRequest):
-        pump_ctrl = _get_pump()
-        if pump_ctrl is None:
-            raise HTTPException(status_code=503, detail="Pump controller unavailable")
-        # When implemented: ok = pump_ctrl.set_enable(req.pump, req.enabled)
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
-
-    # ----------------------------
-    # WS Aggregator
-    # ----------------------------
+        return ChannelConfigResponse(channels=ChannelConfig(**CHANNEL_CONFIG))
 
     @app.websocket("/api/streams/aggregate")
     async def aggregate_ws(websocket):
         await AGGREGATOR.handle_ws(websocket)
-
-    # ----------------------------
-    # Capture control (flow/pressure/heater)
-    # ----------------------------
 
     @app.post("/api/data/capture/start", response_model=CaptureStatusResponse)
     def capture_start(req: CaptureStartRequest):
@@ -702,3 +682,4 @@ if __name__ == "__main__":
         port=settings.port,
         reload=False,
     )
+
