@@ -36,6 +36,8 @@ Start here:
   - Drivers (hardware adapters): `software/drivers/` (camera backends under `software/drivers/camera/`)
   - Device controllers (business logic): `software/controllers/`
   - Web app (Flask UI): `software/rio-webapp/` (web controllers under `software/rio-webapp/controllers/`)
+  - API interface (FastAPI): `software/api/` (network API layer for external control)
+  - Client library: `software/client/` (Python client and Jupyter notebooks)
   - Droplet detection pipeline: `software/droplet-detection/`
   - Simulation layer (no-hardware dev/testing): `software/simulation/`
   - Tests: `software/tests/` (pytest config in `software/pyproject.toml`)
@@ -44,10 +46,15 @@ Start here:
   - Purpose: a minimal, runnable copy for Pi updates (scripts + requirements + code subset).
   - Policy: treat as a build artifact/distribution output, not a second source tree.
 
-- **Root-level operational scripts**:
-  - `create-pi-deployment.sh`: generates `pi-deployment/` from `software/`
-  - `deploy-to-pi.sh`: ships a deployment bundle to a Pi over SSH
-  - (optional) targeted upgrade/troubleshooting helpers may exist over time; prefer documenting the current supported deployment path in `pi-deployment/README.md`
+- **`scripts/`**: Operational scripts for building, deploying, and development.
+  - **`scripts/deploy/`**: Deployment scripts for Raspberry Pi
+    - `create-pi-deployment.sh`: generates `pi-deployment/` from `software/` (Linux/Mac)
+    - `create-pi-deployment.bat`: generates `pi-deployment/` from `software/` (Windows)
+    - `deploy-to-pi.sh`: ships a deployment bundle to a Pi over SSH (Linux/Mac)
+  - **`scripts/dev/`**: Development setup scripts
+    - `setup-simulation.sh`: sets up mamba/conda environment for simulation
+    - `run-simulation.sh`: runs application in simulation mode
+  - See [`scripts/README.md`](scripts/README.md) for usage details.
 
 - **Metadata**:
   - `okh-manifest.yml`: Open Know-How manifest linking hardware modules and software
@@ -85,6 +92,8 @@ This repo is easiest to understand by reading from shallow → deep:
 - Camera drivers: [`software/drivers/camera/README.md`](software/drivers/camera/README.md)
 - Web app: [`software/rio-webapp/README.md`](software/rio-webapp/README.md)
 - Web controllers: [`software/rio-webapp/controllers/README.md`](software/rio-webapp/controllers/README.md)
+- API interface: [`software/api/README.md`](software/api/README.md)
+- Client library: [`software/client/README.md`](software/client/README.md)
 - Droplet detection pipeline: [`software/droplet-detection/README.md`](software/droplet-detection/README.md)
 - Simulation layer: [`software/simulation/README.md`](software/simulation/README.md)
 - Tests: [`software/tests/README.md`](software/tests/README.md)
@@ -101,6 +110,8 @@ At runtime, the software is layered roughly as:
 - **Drivers** (`software/drivers/`): low-level SPI/GPIO and device-specific hardware access; camera abstraction.
 - **Device controllers** (`software/controllers/`): state + business logic orchestrating drivers (flow, heater, camera, strobe integration, droplet detector controller).
 - **Web app** (`software/rio-webapp/`): Flask routes/templates/static assets and WebSocket handlers; presents the UI and translates user commands into controller calls.
+- **API interface** (`software/api/`): FastAPI-based network API layer for external control (Jupyter notebooks, scripts, remote clients).
+- **Client library** (`software/client/`): Python client library and Jupyter notebooks for API interaction.
 - **Droplet detection pipeline** (`software/droplet-detection/`): image-processing pipeline and utilities (tests/benchmarks/optimization live alongside this code in `software/`).
 - **Simulation** (`software/simulation/`): drop-in replacements so development/testing can run without physical hardware.
 
@@ -140,6 +151,6 @@ Important policy:
 
 Recommended usage:
 - **Developers**: develop and run tests from `software/` (simulation mode unless explicitly testing hardware).
-- **End users**: obtain a ready-to-use deployment bundle (ideally via a release artifact) or generate it locally using `create-pi-deployment.sh`.
+- **End users**: obtain a ready-to-use deployment bundle (ideally via a release artifact) or generate it locally using `scripts/deploy/create-pi-deployment.sh`.
 
 

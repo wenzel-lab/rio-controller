@@ -2,12 +2,19 @@
 # Deploy the generated `pi-deployment/` bundle to a Raspberry Pi over SSH.
 #
 # Usage:
-#   ./deploy-to-pi.sh [pi-hostname-or-ip]
+#   ./scripts/deploy/deploy-to-pi.sh [pi-hostname-or-ip]
 #
 # This script is intended to be run from your development machine (Mac/PC),
 # not from the Raspberry Pi itself.
 
 set -euo pipefail
+
+# Get script directory and repo root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+
+# Change to repo root for all operations
+cd "$REPO_ROOT"
 
 PI_HOST="${1:-raspberrypi.local}"
 PI_USER="${PI_USER:-pi}"
@@ -17,6 +24,7 @@ echo "Rio Microfluidics Controller - Deployment Script"
 echo "================================================"
 echo ""
 echo "Target: ${PI_USER}@${PI_HOST}"
+echo "Repository root: $REPO_ROOT"
 echo ""
 
 # Guardrail: refuse to run on a Raspberry Pi (common cause of nested deployments).
@@ -30,7 +38,7 @@ if [[ "$(uname -s)" == "Linux" ]] && [[ -r /sys/firmware/devicetree/base/model ]
 fi
 
 echo "Step 1: Generating ${DEPLOY_DIR}/ ..."
-./create-pi-deployment.sh
+"$REPO_ROOT/scripts/deploy/create-pi-deployment.sh"
 
 if [[ ! -d "${DEPLOY_DIR}" ]]; then
     echo "Error: ${DEPLOY_DIR}/ was not created by create-pi-deployment.sh"
@@ -71,3 +79,4 @@ echo "  ssh ${PI_USER}@${PI_HOST}"
 echo "  cd ~/rio-controller"
 echo "  ./setup.sh   # first time only (or after dependency changes)"
 echo "  ./run.sh"
+

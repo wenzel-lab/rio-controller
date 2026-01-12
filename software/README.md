@@ -4,8 +4,7 @@ This directory contains all software for the Rio microfluidics controller system
 
 **Platform compatibility (summary):**
 - **Developer machines (Mac/PC/Linux)**: run in **simulation** (`RIO_SIMULATION=true`) using `requirements-simulation.txt`.
-- **Raspberry Pi 32-bit**: hardware mode with Pi-specific packages (see `requirements_32bit.txt` or use the deployment bundle).
-- **Raspberry Pi 64-bit**: hardware mode with Pi-specific packages (see `requirements_64bit.txt`).
+- **Raspberry Pi (32-bit or 64-bit)**: hardware mode with Pi-specific packages (see `requirements-pi.txt` or use the deployment bundle).
 
 ## Structure overview (start here)
 
@@ -41,8 +40,31 @@ The main runtime entry point is **`software/main.py`**, which wires the layers t
 
 - You should not need to touch `PYTHONPATH` or add `sys.path` in modules Runtime: `python main.py` calls `path_bootstrap.bootstrap_runtime()` for you.
 
-If you’re auditing logic, reading order that matches the runtime is:
+If you're auditing logic, reading order that matches the runtime is:
 `main.py` → `rio-webapp/routes.py` + `rio-webapp/controllers/*` → `controllers/*` → `drivers/*` → firmware projects under `../hardware-modules/*/*_pic/`.
+
+## Requirements Files
+
+The repository includes **3 requirements files** for different deployment scenarios:
+
+1. **`requirements-simulation.txt`** — Development/simulation (Mac/PC/Ubuntu)
+   - For running the application without hardware
+   - Includes testing tools (pytest, black, mypy, etc.)
+   - Use with mamba/conda virtual environment
+
+2. **`requirements-pi.txt`** — Raspberry Pi deployment (32-bit and 64-bit)
+   - Works for both Raspberry Pi OS 32-bit and 64-bit
+   - Excludes hardware packages (install via apt: `python3-spidev`, `python3-rpi.gpio`, `python3-picamera` for 32-bit or `python3-picamera2` for 64-bit)
+   - Excludes OpenCV (install via apt: `python3-opencv` for fast pre-built version)
+   - Uses `numpy<2.0.0` for 32-bit compatibility (numpy 2.0+ doesn't work on 32-bit)
+   - Used by deployment bundle generation
+
+3. **`requirements-api.txt`** — API server dependencies (additive)
+   - Additional packages for the FastAPI-based network API
+   - Install after base requirements: `pip install -r requirements-api.txt`
+   - Used when running the API server (`software/api/main.py`)
+
+**Note**: Hardware packages (spidev, RPi.GPIO, picamera/picamera2) and OpenCV should be installed via `apt` on Raspberry Pi for faster installation and better compatibility. The requirements file documents this in comments. The only difference between 32-bit and 64-bit is the camera package (`picamera` vs `picamera2`), which is installed via apt, not pip.
 
 ## Setup and Deployment
 
@@ -127,8 +149,8 @@ To run without hardware (for testing on a Mac/PC):
 **Option 1: Quick setup and run**
 ```bash
 cd software
-./setup-simulation.sh    # First time setup
-./run-simulation.sh      # Run simulation
+./scripts/dev/setup-simulation.sh    # First time setup
+./scripts/dev/run-simulation.sh      # Run simulation
 ```
 
 Need custom parameters for simulation (frame size, ROI defaults, feature flags)? See `configurations/README.md` for the environment-variable profiles and examples you can export before running.
@@ -140,7 +162,7 @@ export RIO_SIMULATION=true
 python main.py
 ```
 
-The `setup-simulation.sh` script creates a conda/mamba environment named **`rio-simulation`** and installs dependencies. The `run-simulation.sh` script activates that environment and runs the app in simulation mode.
+The `scripts/dev/setup-simulation.sh` script creates a conda/mamba environment named **`rio-simulation`** and installs dependencies. The `scripts/dev/run-simulation.sh` script activates that environment and runs the app in simulation mode.
 
 Note: `setup-simulation.sh` also creates a `rio-config.yaml` file for simulation settings, but **the main app currently selects simulation via `RIO_SIMULATION=true`**; `rio-config.yaml` is not a primary runtime configuration source for `main.py`.
 
@@ -213,10 +235,10 @@ After syncing, **SSH to your Pi** and follow the instructions in `pi-deployment/
 | Aspect | Mac/PC Development | Raspberry Pi Production |
 |--------|-------------------|------------------------|
 | Python Environment | mamba/conda virtual environment | System Python (no venv) |
-| Installation | `pip install -r requirements-simulation.txt` | `python3 -m pip install --user -r requirements-webapp-only-32bit.txt` |
+| Installation | `pip install -r requirements-simulation.txt` | `python3 -m pip install --user -r requirements-pi.txt` |
 | Hardware | Simulated | Real hardware |
 | Mode | `RIO_SIMULATION=true` | `RIO_SIMULATION=false` |
-| Dependencies | See `requirements-simulation.txt` | See `pi-deployment/requirements-webapp-only-32bit.txt` |
+| Dependencies | See `requirements-simulation.txt` | See `pi-deployment/requirements-pi.txt` |
 
 ### Pre-Flight Check (Development Only)
 
@@ -321,7 +343,7 @@ python main.py 5001
 **Import errors**:
 - Ensure you're running from `software/` directory
 - **Ensure your conda/mamba environment is activated** (e.g., `mamba activate rio-simulation` for simulation, or whatever env you created for hardware/dev)
-- Check that all dependencies are installed: `pip install -r requirements.txt`
+- Check that all dependencies are installed: `pip install -r requirements-simulation.txt`
 - Verify you're using the environment Python: `which python` should show your mamba environment path
 
 **Hardware not detected**:
