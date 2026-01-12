@@ -50,7 +50,9 @@ class RioWebSocketError(RioAPIError):
 class RioClient:
     """REST API client for Rio controller."""
 
-    def __init__(self, base_url: str = "http://localhost:8000", timeout: float = 5.0, max_retries: int = 3):
+    def __init__(
+        self, base_url: str = "http://localhost:8000", timeout: float = 5.0, max_retries: int = 3
+    ):
         """
         Initialize Rio API client.
 
@@ -90,21 +92,28 @@ class RioClient:
             try:
                 response = self.session.get(url, timeout=self.timeout)
                 response.raise_for_status()
-                return response.json()
+                result: Dict[str, Any] = response.json()
+                return result
             except requests.exceptions.Timeout as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
-                    logger.warning(f"Request timeout (attempt {attempt + 1}/{self.max_retries}), retrying...")
+                    logger.warning(
+                        f"Request timeout (attempt {attempt + 1}/{self.max_retries}), retrying..."
+                    )
                     time.sleep(0.5 * (attempt + 1))
                 else:
-                    raise RioConnectionError(f"Request timeout after {self.max_retries} attempts: {e}") from e
+                    raise RioConnectionError(
+                        f"Request timeout after {self.max_retries} attempts: {e}"
+                    ) from e
             except requests.exceptions.ConnectionError as e:
                 raise RioConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
             except requests.exceptions.HTTPError as e:
                 try:
                     error_detail = e.response.json()
                 except (ValueError, AttributeError):
-                    error_detail = {"detail": e.response.text if hasattr(e.response, "text") else str(e)}
+                    error_detail = {
+                        "detail": e.response.text if hasattr(e.response, "text") else str(e)
+                    }
                 raise RioHTTPError(
                     f"HTTP {e.response.status_code}: {error_detail.get('detail', str(e))}",
                     status_code=e.response.status_code,
@@ -113,7 +122,9 @@ class RioClient:
             except requests.exceptions.RequestException as e:
                 raise RioAPIError(f"Request failed: {e}") from e
 
-        raise RioConnectionError(f"Request failed after {self.max_retries} attempts: {last_error}") from last_error
+        raise RioConnectionError(
+            f"Request failed after {self.max_retries} attempts: {last_error}"
+        ) from last_error
 
     def _post(self, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Internal POST request helper with retry logic."""
@@ -124,21 +135,28 @@ class RioClient:
             try:
                 response = self.session.post(url, json=data, timeout=self.timeout)
                 response.raise_for_status()
-                return response.json()
+                result: Dict[str, Any] = response.json()
+                return result
             except requests.exceptions.Timeout as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
-                    logger.warning(f"Request timeout (attempt {attempt + 1}/{self.max_retries}), retrying...")
+                    logger.warning(
+                        f"Request timeout (attempt {attempt + 1}/{self.max_retries}), retrying..."
+                    )
                     time.sleep(0.5 * (attempt + 1))
                 else:
-                    raise RioConnectionError(f"Request timeout after {self.max_retries} attempts: {e}") from e
+                    raise RioConnectionError(
+                        f"Request timeout after {self.max_retries} attempts: {e}"
+                    ) from e
             except requests.exceptions.ConnectionError as e:
                 raise RioConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
             except requests.exceptions.HTTPError as e:
                 try:
                     error_detail = e.response.json()
                 except (ValueError, AttributeError):
-                    error_detail = {"detail": e.response.text if hasattr(e.response, "text") else str(e)}
+                    error_detail = {
+                        "detail": e.response.text if hasattr(e.response, "text") else str(e)
+                    }
                 raise RioHTTPError(
                     f"HTTP {e.response.status_code}: {error_detail.get('detail', str(e))}",
                     status_code=e.response.status_code,
@@ -147,7 +165,9 @@ class RioClient:
             except requests.exceptions.RequestException as e:
                 raise RioAPIError(f"Request failed: {e}") from e
 
-        raise RioConnectionError(f"Request failed after {self.max_retries} attempts: {last_error}") from last_error
+        raise RioConnectionError(
+            f"Request failed after {self.max_retries} attempts: {last_error}"
+        ) from last_error
 
     # System endpoints
     def health(self) -> Dict[str, Any]:
@@ -174,11 +194,15 @@ class RioClient:
 
     def set_pressure(self, index: int, pressure_mbar: float) -> Dict[str, Any]:
         """Set pressure target for a channel."""
-        return self._post("/api/control/flow/set_pressure", data={"index": index, "pressure_mbar": pressure_mbar})
+        return self._post(
+            "/api/control/flow/set_pressure", data={"index": index, "pressure_mbar": pressure_mbar}
+        )
 
     def set_flow(self, index: int, flow_ul_hr: float) -> Dict[str, Any]:
         """Set flow target for a channel."""
-        return self._post("/api/control/flow/set_flow", data={"index": index, "flow_ul_hr": flow_ul_hr})
+        return self._post(
+            "/api/control/flow/set_flow", data={"index": index, "flow_ul_hr": flow_ul_hr}
+        )
 
     def set_flow_mode(self, index: int, mode_ui: int) -> Dict[str, Any]:
         """Set control mode for a channel."""
@@ -212,15 +236,19 @@ class RioClient:
         try:
             response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
-            return response.content
+            result: bytes = response.content
+            return result
         except requests.exceptions.RequestException as e:
             raise RioAPIError(f"Failed to get camera snapshot: {e}") from e
 
     def set_camera_resolution(
-        self, preset: Optional[str] = None, width: Optional[int] = None, height: Optional[int] = None
+        self,
+        preset: Optional[str] = None,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Set camera display resolution."""
-        data = {}
+        data: Dict[str, Any] = {}
         if preset:
             data["preset"] = preset
         if width and height:
@@ -247,7 +275,7 @@ class RioClient:
 
     def set_strobe_timing(self, period_ns: int, wait_ns: Optional[int] = None) -> Dict[str, Any]:
         """Set strobe timing parameters."""
-        data = {"period_ns": period_ns}
+        data: Dict[str, Any] = {"period_ns": period_ns}
         if wait_ns is not None:
             data["wait_ns"] = wait_ns
         return self._post("/api/control/strobe/timing", data=data)
@@ -275,10 +303,13 @@ class RioClient:
 
     # Data capture
     def capture_start(
-        self, topics: List[str], channels: Optional[Dict[str, List[int]]] = None, path: Optional[str] = None
+        self,
+        topics: List[str],
+        channels: Optional[Dict[str, List[int]]] = None,
+        path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Start CSV data capture."""
-        data = {"topics": topics}
+        data: Dict[str, Any] = {"topics": topics}
         if channels:
             data["channels"] = channels
         if path:
@@ -297,7 +328,12 @@ class RioClient:
 class RioStreamClient:
     """WebSocket client for Rio telemetry streaming with thread-safe message queue."""
 
-    def __init__(self, base_url: str = "http://localhost:8000", reconnect: bool = True, max_queue_size: int = 1000):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8000",
+        reconnect: bool = True,
+        max_queue_size: int = 1000,
+    ):
         """
         Initialize WebSocket stream client.
 
@@ -419,6 +455,9 @@ class RioStreamClient:
 
     def _run_websocket(self):
         """Run WebSocket in background thread."""
+        if self.ws is None:
+            logger.error("WebSocket not initialized")
+            return
         try:
             self.ws.run_forever()
         except Exception as e:

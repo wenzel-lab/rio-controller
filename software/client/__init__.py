@@ -4,7 +4,7 @@ Rio API client library.
 Provides Python client for interacting with the Rio controller API.
 """
 
-from client.api_client import (
+from .api_client import (
     RioAPIError,
     RioClient,
     RioConnectionError,
@@ -23,4 +23,3 @@ __all__ = [
 ]
 
 __version__ = "0.1.0"
-
