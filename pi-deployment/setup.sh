@@ -47,6 +47,23 @@ sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3
     echo "Warning: Some hardware packages failed to install. Continuing..."
 }
 
+# Install OpenCV from apt (fast, pre-built) - critical for droplet detection
+echo "Installing OpenCV from apt (fast, pre-built)..."
+sudo apt-get install -y python3-opencv || {
+    echo "⚠ Warning: python3-opencv installation failed (possibly network issue)."
+    echo "           Try: sudo apt-get install -y python3-opencv --fix-missing"
+    echo "           Or: sudo apt-get update && sudo apt-get install -y python3-opencv"
+}
+
+# Verify OpenCV from apt (fast, pre-built)
+if python3 -c "import cv2; print('OpenCV version:', cv2.__version__)" 2>/dev/null; then
+    echo "✓ OpenCV installed from apt (fast, pre-built)"
+else
+    echo "⚠ ERROR: python3-opencv installation failed. Droplet detection will not work."
+    echo "         Install manually: sudo apt-get install -y python3-opencv"
+    echo "         Then verify: python3 -c 'import cv2; print(cv2.__version__)'"
+fi
+
 echo "Installing BLAS/LAPACK for droplet detection..."
 sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3 || {
     echo "Warning: BLAS/LAPACK packages failed to install. Droplet detection may not work."
@@ -105,18 +122,29 @@ echo "Step 5: Installing Python packages to system Python..."
 echo "Note: Installing to system Python (no virtual environment)."
 echo "      Using --user flag to avoid permission issues (installs to ~/.local/lib/python3.x/site-packages)"
 echo ""
-if [ -f "requirements-webapp-only-32bit.txt" ]; then
+if [ -f "requirements-pi.txt" ]; then
+    # Check if OpenCV is available from apt (fast, pre-built) before installing pip packages
+    if python3 -c "import cv2" 2>/dev/null; then
+        echo "✓ OpenCV available from apt (skipping pip install - avoids slow build)"
+    else
+        echo "⚠ Warning: OpenCV not found from apt. pip requirements exclude it to avoid slow builds."
+        echo "           Install with: sudo apt-get install -y python3-opencv"
+    fi
+    
     # Install with trusted hosts to avoid SSL issues (common on fresh Pi with wrong system clock)
-    python3 -m pip install --user --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host www.piwheels.org -r requirements-webapp-only-32bit.txt || {
+    # Note: requirements-pi.txt does NOT include opencv-python-headless (use apt package instead)
+    python3 -m pip install --user --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host www.piwheels.org -r requirements-pi.txt || {
         echo "Error: Failed to install Python packages. Check network connectivity and system clock."
         echo "       If system clock is wrong, run: sudo date -s '$(date -R)'"
-        echo "       Then retry: python3 -m pip install --user -r requirements-webapp-only-32bit.txt"
+        echo "       Then retry: python3 -m pip install --user -r requirements-pi.txt"
     }
     if [ -f "requirements-api.txt" ]; then
         echo "Installing API requirements (optional API server)..."
         python3 -m pip install --user --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host www.piwheels.org -r requirements-api.txt || {
-            echo "Warning: API requirements installation failed (known pydantic version conflict)."
+            echo "⚠ Warning: API requirements installation failed."
+            echo "         Check for version conflicts or network issues."
             echo "         API server is optional and can be installed separately if needed."
+            echo "         Verify compatibility: python3 -m pip check"
         }
     fi
 else
@@ -130,20 +158,28 @@ else
     python3 -m pip install --user "gevent>=23.0.0,<25.0.0" "gevent-websocket>=0.10.1"
     python3 -m pip install --user "python-socketio>=5.14.0" "python-engineio>=4.9.0"
     python3 -m pip install --user "eventlet>=0.33.0,<1.0.0"
-    python3 -m pip install --user "opencv-python-headless>=4.5.0,<5.0.0"
+    # NOTE: OpenCV should be installed from apt (fast): sudo apt-get install -y python3-opencv
+    # Do NOT install opencv-python-headless from pip (builds from source, takes hours)
     python3 -m pip install --user "numpy>=1.19.0,<2.0.0" "Pillow>=9.0.0"
     python3 -m pip install --user "PyYAML>=6.0"
 fi
 
 echo ""
 echo "Step 6: Verifying installation..."
-python3 -m pip list --user | grep -E "Flask|SocketIO|Werkzeug|Jinja2|MarkupSafe|opencv|numpy|Pillow|PyYAML" || echo "Warning: Some packages may not be installed correctly"
+python3 -m pip list --user | grep -E "Flask|SocketIO|Werkzeug|Jinja2|MarkupSafe|numpy|Pillow|PyYAML" || echo "Warning: Some packages may not be installed correctly"
+
+# Check OpenCV (should be from apt, not pip)
+if python3 -c "import cv2; print('OpenCV', cv2.__version__, 'from', cv2.__file__)" 2>/dev/null; then
+    echo "✓ OpenCV verified (installed from apt - fast, pre-built)"
+else
+    echo "⚠ Warning: OpenCV not found. Install with: sudo apt-get install -y python3-opencv"
+fi
 
 # Also check user-installed packages (with --user flag)
 if [ -d "$HOME/.local/lib" ]; then
     echo ""
     echo "Checking user-installed packages (~/.local/lib):"
-    python3 -m pip list --user | grep -E "Flask|SocketIO|Werkzeug|Jinja2|MarkupSafe|opencv|numpy|Pillow|PyYAML" || echo "Note: Packages may be in system site-packages"
+    python3 -m pip list --user | grep -E "Flask|SocketIO|Werkzeug|Jinja2|MarkupSafe|numpy|Pillow|PyYAML" || echo "Note: Packages may be in system site-packages"
 fi
 
 echo ""

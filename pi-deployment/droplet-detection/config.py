@@ -29,7 +29,7 @@ class DropletDetectionConfig:
         """
         # Preprocessing parameters
         self.background_method: str = "static"  # "static" or "highpass"
-        self.background_frames: int = 30  # Number of frames for static background
+        self.background_frames: int = 15  # Number of frames for static background (reduced from 30 for faster ROI initialization)
         self.gaussian_blur_kernel: tuple = (11, 11)  # Kernel size for high-pass
         self.threshold_method: str = "otsu"  # "otsu" or "adaptive"
         self.adaptive_block_size: int = 11  # For adaptive thresholding
@@ -46,7 +46,7 @@ class DropletDetectionConfig:
 
         # Artifact rejection parameters
         self.min_motion: float = (
-            0.5  # Minimum motion in pixels (frame-to-frame) - lowered for better detection
+            2.0  # Minimum motion in pixels (frame-to-frame) - increased to reduce false positives
         )
         self.max_perp_drift: float = 5.0  # Maximum perpendicular drift (pixels)
         self.use_frame_diff: bool = False  # Use frame difference method

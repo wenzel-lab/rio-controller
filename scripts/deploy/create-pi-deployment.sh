@@ -37,7 +37,6 @@ cp "$SOURCE_DIR/path_bootstrap.py" "$DEPLOY_DIR/"
 
 # Configuration
 cp "$SOURCE_DIR/config.py" "$DEPLOY_DIR/"
-cp "$SOURCE_DIR/flow_control_modes.py" "$DEPLOY_DIR/"
 
 # Controllers (all Python files, exclude __pycache__)
 cp -r "$SOURCE_DIR/controllers" "$DEPLOY_DIR/"

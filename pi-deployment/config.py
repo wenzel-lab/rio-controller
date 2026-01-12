@@ -7,7 +7,7 @@ used throughout the application to improve maintainability and readability.
 
 import os
 
-from flow_control_modes import (  # single source-of-truth (Phase B / Track 2)
+from controllers.flow_control_modes import (  # single source-of-truth (Phase B / Track 2)
     CONTROL_MODE_FIRMWARE_TO_UI,
     CONTROL_MODE_UI_TO_FIRMWARE,
     FLOW_CTRL_MODE_STR,
