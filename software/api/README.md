@@ -2,6 +2,41 @@
 
 This folder contains the **network API layer** that exposes Rio hardware control and telemetry over HTTP/REST and WebSockets. It is designed to run alongside the existing Flask UI (`../rio-webapp/`) and provides a machine-readable interface for Jupyter notebooks, scripts, and external applications.
 
+## Quick Start
+
+1. **Install dependencies:**
+   ```bash
+   cd software
+   pip install -r requirements-api.txt
+   ```
+
+2. **Run the API server:**
+   ```bash
+   # Development (with auto-reload)
+   uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+   
+   # Or directly
+   python -m api.main
+   ```
+
+3. **Test the API:**
+   ```bash
+   curl http://localhost:8000/api/system/health
+   ```
+
+4. **View API documentation:**
+   - Swagger UI: http://localhost:8000/docs
+   - ReDoc: http://localhost:8000/redoc
+
+5. **Use from Python:**
+   ```python
+   from client import RioClient
+   client = RioClient(base_url="http://localhost:8000")
+   state = client.get_flow_state()
+   ```
+
+See `../client/README.md` for the Python client library and example notebooks.
+
 ## What belongs here / what does not
 
 - **Belongs here**: FastAPI routes, WebSocket handlers, request/response schemas (Pydantic models), API configuration, and streaming aggregators.
@@ -194,23 +229,15 @@ channels:
 
 ## Client examples
 
-### Jupyter notebook
-
-See `examples/jupyter/control_from_notebook.ipynb` for a complete example showing:
-- REST API control (flow, heater, camera)
-- WebSocket telemetry streaming with batching
-- On-demand data capture
-- MJPEG camera stream embedding (optional)
-
 ### Python client library
 
-A lightweight client library is available at `examples/python/api_client.py`:
-- `RioClient` — REST API client
-- `RioStreamClient` — WebSocket aggregator client with automatic reconnection
+A lightweight client library is available at `../client/api_client.py`:
+- `RioClient` — REST API client with error handling and retry logic
+- `RioStreamClient` — WebSocket aggregator client with thread-safe message queue
 
 Example usage:
 ```python
-from examples.python.api_client import RioClient, RioStreamClient
+from client import RioClient, RioStreamClient
 
 # REST client
 client = RioClient(base_url="http://192.168.1.100:8000")
@@ -220,9 +247,27 @@ client.set_flow(0, 100.0)  # Set channel 0 to 100 ul/hr
 # WebSocket client
 stream = RioStreamClient(base_url="http://192.168.1.100:8000")
 stream.subscribe(["flow"], channels={"flow": [0, 1]})
-for msg in stream.iter_messages():
+for msg in stream.iter_messages(timeout=10.0):
     print(f"{msg['topic']}: {msg['value']}")
 ```
+
+See `../client/README.md` for complete documentation.
+
+### Jupyter notebooks
+
+Two example notebooks are available in `../client/notebooks/`:
+
+1. **`tutorial.ipynb`** — Step-by-step learning notebook:
+   - REST API control (flow, heater, camera)
+   - WebSocket telemetry streaming with batching
+   - On-demand data capture
+   - Data visualization
+
+2. **`interactive_control.ipynb`** — Interactive UI with ipywidgets:
+   - Real-time control sliders
+   - Live status updates
+   - Camera snapshot capture
+   - Emergency stop button
 
 ## Testing
 
@@ -259,6 +304,70 @@ Install with:
 ```bash
 pip install -r requirements-api.txt
 ```
+
+## Troubleshooting
+
+### API server won't start
+
+**"Address already in use"**:
+- Another process is using port 8000
+- Find and kill: `lsof -ti:8000 | xargs kill -9`
+- Or use a different port: `uvicorn api.main:app --port 8001`
+
+**"Module not found"**:
+- Install dependencies: `pip install -r requirements-api.txt`
+- Make sure you're running from `software/` directory
+- Check Python path: `python -c "import api.main"`
+
+### Controllers not available
+
+**"Controller unavailable" (503 errors)**:
+- Check capabilities: `GET /api/system/capabilities`
+- Verify hardware is connected (or simulation mode is enabled)
+- Check controller initialization logs for errors
+- In simulation mode: `export RIO_SIMULATION=true`
+
+### WebSocket connection fails
+
+**"WebSocket connection failed"**:
+- Verify API server is running
+- Check firewall/network settings
+- Ensure WebSocket endpoint is accessible: `ws://<host>:8000/api/streams/aggregate`
+- Check browser console or client logs for errors
+
+### Common use cases
+
+**Control flow from script:**
+```python
+from client import RioClient
+client = RioClient(base_url="http://192.168.1.100:8000")
+client.set_flow(0, 100.0)  # Set channel 0 to 100 ul/hr
+```
+
+**Monitor sensors in real-time:**
+```python
+from client import RioStreamClient
+stream = RioStreamClient(base_url="http://192.168.1.100:8000")
+stream.subscribe(["flow", "pressure"])
+for msg in stream.iter_messages(timeout=60.0):
+    print(f"{msg['topic']} ch{msg['channel']}: {msg['value']} {msg['unit']}")
+```
+
+**Capture data to CSV:**
+```python
+from client import RioClient
+client = RioClient(base_url="http://192.168.1.100:8000")
+client.capture_start(["flow", "pressure"], path="experiment.csv")
+# ... run experiment ...
+client.capture_stop()
+```
+
+## Performance considerations
+
+- **Streaming rates**: WebSocket supports 20-50 Hz per channel. Higher rates may require client-side decimation.
+- **Buffer sizes**: Message queue defaults to 1000 messages. Adjust with `RioStreamClient(max_queue_size=...)`.
+- **Concurrent connections**: Multiple clients can connect simultaneously. Each WebSocket connection is independent.
+- **CPU usage**: Streaming 4 channels at 50 Hz uses minimal CPU. Camera streaming is more intensive.
 
 ## Future enhancements
 

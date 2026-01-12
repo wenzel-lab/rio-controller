@@ -21,7 +21,8 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Simulation layer: [`simulation/README.md`](simulation/README.md)
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
-- API interface (experimental): see **API server (experimental)** below
+- API interface: [`api/README.md`](api/README.md)
+- API client library: [`client/README.md`](client/README.md)
 
 ### Runtime wiring (how the software fits together)
 
@@ -147,7 +148,7 @@ This enables simulated SPI, GPIO, camera, and device controllers, allowing you t
 
 ---
 
-## API server (experimental)
+## API server
 
 The network API (FastAPI/LabThings) lives under `software/api/`. It is an interface
 layer only; device controllers and drivers remain unchanged.
@@ -168,6 +169,8 @@ python -m api.main  # default port 5001
 - Endpoints available in the skeleton:
   - `GET /api/system/health`
   - `GET /api/system/capabilities`
+  - See `api/README.md` for complete endpoint documentation
+  - See `client/README.md` for Python client library and Jupyter notebooks
 
 Later steps will expose full control/streaming surfaces.
 

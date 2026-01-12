@@ -7,6 +7,8 @@ Supports both REST API calls and WebSocket streaming.
 
 import json
 import logging
+import queue
+import threading
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
@@ -17,34 +19,135 @@ import websocket
 logger = logging.getLogger(__name__)
 
 
+# Custom exception classes
+class RioAPIError(Exception):
+    """Base exception for Rio API errors."""
+
+    pass
+
+
+class RioConnectionError(RioAPIError):
+    """Raised when connection to API server fails."""
+
+    pass
+
+
+class RioHTTPError(RioAPIError):
+    """Raised when API returns an HTTP error."""
+
+    def __init__(self, message: str, status_code: int, response: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response = response
+
+
+class RioWebSocketError(RioAPIError):
+    """Raised when WebSocket connection fails."""
+
+    pass
+
+
 class RioClient:
     """REST API client for Rio controller."""
 
-    def __init__(self, base_url: str = "http://localhost:8000", timeout: float = 5.0):
+    def __init__(self, base_url: str = "http://localhost:8000", timeout: float = 5.0, max_retries: int = 3):
         """
         Initialize Rio API client.
 
         Args:
             base_url: Base URL of the API server (e.g., "http://192.168.1.100:8000")
             timeout: Request timeout in seconds
+            max_retries: Maximum number of retries for transient failures
+
+        Example:
+            >>> client = RioClient(base_url="http://192.168.1.100:8000")
+            >>> state = client.get_flow_state()
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_retries = max_retries
         self.session = requests.Session()
 
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - close session."""
+        self.close()
+        return False
+
+    def close(self):
+        """Close the HTTP session."""
+        self.session.close()
+
     def _get(self, endpoint: str) -> Dict[str, Any]:
-        """Internal GET request helper."""
+        """Internal GET request helper with retry logic."""
         url = urljoin(self.base_url + "/", endpoint.lstrip("/"))
-        response = self.session.get(url, timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()
+        last_error = None
+
+        for attempt in range(self.max_retries):
+            try:
+                response = self.session.get(url, timeout=self.timeout)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    logger.warning(f"Request timeout (attempt {attempt + 1}/{self.max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                else:
+                    raise RioConnectionError(f"Request timeout after {self.max_retries} attempts: {e}") from e
+            except requests.exceptions.ConnectionError as e:
+                raise RioConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
+            except requests.exceptions.HTTPError as e:
+                try:
+                    error_detail = e.response.json()
+                except (ValueError, AttributeError):
+                    error_detail = {"detail": e.response.text if hasattr(e.response, "text") else str(e)}
+                raise RioHTTPError(
+                    f"HTTP {e.response.status_code}: {error_detail.get('detail', str(e))}",
+                    status_code=e.response.status_code,
+                    response=error_detail,
+                ) from e
+            except requests.exceptions.RequestException as e:
+                raise RioAPIError(f"Request failed: {e}") from e
+
+        raise RioConnectionError(f"Request failed after {self.max_retries} attempts: {last_error}") from last_error
 
     def _post(self, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Internal POST request helper."""
+        """Internal POST request helper with retry logic."""
         url = urljoin(self.base_url + "/", endpoint.lstrip("/"))
-        response = self.session.post(url, json=data, timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()
+        last_error = None
+
+        for attempt in range(self.max_retries):
+            try:
+                response = self.session.post(url, json=data, timeout=self.timeout)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    logger.warning(f"Request timeout (attempt {attempt + 1}/{self.max_retries}), retrying...")
+                    time.sleep(0.5 * (attempt + 1))
+                else:
+                    raise RioConnectionError(f"Request timeout after {self.max_retries} attempts: {e}") from e
+            except requests.exceptions.ConnectionError as e:
+                raise RioConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
+            except requests.exceptions.HTTPError as e:
+                try:
+                    error_detail = e.response.json()
+                except (ValueError, AttributeError):
+                    error_detail = {"detail": e.response.text if hasattr(e.response, "text") else str(e)}
+                raise RioHTTPError(
+                    f"HTTP {e.response.status_code}: {error_detail.get('detail', str(e))}",
+                    status_code=e.response.status_code,
+                    response=error_detail,
+                ) from e
+            except requests.exceptions.RequestException as e:
+                raise RioAPIError(f"Request failed: {e}") from e
+
+        raise RioConnectionError(f"Request failed after {self.max_retries} attempts: {last_error}") from last_error
 
     # System endpoints
     def health(self) -> Dict[str, Any]:
@@ -106,11 +209,16 @@ class RioClient:
     def get_camera_snapshot(self) -> bytes:
         """Get JPEG snapshot from camera."""
         url = urljoin(self.base_url + "/", "/api/streams/camera/snapshot")
-        response = self.session.get(url, timeout=self.timeout)
-        response.raise_for_status()
-        return response.content
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.RequestException as e:
+            raise RioAPIError(f"Failed to get camera snapshot: {e}") from e
 
-    def set_camera_resolution(self, preset: Optional[str] = None, width: Optional[int] = None, height: Optional[int] = None) -> Dict[str, Any]:
+    def set_camera_resolution(
+        self, preset: Optional[str] = None, width: Optional[int] = None, height: Optional[int] = None
+    ) -> Dict[str, Any]:
         """Set camera display resolution."""
         data = {}
         if preset:
@@ -166,7 +274,9 @@ class RioClient:
         return self._get("/api/control/droplet/statistics")
 
     # Data capture
-    def capture_start(self, topics: List[str], channels: Optional[Dict[str, List[int]]] = None, path: Optional[str] = None) -> Dict[str, Any]:
+    def capture_start(
+        self, topics: List[str], channels: Optional[Dict[str, List[int]]] = None, path: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Start CSV data capture."""
         data = {"topics": topics}
         if channels:
@@ -185,21 +295,42 @@ class RioClient:
 
 
 class RioStreamClient:
-    """WebSocket client for Rio telemetry streaming."""
+    """WebSocket client for Rio telemetry streaming with thread-safe message queue."""
 
-    def __init__(self, base_url: str = "http://localhost:8000", reconnect: bool = True):
+    def __init__(self, base_url: str = "http://localhost:8000", reconnect: bool = True, max_queue_size: int = 1000):
         """
         Initialize WebSocket stream client.
 
         Args:
             base_url: Base URL of the API server
-            reconnect: Automatically reconnect on disconnect
+            reconnect: Automatically reconnect on disconnect (not yet implemented)
+            max_queue_size: Maximum size of message queue
+
+        Example:
+            >>> stream = RioStreamClient(base_url="http://192.168.1.100:8000")
+            >>> stream.subscribe(["flow"], channels={"flow": [0, 1]})
+            >>> for msg in stream.iter_messages(timeout=10.0):
+            ...     print(msg)
         """
         self.base_url = base_url.rstrip("/")
         self.reconnect = reconnect
+        self.max_queue_size = max_queue_size
         self.ws: Optional[websocket.WebSocketApp] = None
         self.subscribed_topics: List[str] = []
         self.subscribed_channels: Dict[str, List[int]] = {}
+        self.message_queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
+        self.ws_thread: Optional[threading.Thread] = None
+        self._connected = False
+        self._stop_event = threading.Event()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - close WebSocket."""
+        self.close()
+        return False
 
     def _get_ws_url(self) -> str:
         """Convert HTTP base URL to WebSocket URL."""
@@ -222,35 +353,47 @@ class RioStreamClient:
         self.subscribed_channels = channels or {}
 
     def _on_message(self, ws, message: str):
-        """Handle incoming WebSocket message."""
+        """Handle incoming WebSocket message - thread-safe queue."""
         try:
             data = json.loads(message)
-            logger.debug(f"Received message: {data}")
-            # Yield message to iterator (handled by iter_messages)
+            try:
+                self.message_queue.put_nowait(data)
+            except queue.Full:
+                logger.warning("Message queue full, dropping message")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse message: {e}")
 
     def _on_error(self, ws, error):
         """Handle WebSocket error."""
         logger.error(f"WebSocket error: {error}")
+        self._connected = False
 
     def _on_close(self, ws, close_status_code, close_msg):
         """Handle WebSocket close."""
         logger.info("WebSocket closed")
+        self._connected = False
 
     def _on_open(self, ws):
         """Handle WebSocket open - send subscription."""
+        self._connected = True
         if self.subscribed_topics:
             subscribe_msg = {
                 "action": "subscribe",
                 "topics": self.subscribed_topics,
                 "channels": self.subscribed_channels,
             }
-            ws.send(json.dumps(subscribe_msg))
-            logger.info(f"Subscribed to topics: {self.subscribed_topics}")
+            try:
+                ws.send(json.dumps(subscribe_msg))
+                logger.info(f"Subscribed to topics: {self.subscribed_topics}")
+            except Exception as e:
+                logger.error(f"Failed to send subscription: {e}")
 
     def connect(self):
-        """Connect to WebSocket and start receiving messages."""
+        """Connect to WebSocket and start receiving messages in background thread."""
+        if self.ws is not None and self._connected:
+            logger.warning("WebSocket already connected")
+            return
+
         url = self._get_ws_url()
         self.ws = websocket.WebSocketApp(
             url,
@@ -259,6 +402,28 @@ class RioStreamClient:
             on_close=self._on_close,
             on_open=self._on_open,
         )
+
+        # Start WebSocket in background thread
+        self._stop_event.clear()
+        self.ws_thread = threading.Thread(target=self._run_websocket, daemon=True)
+        self.ws_thread.start()
+
+        # Wait for connection (with timeout)
+        timeout = 5.0
+        start = time.time()
+        while not self._connected and (time.time() - start) < timeout:
+            time.sleep(0.1)
+
+        if not self._connected:
+            raise RioWebSocketError(f"Failed to connect to {url} within {timeout}s")
+
+    def _run_websocket(self):
+        """Run WebSocket in background thread."""
+        try:
+            self.ws.run_forever()
+        except Exception as e:
+            logger.error(f"WebSocket thread error: {e}")
+            self._connected = False
 
     def iter_messages(self, timeout: Optional[float] = None):
         """
@@ -269,45 +434,40 @@ class RioStreamClient:
 
         Yields:
             Dict containing message data (topic, channel, timestamp, value, unit)
+
+        Example:
+            >>> stream = RioStreamClient()
+            >>> stream.subscribe(["flow"])
+            >>> for msg in stream.iter_messages(timeout=10.0):
+            ...     print(f"{msg['topic']}: {msg['value']}")
         """
-        if self.ws is None:
+        if not self._connected:
             self.connect()
 
-        messages = []
-
-        def on_message(ws, message: str):
-            try:
-                data = json.loads(message)
-                messages.append(data)
-            except json.JSONDecodeError:
-                pass
-
-        self.ws.on_message = on_message
-
-        # Run WebSocket in a thread
-        import threading
-
-        def run_ws():
-            self.ws.run_forever()
-
-        thread = threading.Thread(target=run_ws, daemon=True)
-        thread.start()
-
-        # Wait for connection
-        time.sleep(0.5)
-
-        # Yield messages as they arrive
         start_time = time.time()
         while True:
             if timeout and (time.time() - start_time) > timeout:
                 break
-            if messages:
-                yield messages.pop(0)
-            time.sleep(0.01)
+
+            try:
+                # Non-blocking get with timeout
+                msg = self.message_queue.get(timeout=0.1)
+                yield msg
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Error getting message: {e}")
+                break
 
     def close(self):
         """Close WebSocket connection."""
+        self._stop_event.set()
+        self._connected = False
         if self.ws:
-            self.ws.close()
+            try:
+                self.ws.close()
+            except Exception:
+                pass
             self.ws = None
-
+        if self.ws_thread and self.ws_thread.is_alive():
+            self.ws_thread.join(timeout=1.0)
