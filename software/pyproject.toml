@@ -55,6 +55,19 @@ module = [
 ]
 ignore_missing_imports = true
 
+# Ignore missing imports for API dependencies (may not have type stubs)
+[[tool.mypy.overrides]]
+module = [
+    "fastapi",
+    "uvicorn",
+    "labthings_fastapi",
+    "labthings_fastapi.*",
+    "websocket",
+    "websocket_client",
+    "requests",
+]
+ignore_missing_imports = true
+
 # These modules are intentionally dynamic / hardware-driven today and are not
 # type-clean yet. We still want mypy to be runnable and useful elsewhere.
 [[tool.mypy.overrides]]

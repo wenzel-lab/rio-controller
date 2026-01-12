@@ -216,7 +216,7 @@ software:
     license: "See individual file headers"
     documentation: "software/README.md"
     repository: "https://github.com/wenzel-lab/rio-controller/tree/master/software"
-    requirements: "software/requirements.txt"
+    requirements: "software/requirements-pi.txt"
     
   - name: "Python Hardware Drivers"
     path: "software/drivers/"
