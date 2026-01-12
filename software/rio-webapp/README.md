@@ -25,6 +25,12 @@ This folder is the web-facing layer: Flask routes, Socket.IO integration, HTML t
     - `roi_selector_range.js` is the authoritative ROI script (others have been removed)
     - droplet histogram rendering is `static/droplet_histogram.js`
 
+- **`omw.desktop`**
+  - Desktop entry file for Raspberry Pi desktop environment
+  - Creates a desktop shortcut to launch the Rio web application
+  - Automatically copied to `pi-deployment/` during deployment
+  - To install on Pi: copy to `~/.local/share/applications/` or `/usr/share/applications/`
+
 ## Interfaces to other layers (where the boundaries are)
 
 - **Calls into**: `software/controllers/*` (camera/flow/heater/droplet control)
