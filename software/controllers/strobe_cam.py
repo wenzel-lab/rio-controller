@@ -10,6 +10,7 @@ Classes:
     PiStrobeCam: Integrates camera and strobe for synchronized operation
 """
 
+import os
 import time
 import logging
 from typing import Optional, Tuple, Any, cast
@@ -144,13 +145,18 @@ class PiStrobeCam:
         # Initialize GPIO for PIC trigger (only needed for new mode with hardware trigger)
         if self.hardware_trigger_mode:
             try:
-                GPIO.setmode(GPIO.BOARD)
-                GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
-                GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
-                logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
+                if GPIO is not None:
+                    GPIO.setmode(GPIO.BOARD)
+                    GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
+                    GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
+                    logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
+                else:
+                    logger.warning("GPIO not available (simulation mode), skipping trigger pin setup")
             except Exception as e:
                 logger.error(f"Error configuring GPIO trigger pin: {e}")
-                raise
+                # Don't raise in simulation mode - GPIO might not be available
+                if not os.getenv("RIO_SIMULATION", "false").lower() == "true":
+                    raise
 
         # Configure strobe trigger mode only for hardware trigger mode (camera-centric)
         # Old firmware may not support set_trigger_mode command, so only call it when needed
@@ -267,9 +273,12 @@ class PiStrobeCam:
             return
         try:
             # Generate short pulse to PIC T1G input (hardware trigger)
-            GPIO.output(self.trigger_gpio_pin, GPIO.HIGH)
-            time.sleep(STROBE_TRIGGER_PULSE_US)  # 1us pulse (PIC detects edge)
-            GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
+            if GPIO is not None:
+                GPIO.output(self.trigger_gpio_pin, GPIO.HIGH)
+                time.sleep(STROBE_TRIGGER_PULSE_US / 1e6)  # Convert to seconds
+                GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
+            else:
+                logger.debug("GPIO not available (simulation), skipping trigger pulse")
         except Exception as e:
             logger.error(f"Error in frame callback trigger: {e}")
 

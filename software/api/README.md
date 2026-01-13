@@ -336,6 +336,74 @@ Two example notebooks are available in `../client/notebooks/`:
    - Camera snapshot capture
    - Emergency stop button
 
+### Testing with Jupyter Notebooks in Simulation Mode
+
+To test the API using Jupyter notebooks in simulation mode (without hardware):
+
+1. **Start the API server in simulation mode** (in a terminal):
+   ```bash
+   cd software
+   export RIO_SIMULATION=true
+   python -m api.main
+   ```
+   The server will start on `http://localhost:8000`. You should see:
+   ```
+   INFO:     Uvicorn running on http://0.0.0.0:8000
+   ```
+
+2. **Install Jupyter** (if not already installed in your environment):
+   ```bash
+   pip install jupyter jupyterlab ipywidgets matplotlib pandas numpy
+   ```
+
+3. **Open a Jupyter notebook** (in a new terminal, same environment):
+   ```bash
+   cd software
+   # Make sure you're in the same environment (rio-simulation)
+   mamba activate rio-simulation  # if not already activated
+   jupyter notebook
+   ```
+   Or use JupyterLab:
+   ```bash
+   jupyter lab
+   ```
+
+3. **Navigate to the client notebooks**:
+   - Open `client/notebooks/tutorial.ipynb` or `client/notebooks/interactive_control.ipynb`
+   - Or create a new notebook
+
+4. **Set up the client in the notebook**:
+   ```python
+   import sys
+   # Add client library to path
+   sys.path.insert(0, '/path/to/rio-controller/software')
+   
+   from client import RioClient, RioStreamClient
+   
+   # Connect to local API server
+   API_BASE_URL = "http://localhost:8000"
+   client = RioClient(base_url=API_BASE_URL)
+   
+   # Test connection
+   health = client.health()
+   print(f"API Status: {health['status']}")
+   print(f"Simulation Mode: {health['simulation']}")
+   ```
+
+5. **Run the notebook cells**:
+   - The notebooks will work with the simulation API
+   - Flow, pressure, and heater controllers will use simulated hardware
+   - Camera will use simulated frames (synthetic droplets)
+   - All API endpoints are available and functional
+
+**Note**: Keep the API server running in the terminal while using the notebook. If you stop the server, restart it and the notebook will reconnect automatically.
+
+**Troubleshooting**:
+- **Connection refused**: Make sure the API server is running (`python -m api.main`)
+- **Module not found**: Make sure `software/` is in your Python path (see step 4)
+- **Import errors**: Install client dependencies: `pip install requests websocket-client`
+- **Notebook dependencies**: For plotting and widgets: `pip install matplotlib pandas numpy ipywidgets`
+
 ## Testing
 
 API tests are in `../tests/test_api_streams.py`. Run with:

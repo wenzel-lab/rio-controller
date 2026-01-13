@@ -132,11 +132,15 @@ class Camera:
 
         # Configure strobe
         try:
-            valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
-            self.strobe_cam.strobe.set_hold(self.strobe_data["hold"])
-            logger.debug("Setting initial strobe timing")
-            self.set_timing()
-            self.enabled = valid
+            if self.strobe_cam is not None and self.strobe_cam.strobe is not None:
+                valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
+                self.strobe_cam.strobe.set_hold(self.strobe_data["hold"])
+                logger.debug("Setting initial strobe timing")
+                self.set_timing()
+                self.enabled = valid
+            else:
+                logger.warning("Strobe not available, camera will run without strobe")
+                self.enabled = False
         except Exception as e:
             logger.error(f"Error initializing strobe: {e}")
             self.enabled = False
@@ -739,6 +743,9 @@ class Camera:
             True if timing was set successfully, False otherwise
         """
         try:
+            if self.strobe_cam is None:
+                logger.warning("Strobe camera not available, cannot set timing")
+                return False
             # Clamp strobe period to maximum allowed value
             self.strobe_period_ns = min(self.strobe_period_ns, STROBE_MAX_PERIOD_NS)
             valid = self.strobe_cam.set_timing(
