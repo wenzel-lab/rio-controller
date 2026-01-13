@@ -162,11 +162,20 @@ class PiStrobeCam:
         # Old firmware may not support set_trigger_mode command, so only call it when needed
         if self.hardware_trigger_mode:
             try:
-                self.strobe.set_trigger_mode(True)
-                logger.debug("Strobe configured for hardware trigger mode")
+                # Check if set_trigger_mode method exists (for backward compatibility with old firmware)
+                if hasattr(self.strobe, 'set_trigger_mode'):
+                    result = self.strobe.set_trigger_mode(True)
+                    if result:
+                        logger.debug("Strobe configured for hardware trigger mode")
+                    else:
+                        logger.warning("Strobe trigger mode configuration returned False - firmware may not support this feature")
+                else:
+                    logger.warning("Strobe driver does not support set_trigger_mode - using legacy mode")
             except Exception as e:
                 logger.error(f"Error configuring strobe trigger mode: {e}")
-                raise
+                # In simulation mode, this might fail - don't raise if in simulation
+                if not os.getenv("RIO_SIMULATION", "false").lower() == "true":
+                    raise
         else:
             logger.debug("Strobe-centric mode: trigger mode configuration skipped (not needed)")
 
