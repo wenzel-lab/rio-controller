@@ -145,16 +145,16 @@ class PiStrobeCam:
         # Initialize GPIO for PIC trigger (only needed for new mode with hardware trigger)
         if self.hardware_trigger_mode:
             try:
-                if GPIO is not None:
-                    GPIO.setmode(GPIO.BOARD)
-                    GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
-                    GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
-                    logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
-                else:
-                    logger.warning("GPIO not available (simulation mode), skipping trigger pin setup")
+                # GPIO is always available (spi_handler.py sets it to SimulatedGPIO or RPi.GPIO)
+                # In simulation mode, SimulatedGPIO handles GPIO operations gracefully
+                GPIO.setmode(GPIO.BOARD)
+                GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
+                GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
+                logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
             except Exception as e:
                 logger.error(f"Error configuring GPIO trigger pin: {e}")
-                # Don't raise in simulation mode - GPIO might not be available
+                # In simulation mode, GPIO operations may fail silently - that's OK
+                # On real hardware, GPIO setup failures should be raised
                 if not os.getenv("RIO_SIMULATION", "false").lower() == "true":
                     raise
 
@@ -273,13 +273,13 @@ class PiStrobeCam:
             return
         try:
             # Generate short pulse to PIC T1G input (hardware trigger)
-            if GPIO is not None:
-                GPIO.output(self.trigger_gpio_pin, GPIO.HIGH)
-                time.sleep(STROBE_TRIGGER_PULSE_US / 1e6)  # Convert to seconds
-                GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
-            else:
-                logger.debug("GPIO not available (simulation), skipping trigger pulse")
+            # GPIO is always available (spi_handler.py sets it to SimulatedGPIO or RPi.GPIO)
+            GPIO.output(self.trigger_gpio_pin, GPIO.HIGH)
+            time.sleep(STROBE_TRIGGER_PULSE_US / 1e6)  # Convert to seconds
+            GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
         except Exception as e:
+            # In simulation mode, GPIO operations may fail - log but don't raise
+            # On real hardware, GPIO failures should be logged but may be transient
             logger.error(f"Error in frame callback trigger: {e}")
 
     def set_timing(self, pre_padding_ns: int, strobe_period_ns: int, post_padding_ns: int) -> bool:
