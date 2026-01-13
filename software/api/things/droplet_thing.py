@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
+from labthings_fastapi.exceptions import InvocationError
 
 if TYPE_CHECKING:
     from controllers.droplet_detector_controller import DropletDetectorController
@@ -93,11 +94,11 @@ class DropletThing(lt.Thing):
             InvocationError: If controller unavailable or start failed
         """
         if self._droplet is None:
-            raise lt.InvocationError("Droplet controller unavailable")
+            raise InvocationError("Droplet controller unavailable")
 
         ok = self._droplet.start()
         if not ok:
-            raise lt.InvocationError("Failed to start droplet detection (check ROI)")
+            raise InvocationError("Failed to start droplet detection (check ROI)")
         return {"ok": True}
 
     @lt.action
@@ -111,7 +112,7 @@ class DropletThing(lt.Thing):
             InvocationError: If controller unavailable
         """
         if self._droplet is None:
-            raise lt.InvocationError("Droplet controller unavailable")
+            raise InvocationError("Droplet controller unavailable")
 
         self._droplet.stop()
         return {"ok": True}

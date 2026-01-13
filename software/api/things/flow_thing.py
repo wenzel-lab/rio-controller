@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
+from labthings_fastapi.exceptions import InvocationError
 
 from api.schemas import (
     FlowState,
@@ -87,13 +88,13 @@ class FlowThing(lt.Thing):
             InvocationError: If controller unavailable or set failed
         """
         if self._flow is None:
-            raise lt.InvocationError("Flow controller unavailable")
+            raise InvocationError("Flow controller unavailable")
         if not (0 <= index <= 3):
-            raise lt.InvocationError(f"Invalid channel index: {index} (must be 0-3)")
+            raise InvocationError(f"Invalid channel index: {index} (must be 0-3)")
 
         ok = self._flow.set_pressure(index, pressure_mbar)
         if not ok:
-            raise lt.InvocationError("Failed to set pressure")
+            raise InvocationError("Failed to set pressure")
         return {"ok": True}
 
     @lt.action
@@ -111,13 +112,13 @@ class FlowThing(lt.Thing):
             InvocationError: If controller unavailable or set failed
         """
         if self._flow is None:
-            raise lt.InvocationError("Flow controller unavailable")
+            raise InvocationError("Flow controller unavailable")
         if not (0 <= index <= 3):
-            raise lt.InvocationError(f"Invalid channel index: {index} (must be 0-3)")
+            raise InvocationError(f"Invalid channel index: {index} (must be 0-3)")
 
         ok = self._flow.set_flow(index, flow_ul_hr)
         if not ok:
-            raise lt.InvocationError("Failed to set flow rate")
+            raise InvocationError("Failed to set flow rate")
         return {"ok": True}
 
     @lt.action
@@ -135,14 +136,14 @@ class FlowThing(lt.Thing):
             InvocationError: If controller unavailable or set failed
         """
         if self._flow is None:
-            raise lt.InvocationError("Flow controller unavailable")
+            raise InvocationError("Flow controller unavailable")
         if not (0 <= index <= 3):
-            raise lt.InvocationError(f"Invalid channel index: {index} (must be 0-3)")
+            raise InvocationError(f"Invalid channel index: {index} (must be 0-3)")
 
         firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(mode_ui, 0)
         ok = self._flow.set_control_mode(index, firmware_mode)
         if not ok:
-            raise lt.InvocationError("Failed to set control mode")
+            raise InvocationError("Failed to set control mode")
         return {"ok": True}
 
     @lt.action
@@ -161,14 +162,14 @@ class FlowThing(lt.Thing):
             InvocationError: If controller unavailable or set failed
         """
         if self._flow is None:
-            raise lt.InvocationError("Flow controller unavailable")
+            raise InvocationError("Flow controller unavailable")
         if not (0 <= index <= 3):
-            raise lt.InvocationError(f"Invalid channel index: {index} (must be 0-3)")
+            raise InvocationError(f"Invalid channel index: {index} (must be 0-3)")
         if p < 0 or i < 0:
-            raise lt.InvocationError("PI constants must be non-negative")
+            raise InvocationError("PI constants must be non-negative")
 
         ok = self._flow.set_flow_pi_consts(index, [p, i])
         if not ok:
-            raise lt.InvocationError("Failed to set PI constants")
+            raise InvocationError("Failed to set PI constants")
         return {"ok": True}
 

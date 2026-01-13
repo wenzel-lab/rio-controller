@@ -10,11 +10,13 @@ from .api_client import (
     RioConnectionError,
     RioHTTPError,
     RioStreamClient,
+    RioThingClient,
     RioWebSocketError,
 )
 
 __all__ = [
     "RioClient",
+    "RioThingClient",
     "RioStreamClient",
     "RioAPIError",
     "RioConnectionError",

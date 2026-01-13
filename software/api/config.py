@@ -19,7 +19,7 @@ def _get_bool(env_var: str, default: bool = False) -> bool:
 @dataclass
 class APISettings:
     host: str = os.getenv("RIO_API_HOST", "0.0.0.0")
-    port: int = int(os.getenv("RIO_API_PORT", "5001"))
+    port: int = int(os.getenv("RIO_API_PORT", "8000"))
     cors_allow_all: bool = _get_bool("RIO_API_CORS_ALLOW_ALL", True)
     auth_token: str | None = os.getenv("RIO_API_TOKEN")  # optional; add enforcement later
     simulation: bool = _get_bool("RIO_SIMULATION", False)

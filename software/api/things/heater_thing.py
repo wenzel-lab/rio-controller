@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, List
 
 import labthings_fastapi as lt
+from labthings_fastapi.exceptions import InvocationError
 
 from api.schemas import HeaterState, HeaterStateItem
 
@@ -71,9 +72,9 @@ class HeaterThing(lt.Thing):
             InvocationError: If heaters unavailable or invalid index
         """
         if self._heaters is None:
-            raise lt.InvocationError("Heaters unavailable")
+            raise InvocationError("Heaters unavailable")
         if index < 0 or index >= len(self._heaters):
-            raise lt.InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
+            raise InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
 
         self._heaters[index].set_temp(temp_c)
         return {"ok": True}
@@ -93,9 +94,9 @@ class HeaterThing(lt.Thing):
             InvocationError: If heaters unavailable or invalid index
         """
         if self._heaters is None:
-            raise lt.InvocationError("Heaters unavailable")
+            raise InvocationError("Heaters unavailable")
         if index < 0 or index >= len(self._heaters):
-            raise lt.InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
+            raise InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
 
         self._heaters[index].set_pid_running(1 if enabled else 0)
         self._heaters[index].pid_enabled = enabled
@@ -116,9 +117,9 @@ class HeaterThing(lt.Thing):
             InvocationError: If heaters unavailable or invalid index
         """
         if self._heaters is None:
-            raise lt.InvocationError("Heaters unavailable")
+            raise InvocationError("Heaters unavailable")
         if index < 0 or index >= len(self._heaters):
-            raise lt.InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
+            raise InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
 
         self._heaters[index].set_stir_running(1 if enabled else 0)
         self._heaters[index].stir_enabled = enabled

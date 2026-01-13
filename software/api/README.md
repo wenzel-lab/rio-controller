@@ -361,11 +361,11 @@ FastAPI automatically generates OpenAPI documentation. When the API server is ru
 ## Dependencies
 
 API-specific dependencies are in `requirements-api.txt`:
-- `fastapi==0.95.2` — Web framework (used by LabThings)
-- `uvicorn[standard]==0.21.1` — ASGI server
-- `labthings-fastapi==0.0.6` — **LabThings/WoT framework** (actively used)
-- `pydantic==1.10.14` — Data validation (used by FastAPI and LabThings)
-- `pyyaml` — Config file loading
+- `fastapi[all]>=0.115.0` — Web framework (supports Pydantic 2.x)
+- `uvicorn[standard]>=0.30.0` — ASGI server (compatible with FastAPI 0.115+)
+- `labthings-fastapi>=0.0.6` — **LabThings/WoT framework** (requires Pydantic 2.x)
+- `pydantic>=2.10.0` — Data validation (Pydantic 2.x, required by LabThings)
+- `pyyaml>=6.0` — Config file loading
 
 **Current status:** The API uses LabThings ThingServer to expose controllers as WoT-compliant Things. Each controller is wrapped in a Thing class that exposes properties and actions according to the Web of Things standard.
 

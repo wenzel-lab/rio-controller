@@ -315,13 +315,17 @@ def _create_pi_camera() -> BaseCamera:
 
             return PiCameraV2()
         except (ImportError, Exception) as e:
-            print(f"picamera2 not available ({e}), falling back to picamera")
+            # picamera2 not available (expected on 32-bit or when legacy camera is enabled)
+            # This is normal - we'll use strobe with the picamera library instead
+            logger.debug(f"picamera2 not available ({e}), using picamera (legacy) instead")
+            pass  # Continue to picamera (legacy) fallback
 
     try:
         import picamera as picamera_legacy  # noqa: F401
 
         from .pi_camera_legacy import PiCameraLegacy
 
+        logger.info("Using picamera (legacy) for 32-bit Raspberry Pi camera support")
         return PiCameraLegacy()
     except ImportError:
         if machine not in ("armv7l", "aarch64", "arm64"):

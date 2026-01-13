@@ -2,11 +2,19 @@
 
 This folder contains the **Python client library** for interacting with the Rio controller API. It provides both REST API and WebSocket streaming clients, along with example Jupyter notebooks.
 
-**Note:** The API now uses **LabThings/WoT-compliant Things**. The client library supports both:
-- **Legacy routes** (`/api/control/*`) — backward compatible, still work
-- **WoT routes** (`/flow/`, `/heater/`, etc.) — standard WoT-compliant endpoints
+**Two client implementations are available:**
 
-You can use either approach. The legacy routes are maintained for backward compatibility.
+1. **`RioClient`** — Direct HTTP client using `requests` (simple, fast)
+   - Uses legacy routes (`/api/control/*`)
+   - Synchronous responses (no polling)
+   - Fast (10-50ms per action)
+
+2. **`RioThingClient`** — WoT-compliant client using LabThings ThingClient (standard, auto-generated)
+   - Uses WoT routes (`/flow/`, `/heater/`, etc.)
+   - Auto-generated from Thing Descriptions
+   - Async action polling (50-150ms per action, but WoT-compliant)
+
+**Both clients provide the same interface** — you can switch between them easily. Use `RioThingClient` for WoT compliance, or `RioClient` for maximum speed.
 
 ## What's inside
 

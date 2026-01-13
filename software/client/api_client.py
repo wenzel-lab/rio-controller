@@ -3,6 +3,10 @@ Rio API client library for Python.
 
 Provides a lightweight client for interacting with the Rio API server.
 Supports both REST API calls and WebSocket streaming.
+
+Two client implementations are available:
+1. RioClient - Direct HTTP client using requests (simple, fast)
+2. RioThingClient - WoT-compliant client using LabThings ThingClient (standard, auto-generated)
 """
 
 import json
@@ -15,6 +19,19 @@ from urllib.parse import urljoin
 
 import requests
 import websocket
+
+# Try to import ThingClient - optional dependency
+try:
+    from labthings_fastapi.client import ThingClient as LTThingClient
+    from labthings_fastapi.exceptions import (
+        FailedToInvokeActionError,
+        ServerActionError,
+        ClientPropertyError,
+    )
+    HAS_LABTHINGS = True
+except ImportError:
+    HAS_LABTHINGS = False
+    LTThingClient = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +65,7 @@ class RioWebSocketError(RioAPIError):
 
 
 class RioClient:
-    """REST API client for Rio controller."""
+    """REST API client for Rio controller (direct HTTP)."""
 
     def __init__(
         self, base_url: str = "http://localhost:8000", timeout: float = 5.0, max_retries: int = 3
@@ -294,11 +311,11 @@ class RioClient:
         return self._get("/api/control/droplet/status")
 
     def droplet_histogram(self) -> Dict[str, Any]:
-        """Get droplet histogram."""
+        """Get droplet size histogram."""
         return self._get("/api/control/droplet/histogram")
 
     def droplet_statistics(self) -> Dict[str, Any]:
-        """Get droplet statistics."""
+        """Get droplet detection statistics."""
         return self._get("/api/control/droplet/statistics")
 
     # Data capture
@@ -308,7 +325,7 @@ class RioClient:
         channels: Optional[Dict[str, List[int]]] = None,
         path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Start CSV data capture."""
+        """Start CSV capture of sensor data."""
         data: Dict[str, Any] = {"topics": topics}
         if channels:
             data["channels"] = channels
@@ -317,7 +334,7 @@ class RioClient:
         return self._post("/api/data/capture/start", data=data)
 
     def capture_stop(self) -> Dict[str, Any]:
-        """Stop CSV data capture."""
+        """Stop CSV capture."""
         return self._post("/api/data/capture/stop")
 
     def capture_status(self) -> Dict[str, Any]:
@@ -325,77 +342,600 @@ class RioClient:
         return self._get("/api/data/capture/status")
 
 
-class RioStreamClient:
-    """WebSocket client for Rio telemetry streaming with thread-safe message queue."""
+class RioThingClient:
+    """WoT-compliant REST API client for Rio controller using LabThings ThingClient.
+
+    This client uses LabThings ThingClient internally to provide WoT-compliant access
+    to Rio Things. It provides the same interface as RioClient but uses WoT routes
+    (e.g., /flow/, /heater/) instead of legacy routes (/api/control/*).
+
+    Benefits:
+    - WoT standard compliance
+    - Auto-generated from Thing Descriptions
+    - Type-safe from TD schemas
+    - Future-proof (works with any WoT Thing)
+
+    Trade-offs:
+    - Uses httpx instead of requests (different dependency)
+    - Actions use async polling (50-150ms extra delay per action)
+    - Requires fetching Thing Descriptions on initialization (one extra HTTP request)
+    """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
-        reconnect: bool = True,
-        max_queue_size: int = 1000,
+        timeout: float = 5.0,
+        max_retries: int = 3,
     ):
         """
-        Initialize WebSocket stream client.
+        Initialize WoT-compliant Rio API client.
 
         Args:
-            base_url: Base URL of the API server
-            reconnect: Automatically reconnect on disconnect (not yet implemented)
-            max_queue_size: Maximum size of message queue
+            base_url: Base URL of the API server (e.g., "http://192.168.1.100:8000")
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retries for transient failures (not used with ThingClient)
 
         Example:
-            >>> stream = RioStreamClient(base_url="http://192.168.1.100:8000")
-            >>> stream.subscribe(["flow"], channels={"flow": [0, 1]})
-            >>> for msg in stream.iter_messages(timeout=10.0):
-            ...     print(msg)
+            >>> client = RioThingClient(base_url="http://192.168.1.100:8000")
+            >>> state = client.get_flow_state()
         """
+        if not HAS_LABTHINGS:
+            raise ImportError(
+                "labthings_fastapi is required for RioThingClient. "
+                "Install with: pip install labthings-fastapi"
+            )
+
+        import httpx
+
         self.base_url = base_url.rstrip("/")
-        self.reconnect = reconnect
-        self.max_queue_size = max_queue_size
-        self.ws: Optional[websocket.WebSocketApp] = None
-        self.subscribed_topics: List[str] = []
-        self.subscribed_channels: Dict[str, List[int]] = {}
-        self.message_queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
-        self.ws_thread: Optional[threading.Thread] = None
-        self._connected = False
-        self._stop_event = threading.Event()
+        self.timeout = timeout
+        self.max_retries = max_retries
+
+        # Create httpx client
+        self.http_client = httpx.Client(timeout=timeout)
+
+        # Initialize Thing clients (lazy loading - only fetch TDs when needed)
+        self._flow_thing: Optional[LTThingClient] = None
+        self._heater_thing: Optional[LTThingClient] = None
+        self._camera_thing: Optional[LTThingClient] = None
+        self._droplet_thing: Optional[LTThingClient] = None
+        self._pump_thing: Optional[LTThingClient] = None
 
     def __enter__(self):
         """Context manager entry."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - close WebSocket."""
+        """Context manager exit - close client."""
         self.close()
         return False
 
-    def _get_ws_url(self) -> str:
-        """Convert HTTP base URL to WebSocket URL."""
-        if self.base_url.startswith("http://"):
-            return self.base_url.replace("http://", "ws://") + "/api/streams/aggregate"
-        elif self.base_url.startswith("https://"):
-            return self.base_url.replace("https://", "wss://") + "/api/streams/aggregate"
-        else:
-            return f"ws://{self.base_url}/api/streams/aggregate"
+    def close(self):
+        """Close the HTTP client."""
+        self.http_client.close()
 
-    def subscribe(self, topics: List[str], channels: Optional[Dict[str, List[int]]] = None):
+    def _get_flow_thing(self) -> LTThingClient:
+        """Get or create FlowThing client."""
+        if self._flow_thing is None:
+            try:
+                self._flow_thing = LTThingClient.from_url(
+                    f"{self.base_url}/flow/", client=self.http_client
+                )
+            except Exception as e:
+                raise RioConnectionError(f"Failed to connect to FlowThing: {e}") from e
+        return self._flow_thing
+
+    def _get_heater_thing(self) -> LTThingClient:
+        """Get or create HeaterThing client."""
+        if self._heater_thing is None:
+            try:
+                self._heater_thing = LTThingClient.from_url(
+                    f"{self.base_url}/heater/", client=self.http_client
+                )
+            except Exception as e:
+                raise RioConnectionError(f"Failed to connect to HeaterThing: {e}") from e
+        return self._heater_thing
+
+    def _get_camera_thing(self) -> LTThingClient:
+        """Get or create CameraThing client."""
+        if self._camera_thing is None:
+            try:
+                self._camera_thing = LTThingClient.from_url(
+                    f"{self.base_url}/camera/", client=self.http_client
+                )
+            except Exception as e:
+                raise RioConnectionError(f"Failed to connect to CameraThing: {e}") from e
+        return self._camera_thing
+
+    def _get_droplet_thing(self) -> LTThingClient:
+        """Get or create DropletThing client."""
+        if self._droplet_thing is None:
+            try:
+                self._droplet_thing = LTThingClient.from_url(
+                    f"{self.base_url}/droplet/", client=self.http_client
+                )
+            except Exception as e:
+                raise RioConnectionError(f"Failed to connect to DropletThing: {e}") from e
+        return self._droplet_thing
+
+    def _handle_action_error(self, e: Exception) -> None:
+        """Convert LabThings exceptions to Rio exceptions and re-raise."""
+        if isinstance(e, FailedToInvokeActionError):
+            raise RioAPIError(f"Failed to invoke action: {e}") from e
+        elif isinstance(e, ServerActionError):
+            raise RioAPIError(f"Action failed: {e}") from e
+        elif isinstance(e, ClientPropertyError):
+            raise RioAPIError(f"Property access failed: {e}") from e
+        # Re-raise other exceptions as-is
+        raise
+
+    # System endpoints (use legacy routes for compatibility)
+    def health(self) -> Dict[str, Any]:
+        """Get API health status."""
+        try:
+            response = self.http_client.get(f"{self.base_url}/api/system/health")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to get health: {e}") from e
+
+    def capabilities(self) -> Dict[str, Any]:
+        """Get available module capabilities."""
+        try:
+            response = self.http_client.get(f"{self.base_url}/api/system/capabilities")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to get capabilities: {e}") from e
+
+    # Channel configuration (use legacy routes)
+    def get_channels(self) -> Dict[str, Any]:
+        """Get channel metadata (names, liquid types, calibration factors)."""
+        try:
+            response = self.http_client.get(f"{self.base_url}/api/config/channels")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to get channels: {e}") from e
+
+    def set_channels(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Update channel metadata (runtime-only, not persisted)."""
+        try:
+            response = self.http_client.post(
+                f"{self.base_url}/api/config/channels", json=config
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to set channels: {e}") from e
+
+    # Flow/pressure control (use WoT Thing)
+    def get_flow_state(self) -> Dict[str, Any]:
+        """Get current flow/pressure state."""
+        try:
+            flow_thing = self._get_flow_thing()
+            state = flow_thing.state  # Property access (auto-converted to dict)
+            # Convert Pydantic model to dict if needed
+            if hasattr(state, "dict"):
+                return state.dict()
+            elif hasattr(state, "model_dump"):
+                return state.model_dump()
+            return state
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"Failed to get flow state: {e}") from e
+
+    def set_pressure(self, index: int, pressure_mbar: float) -> Dict[str, Any]:
+        """Set pressure target for a channel."""
+        try:
+            flow_thing = self._get_flow_thing()
+            result = flow_thing.set_pressure(index=index, pressure_mbar=pressure_mbar)
+            # Convert to dict if needed
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"Failed to set pressure: {e}") from e
+
+    def set_flow(self, index: int, flow_ul_hr: float) -> Dict[str, Any]:
+        """Set flow target for a channel."""
+        try:
+            flow_thing = self._get_flow_thing()
+            result = flow_thing.set_flow(index=index, flow_ul_hr=flow_ul_hr)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_flow_mode(self, index: int, mode_ui: int) -> Dict[str, Any]:
+        """Set control mode for a channel."""
+        try:
+            flow_thing = self._get_flow_thing()
+            result = flow_thing.set_mode(index=index, mode_ui=mode_ui)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_flow_pi_consts(self, index: int, p: int, i: int) -> Dict[str, Any]:
+        """Set PI controller constants for a channel."""
+        try:
+            flow_thing = self._get_flow_thing()
+            result = flow_thing.set_pi_consts(index=index, p=p, i=i)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    # Heater control (use WoT Thing)
+    def get_heater_state(self) -> Dict[str, Any]:
+        """Get current heater states."""
+        try:
+            heater_thing = self._get_heater_thing()
+            state = heater_thing.state
+            if hasattr(state, "dict"):
+                return state.dict()
+            elif hasattr(state, "model_dump"):
+                return state.model_dump()
+            return state
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_heater_temp(self, index: int, temp_c: float) -> Dict[str, Any]:
+        """Set target temperature for a heater."""
+        try:
+            heater_thing = self._get_heater_thing()
+            result = heater_thing.set_temp(index=index, temp_c=temp_c)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_heater_pid(self, index: int, enabled: bool) -> Dict[str, Any]:
+        """Enable/disable PID control for a heater."""
+        try:
+            heater_thing = self._get_heater_thing()
+            result = heater_thing.set_pid(index=index, enabled=enabled)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_heater_stir(self, index: int, enabled: bool) -> Dict[str, Any]:
+        """Enable/disable stirrer for a heater."""
+        try:
+            heater_thing = self._get_heater_thing()
+            result = heater_thing.set_stir(index=index, enabled=enabled)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    # Camera control (use WoT Thing)
+    def get_camera_snapshot(self) -> bytes:
+        """Get JPEG snapshot from camera."""
+        try:
+            camera_thing = self._get_camera_thing()
+            blob = camera_thing.snapshot()  # Returns ClientBlobOutput
+            # Download blob content
+            response = self.http_client.get(blob.href)
+            response.raise_for_status()
+            return response.content
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_camera_resolution(
+        self,
+        preset: Optional[str] = None,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Set camera display resolution."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.set_resolution(
+                preset=preset, width=width, height=height
+            )
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_camera_roi(self, x: int, y: int, w: int, h: int) -> Dict[str, Any]:
+        """Set camera ROI."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.set_roi(x=x, y=y, w=w, h=h)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def clear_camera_roi(self) -> Dict[str, Any]:
+        """Clear camera ROI."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.clear_roi()
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    # Strobe control (use WoT Thing)
+    def set_strobe_enable(self, enabled: bool) -> Dict[str, Any]:
+        """Enable/disable strobe."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.strobe_enable(on=enabled)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_strobe_hold(self, hold: bool) -> Dict[str, Any]:
+        """Enable/disable strobe hold mode."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.strobe_hold(on=hold)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_strobe_timing(self, period_ns: int, wait_ns: Optional[int] = None) -> Dict[str, Any]:
+        """Set strobe timing parameters."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.strobe_timing(period_ns=period_ns, wait_ns=wait_ns)
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    # Droplet detection (use WoT Thing)
+    def droplet_start(self) -> Dict[str, Any]:
+        """Start droplet detection."""
+        try:
+            droplet_thing = self._get_droplet_thing()
+            result = droplet_thing.start()
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def droplet_stop(self) -> Dict[str, Any]:
+        """Stop droplet detection."""
+        try:
+            droplet_thing = self._get_droplet_thing()
+            result = droplet_thing.stop()
+            if hasattr(result, "dict"):
+                return result.dict()
+            elif hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def droplet_status(self) -> Dict[str, Any]:
+        """Get droplet detection status."""
+        try:
+            droplet_thing = self._get_droplet_thing()
+            status = droplet_thing.status
+            if hasattr(status, "dict"):
+                return status.dict()
+            elif hasattr(status, "model_dump"):
+                return status.model_dump()
+            return status
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def droplet_histogram(self) -> Dict[str, Any]:
+        """Get droplet size histogram."""
+        try:
+            droplet_thing = self._get_droplet_thing()
+            histogram = droplet_thing.histogram
+            if hasattr(histogram, "dict"):
+                return histogram.dict()
+            elif hasattr(histogram, "model_dump"):
+                return histogram.model_dump()
+            return histogram
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def droplet_statistics(self) -> Dict[str, Any]:
+        """Get droplet detection statistics."""
+        try:
+            droplet_thing = self._get_droplet_thing()
+            stats = droplet_thing.statistics
+            if hasattr(stats, "dict"):
+                return stats.dict()
+            elif hasattr(stats, "model_dump"):
+                return stats.model_dump()
+            return stats
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    # Data capture (use legacy routes - not part of Things)
+    def capture_start(
+        self,
+        topics: List[str],
+        channels: Optional[Dict[str, List[int]]] = None,
+        path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Start CSV capture of sensor data."""
+        try:
+            data: Dict[str, Any] = {"topics": topics}
+            if channels:
+                data["channels"] = channels
+            if path:
+                data["path"] = path
+            response = self.http_client.post(f"{self.base_url}/api/data/capture/start", json=data)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to start capture: {e}") from e
+
+    def capture_stop(self) -> Dict[str, Any]:
+        """Stop CSV capture."""
+        try:
+            response = self.http_client.post(f"{self.base_url}/api/data/capture/stop")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to stop capture: {e}") from e
+
+    def capture_status(self) -> Dict[str, Any]:
+        """Get capture status."""
+        try:
+            response = self.http_client.get(f"{self.base_url}/api/data/capture/status")
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise RioAPIError(f"Failed to get capture status: {e}") from e
+
+
+# WebSocket client (works with both RioClient and RioThingClient)
+class RioStreamClient:
+    """WebSocket client for Rio API streaming.
+
+    Streams real-time sensor data (flow, pressure, heater) via WebSocket.
+    Works with both RioClient and RioThingClient.
+    """
+
+    def __init__(self, base_url: str = "http://localhost:8000", max_queue_size: int = 1000):
+        """
+        Initialize WebSocket stream client.
+
+        Args:
+            base_url: Base URL of the API server
+            max_queue_size: Maximum size of message queue
+
+        Example:
+            >>> stream = RioStreamClient(base_url="http://192.168.1.100:8000")
+            >>> stream.subscribe(["flow", "pressure"])
+            >>> for msg in stream.iter_messages(timeout=10.0):
+            ...     print(f"{msg['topic']}: {msg['value']}")
+        """
+        self.base_url = base_url.rstrip("/")
+        self.max_queue_size = max_queue_size
+        self.message_queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
+        self.subscribed_topics: List[str] = []
+        self.subscribed_channels: Dict[str, List[int]] = {}
+        self.ws: Optional[websocket.WebSocketApp] = None
+        self.ws_thread: Optional[threading.Thread] = None
+        self._connected = False
+        self._stop_event = threading.Event()
+
+    def _get_ws_url(self) -> str:
+        """Get WebSocket URL."""
+        ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://")
+        return f"{ws_url}/api/streams/aggregate"
+
+    def subscribe(
+        self,
+        topics: List[str],
+        channels: Optional[Dict[str, List[int]]] = None,
+    ) -> None:
         """
         Subscribe to topics and channels.
 
         Args:
             topics: List of topics to subscribe to (e.g., ["flow", "pressure", "heater"])
-            channels: Optional dict mapping topic to list of channel indices (e.g., {"flow": [0, 1]})
+            channels: Optional dict mapping topic to list of channel indices
+                     (e.g., {"flow": [0, 1], "pressure": [0, 2]})
         """
         self.subscribed_topics = topics
         self.subscribed_channels = channels or {}
 
-    def _on_message(self, ws, message: str):
-        """Handle incoming WebSocket message - thread-safe queue."""
+    def _on_message(self, ws, message):
+        """Handle WebSocket message."""
         try:
             data = json.loads(message)
-            try:
-                self.message_queue.put_nowait(data)
-            except queue.Full:
-                logger.warning("Message queue full, dropping message")
+            self.message_queue.put(data, block=False)
+        except queue.Full:
+            logger.warning("Message queue full, dropping message")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse message: {e}")
 

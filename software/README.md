@@ -214,7 +214,7 @@ Later steps will expose full control/streaming surfaces.
 **Linux/Mac:**
 ```bash
 cd /path/to/rio-controller
-./create-pi-deployment.sh
+./scripts/deploy/create-pi-deployment.sh
 rsync -avz --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' \
   pi-deployment/ pi@raspberrypi.local:~/rio-controller/
 ```

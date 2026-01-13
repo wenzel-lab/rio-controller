@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
+from labthings_fastapi.exceptions import InvocationError
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class PumpThing(lt.Thing):
         Raises:
             InvocationError: Pump controller not implemented
         """
-        raise lt.InvocationError("Pump controller not yet implemented")
+        raise InvocationError("Pump controller not yet implemented")
 
     @lt.action
     def set_diameter(self, pump: str, diameter: float) -> dict:
@@ -69,7 +70,7 @@ class PumpThing(lt.Thing):
         Raises:
             InvocationError: Pump controller not implemented
         """
-        raise lt.InvocationError("Pump controller not yet implemented")
+        raise InvocationError("Pump controller not yet implemented")
 
     @lt.action
     def set_direction(self, pump: str, direction: str) -> dict:
@@ -85,7 +86,7 @@ class PumpThing(lt.Thing):
         Raises:
             InvocationError: Pump controller not implemented
         """
-        raise lt.InvocationError("Pump controller not yet implemented")
+        raise InvocationError("Pump controller not yet implemented")
 
     @lt.action
     def set_state(self, pump: str, state: str) -> dict:
@@ -101,5 +102,5 @@ class PumpThing(lt.Thing):
         Raises:
             InvocationError: Pump controller not implemented
         """
-        raise lt.InvocationError("Pump controller not yet implemented")
+        raise InvocationError("Pump controller not yet implemented")
 
