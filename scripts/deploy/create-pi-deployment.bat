@@ -58,8 +58,8 @@ for /d /r "%DEPLOY_DIR%\rio-webapp" %%d in (__pycache__) do rmdir /s /q "%%d" 2>
 REM Configurations
 xcopy /E /I /Y "%SOURCE_DIR%\configurations" "%DEPLOY_DIR%\configurations\" >nul
 
-REM Requirements file
-copy "%SOURCE_DIR%\requirements-webapp-only-32bit.txt" "%DEPLOY_DIR%\" >nul
+REM Requirements file (works for both 32-bit and 64-bit)
+copy "%SOURCE_DIR%\requirements-pi.txt" "%DEPLOY_DIR%\" >nul
 
 REM Create setup script for Pi (using heredoc-like approach)
 (
@@ -87,8 +87,8 @@ echo echo "Step 2: Installing packages to system Python..."
 echo echo "Note: Installing to system Python ^(no virtual environment^)."
 echo echo "      Using --user flag to avoid permission issues ^(installs to ~/.local/lib/python3.x/site-packages^)"
 echo echo ""
-echo if [ -f "requirements-webapp-only-32bit.txt" ]; then
-echo     python3 -m pip install --user -r requirements-webapp-only-32bit.txt
+echo if [ -f "requirements-pi.txt" ]; then
+echo     python3 -m pip install --user -r requirements-pi.txt
 echo else
 echo     echo "Warning: requirements file not found, installing manually..."
 echo     python3 -m pip install --user "Flask&gt;=2.0.0,^&lt;4.0.0"

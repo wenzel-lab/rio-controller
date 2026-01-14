@@ -1,9 +1,10 @@
 #!/bin/bash
 # Quick run script for Rio Controller Simulation Mode
 
-# Get software directory (where this script is located)
+# Get script directory and repo root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SOFTWARE_DIR="$SCRIPT_DIR"
+REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+SOFTWARE_DIR="$REPO_ROOT/software"
 
 # Activate conda/mamba environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
@@ -13,7 +14,7 @@ if conda env list | grep -q "rio-simulation"; then
     conda activate rio-simulation
 else
     echo "Error: rio-simulation environment not found."
-    echo "Please run setup-simulation.sh first."
+    echo "Please run ./scripts/dev/setup-simulation.sh first."
     exit 1
 fi
 
@@ -29,7 +30,7 @@ fi
 echo "Active environment: $CONDA_DEFAULT_ENV"
 echo "Python location: $(which python)"
 
-# Navigate to software directory (where we are)
+# Navigate to software directory
 cd "$SOFTWARE_DIR"
 
 echo "============================================"

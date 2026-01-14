@@ -4,9 +4,17 @@
 
 set -e  # Exit on error
 
+# Get script directory and repo root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+SOFTWARE_DIR="$REPO_ROOT/software"
+
 echo "============================================"
 echo "Rio Controller Simulation Setup"
 echo "============================================"
+echo ""
+echo "Repository root: $REPO_ROOT"
+echo "Software directory: $SOFTWARE_DIR"
 echo ""
 
 # Check if mamba/conda is available
@@ -19,13 +27,6 @@ else
     echo "Error: Neither mamba nor conda found. Please install conda/mamba first."
     exit 1
 fi
-
-# Get software directory (where this script is located)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SOFTWARE_DIR="$SCRIPT_DIR"
-
-echo "Software directory: $SOFTWARE_DIR"
-echo ""
 
 # Step 1: Create environment
 echo "Step 1: Creating mamba environment 'rio-simulation'..."
@@ -46,7 +47,7 @@ fi
 echo "Active environment: $CONDA_DEFAULT_ENV"
 echo "Python location: $(which python)"
 
-# We're already in the software directory
+# Navigate to software directory
 cd "$SOFTWARE_DIR"
 
 # Install dependencies (will install to active environment)
@@ -108,6 +109,6 @@ echo "  1. Activate environment: mamba activate rio-simulation"
 echo "  2. Enable simulation: export RIO_SIMULATION=true"
 echo "  3. Run webapp: cd software && python main.py"
 echo ""
-echo "Or use ./run-simulation.sh from the software directory for convenience."
+echo "Or use ./scripts/dev/run-simulation.sh from the repository root for convenience."
 echo ""
 

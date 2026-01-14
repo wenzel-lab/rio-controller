@@ -58,15 +58,16 @@ class ArtifactRejector:
         if prev_centroids is not None:
             self.prev_centroids = prev_centroids
 
-        # First frame: accept all (no previous frame to compare)
+        # First frame: reject all (wait for background to stabilize and motion to be detected)
+        # This prevents static artifacts from being detected as droplets on startup
         if not self.prev_centroids:
-            # Update state for next frame
+            # Store centroids but don't report any droplets yet (need at least 2 frames for motion detection)
             try:
                 self.prev_centroids = [get_contour_centroid(cnt) for cnt in contours]
             except Exception as e:
                 logger.warning(f"Error calculating centroids: {e}")
                 self.prev_centroids = []
-            return contours
+            return []  # Return empty on first frame - require motion detection
 
         moving_contours = []
 
@@ -102,9 +103,11 @@ class ArtifactRejector:
                     if np.any(close_mask):
                         is_new = False  # It's a tracked droplet, just not moving enough
 
-                # Accept if moving OR if it's a new droplet entering the frame
-                if is_moving or is_new:
+                # Accept only if moving (strict mode - reject static artifacts even if "new")
+                # New droplets entering frame must show motion in subsequent frames to be accepted
+                if is_moving:
                     moving_contours.append(cnt)
+                # Note: We reject "new" static objects to avoid false positives from noise/artifacts
         else:
             # First frame or no previous centroids: accept all
             moving_contours = contours

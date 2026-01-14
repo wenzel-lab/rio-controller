@@ -10,6 +10,7 @@ Classes:
     PiStrobeCam: Integrates camera and strobe for synchronized operation
 """
 
+import os
 import time
 import logging
 from typing import Optional, Tuple, Any, cast
@@ -72,7 +73,7 @@ class PiStrobeCam:
         Args:
             port: GPIO port number for SPI device selection
             reply_pause_s: SPI reply pause time in seconds
-            trigger_gpio_pin: GPIO pin number for PIC trigger (BCM numbering)
+            trigger_gpio_pin: GPIO pin number for PIC trigger (BOARD numbering)
         """
         logger.info(f"Initializing PiStrobeCam (port={port}, trigger_pin={trigger_gpio_pin})")
 
@@ -144,23 +145,37 @@ class PiStrobeCam:
         # Initialize GPIO for PIC trigger (only needed for new mode with hardware trigger)
         if self.hardware_trigger_mode:
             try:
-                GPIO.setmode(GPIO.BCM)
+                # GPIO is always available (spi_handler.py sets it to SimulatedGPIO or RPi.GPIO)
+                # In simulation mode, SimulatedGPIO handles GPIO operations gracefully
+                GPIO.setmode(GPIO.BOARD)
                 GPIO.setup(self.trigger_gpio_pin, GPIO.OUT)
                 GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
                 logger.debug(f"GPIO pin {self.trigger_gpio_pin} configured for trigger")
             except Exception as e:
                 logger.error(f"Error configuring GPIO trigger pin: {e}")
-                raise
+                # In simulation mode, GPIO operations may fail silently - that's OK
+                # On real hardware, GPIO setup failures should be raised
+                if not os.getenv("RIO_SIMULATION", "false").lower() == "true":
+                    raise
 
         # Configure strobe trigger mode only for hardware trigger mode (camera-centric)
         # Old firmware may not support set_trigger_mode command, so only call it when needed
         if self.hardware_trigger_mode:
             try:
-                self.strobe.set_trigger_mode(True)
-                logger.debug("Strobe configured for hardware trigger mode")
+                # Check if set_trigger_mode method exists (for backward compatibility with old firmware)
+                if hasattr(self.strobe, 'set_trigger_mode'):
+                    result = self.strobe.set_trigger_mode(True)
+                    if result:
+                        logger.debug("Strobe configured for hardware trigger mode")
+                    else:
+                        logger.warning("Strobe trigger mode configuration returned False - firmware may not support this feature")
+                else:
+                    logger.warning("Strobe driver does not support set_trigger_mode - using legacy mode")
             except Exception as e:
                 logger.error(f"Error configuring strobe trigger mode: {e}")
-                raise
+                # In simulation mode, this might fail - don't raise if in simulation
+                if not os.getenv("RIO_SIMULATION", "false").lower() == "true":
+                    raise
         else:
             logger.debug("Strobe-centric mode: trigger mode configuration skipped (not needed)")
 
@@ -267,10 +282,13 @@ class PiStrobeCam:
             return
         try:
             # Generate short pulse to PIC T1G input (hardware trigger)
+            # GPIO is always available (spi_handler.py sets it to SimulatedGPIO or RPi.GPIO)
             GPIO.output(self.trigger_gpio_pin, GPIO.HIGH)
-            time.sleep(STROBE_TRIGGER_PULSE_US)  # 1us pulse (PIC detects edge)
+            time.sleep(STROBE_TRIGGER_PULSE_US / 1e6)  # Convert to seconds
             GPIO.output(self.trigger_gpio_pin, GPIO.LOW)
         except Exception as e:
+            # In simulation mode, GPIO operations may fail - log but don't raise
+            # On real hardware, GPIO failures should be logged but may be transient
             logger.error(f"Error in frame callback trigger: {e}")
 
     def set_timing(self, pre_padding_ns: int, strobe_period_ns: int, post_padding_ns: int) -> bool:

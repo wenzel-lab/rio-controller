@@ -131,6 +131,7 @@ class Camera:
         self.optimize_fps_btn_enabled = False
 
         # Configure strobe
+        # Note: strobe_cam and strobe are always initialized (PiStrobeCam.__init__ raises on failure)
         try:
             valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
             self.strobe_cam.strobe.set_hold(self.strobe_data["hold"])
@@ -441,6 +442,11 @@ class Camera:
             logger.debug("Camera is set to 'none', not initializing thread")
             return
 
+        # Don't initialize if exit event is set (app is shutting down)
+        if self.exit_event.is_set():
+            logger.debug("Skipping camera initialization (exit event set)")
+            return
+
         # Ensure camera is started before starting thread
         if self.camera is None:
             logger.error("Camera is None, cannot start thread")
@@ -453,7 +459,19 @@ class Camera:
             try:
                 self.camera.start()
             except Exception as e:
-                logger.error(f"Error starting camera: {e}")
+                # "Camera not initialized" errors are expected during shutdown when camera is closing
+                # Check if this is likely a shutdown-related error
+                error_msg = str(e).lower()
+                is_shutdown_error = (
+                    "not initialized" in error_msg
+                    or self.exit_event.is_set()
+                    or self.thread is None
+                    or (self.thread is not None and not self.thread.is_alive())
+                )
+                if is_shutdown_error:
+                    logger.debug(f"Error starting camera during shutdown (ignored): {e}")
+                else:
+                    logger.error(f"Error starting camera: {e}")
                 return
 
         # Start background frame thread
@@ -481,8 +499,13 @@ class Camera:
         if self.camera is None:
             return None
 
+        # Don't initialize if exit event is set (app is shutting down)
+        if self.exit_event.is_set():
+            return self.frame  # Return last frame if available
+
         # Only initialize if camera thread is not running to avoid repeated starts
-        if self.thread is None or not self.thread.is_alive():
+        # But don't initialize if exit_event is set (app is shutting down)
+        if (self.thread is None or not self.thread.is_alive()) and not self.exit_event.is_set():
             self.initialize()
         return self.frame
 
@@ -636,6 +659,11 @@ class Camera:
             return
 
         try:
+            # Check exit event before starting camera (prevents errors during shutdown)
+            if self.exit_event.is_set():
+                logger.debug("Camera thread exiting early (exit event already set)")
+                return
+
             # Camera setup using new abstraction
             # Set display resolution
             self.camera.set_config(
@@ -665,8 +693,17 @@ class Camera:
                 if self.exit_event.is_set():
                     logger.info("Camera thread exiting (exit event set)")
                     break
+        except KeyboardInterrupt:
+            # KeyboardInterrupt is expected during shutdown - handle gracefully
+            # Note: KeyboardInterrupt propagates to all threads, so exit_event might not be set yet
+            # but it will be set by the main thread's exception handler
+            logger.debug("Camera thread interrupted (shutdown in progress)")
         except Exception as e:
-            logger.error(f"Error in camera thread: {e}")
+            # Only log errors if not shutting down (avoid error spam during shutdown)
+            if not self.exit_event.is_set():
+                logger.error(f"Error in camera thread: {e}")
+            else:
+                logger.debug(f"Camera thread error during shutdown (ignored): {e}")
         finally:
             if self.camera is not None:
                 try:
@@ -703,6 +740,7 @@ class Camera:
             True if timing was set successfully, False otherwise
         """
         try:
+            # Note: strobe_cam is always initialized (Camera.__init__ raises on failure)
             # Clamp strobe period to maximum allowed value
             self.strobe_period_ns = min(self.strobe_period_ns, STROBE_MAX_PERIOD_NS)
             valid = self.strobe_cam.set_timing(
@@ -810,6 +848,14 @@ class Camera:
         Refreshes all strobe parameters in the strobe_data dictionary
         for WebSocket transmission.
         """
+        # Don't update if exit event is set (app is shutting down)
+        if self.exit_event.is_set():
+            return
+        
+        # Don't update if camera thread is not running (prevents error spam)
+        if self.thread is None or not self.thread.is_alive():
+            return
+        
         self.update()
         self.strobe_data["cam_read_time_us"] = self.cam_read_time_us
         self.strobe_data["period_ns"] = self.strobe_period_ns

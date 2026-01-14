@@ -47,6 +47,52 @@ Integration tests for component interaction:
 - Simulation mode end-to-end
 - Error handling scenarios
 
+### `test_api_things.py`
+
+Unit tests for LabThings/WoT Thing classes:
+- **FlowThing** — Flow and pressure control (properties, actions, error handling)
+- **HeaterThing** — Heater control (temperature, PID, stirrer)
+- **CameraThing** — Camera and strobe control (snapshot, resolution, ROI, strobe)
+- **DropletThing** — Droplet detection (status, statistics, histogram, performance)
+- **PumpThing** — Syringe pump control (placeholder, not yet implemented)
+
+Tests cover:
+- Properties returning correct state
+- Actions with valid/invalid parameters
+- Error handling (unavailable controllers, invalid inputs)
+- Edge cases (boundary values, empty lists)
+- Mock controllers for isolated testing
+
+**Requires:** `labthings-fastapi`, `fastapi`, `pydantic` (install via `requirements-api.txt`)
+
+### `test_api_things.py`
+
+Unit tests for LabThings/WoT Thing classes:
+- **FlowThing** — Flow and pressure control (properties, actions, error handling)
+- **HeaterThing** — Heater control (temperature, PID, stirrer)
+- **CameraThing** — Camera and strobe control (snapshot, resolution, ROI, strobe)
+- **DropletThing** — Droplet detection (status, statistics, histogram, performance)
+- **PumpThing** — Syringe pump control (placeholder, not yet implemented)
+
+Tests cover:
+- Properties returning correct state
+- Actions with valid/invalid parameters
+- Error handling (unavailable controllers, invalid inputs)
+- Edge cases (boundary values, empty lists)
+- Mock controllers for isolated testing
+
+**Requires:** `labthings-fastapi`, `fastapi`, `pydantic` (install via `requirements-api.txt`)
+
+### `test_api_streams.py`
+
+Unit tests for WebSocket aggregator and data capture:
+- Stream message formatting
+- Channel selection and filtering
+- On-demand CSV capture
+- Ring buffer functionality
+
+**Requires:** Same as `test_api_things.py`
+
 ### `test_droplet_detection.py`
 
 Unit tests for droplet detection pipeline:
@@ -89,6 +135,10 @@ pytest tests/test_controllers.py
 pytest tests/test_integration.py
 pytest tests/test_droplet_detection.py
 pytest tests/test_measurement_methods.py
+
+# API tests (requires API dependencies installed)
+pytest tests/test_api_things.py
+pytest tests/test_api_streams.py
 
 # Run all tests
 pytest -v
