@@ -77,3 +77,4 @@ software/home/pi/snapshots/
 pi-deployment/DEPLOYMENT_INFO.txt
 
 /docs
+/software/client/notebooks/.ipynb_checkpoints
