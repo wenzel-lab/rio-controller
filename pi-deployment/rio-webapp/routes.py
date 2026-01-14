@@ -265,6 +265,67 @@ def _register_http_routes(
 ) -> None:
     """Register HTTP routes."""
 
+    @app.route("/api/config/channels", defaults={"subpath": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    @app.route("/api/config/channels/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    def proxy_config_channels(subpath: str):
+        """
+        Proxy channel-configuration requests to the FastAPI backend.
+
+        The UI HTML is served by Flask (often port 5000) but the config API is
+        implemented in the FastAPI server (often port 8000). This proxy keeps
+        relative fetch() calls like `/api/config/channels` working.
+
+        Configure the backend base URL with:
+            RIO_FASTAPI_BASE_URL=http://127.0.0.1:8000
+        """
+        from flask import request, jsonify
+        import os
+        import urllib.request
+        import urllib.error
+
+        base = os.getenv("RIO_FASTAPI_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+        upstream_path = "/api/config/channels" + (f"/{subpath}" if subpath else "")
+        qs = request.query_string.decode("utf-8") if request.query_string else ""
+        target_url = f"{base}{upstream_path}" + (f"?{qs}" if qs else "")
+
+        body = request.get_data(cache=False)  # bytes
+        headers = {}
+        # Forward minimal headers needed for JSON behavior.
+        content_type = request.headers.get("Content-Type")
+        if content_type:
+            headers["Content-Type"] = content_type
+        accept = request.headers.get("Accept")
+        if accept:
+            headers["Accept"] = accept
+
+        upstream_req = urllib.request.Request(
+            target_url,
+            data=body if body else None,
+            headers=headers,
+            method=request.method,
+        )
+
+        try:
+            with urllib.request.urlopen(upstream_req, timeout=3.0) as resp:
+                resp_body = resp.read()
+                resp_ct = resp.headers.get("Content-Type") or "application/json"
+                return Response(resp_body, status=resp.getcode(), content_type=resp_ct)
+        except urllib.error.HTTPError as e:
+            err_body = e.read() if hasattr(e, "read") else b""
+            err_ct = getattr(e, "headers", {}).get("Content-Type") if getattr(e, "headers", None) else None
+            return Response(err_body or b"", status=e.code, content_type=err_ct or "application/json")
+        except Exception as e:
+            return (
+                jsonify(
+                    {
+                        "error": "FastAPI backend unavailable",
+                        "detail": str(e),
+                        "target": target_url,
+                    }
+                ),
+                502,
+            )
+
     @app.route("/")
     def index():
         """
