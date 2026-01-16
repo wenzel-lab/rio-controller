@@ -204,6 +204,7 @@ def create_camera(
 
     Camera types:
     - 'mako' → MakoCamera (requires vimba-python)
+    - 'daheng' → DahengCamera (requires gxipy)
     - 'rpi' → PiCameraLegacy (legacy 32-bit picamera)
     - None → Auto-detect based on available hardware
 
@@ -212,7 +213,7 @@ def create_camera(
     - Raspberry Pi with picamera available → PiCameraLegacy
 
     Args:
-        camera_type: Camera type ('mako', 'rpi', or None for auto-detect)
+        camera_type: Camera type ('mako', 'daheng', 'rpi', or None for auto-detect)
         simulation: If True, return simulated camera
         sim_config: Optional simulation configuration dict
 
@@ -231,6 +232,8 @@ def create_camera(
     # Check for specific camera type
     if camera_type == "mako":
         return _create_mako_camera()
+    if camera_type == "daheng":
+        return _create_daheng_camera()
     # Auto-detect based on platform
     return _create_pi_camera()
 
@@ -268,6 +271,21 @@ def _create_mako_camera() -> BaseCamera:
         )
     except Exception as e:
         raise RuntimeError(f"Failed to initialize MAKO camera: {e}")
+
+
+def _create_daheng_camera() -> BaseCamera:
+    """Create Daheng camera instance."""
+    try:
+        from .daheng_camera import DahengCamera
+
+        return DahengCamera()
+    except ImportError:
+        raise RuntimeError(
+            "Daheng camera requested but gxipy not available. "
+            "Install the Daheng Galaxy SDK Python bindings."
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize Daheng camera: {e}")
 
 
 def _create_pi_camera() -> BaseCamera:

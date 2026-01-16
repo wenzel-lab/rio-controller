@@ -24,9 +24,20 @@ except ImportError:
     _MAKO_AVAILABLE = False
     MakoCamera = None  # type: ignore[assignment, misc]
 
+
+try:
+    from .daheng_camera import DahengCamera
+
+    _DAHENG_AVAILABLE = True
+except ImportError:
+    _DAHENG_AVAILABLE = False
+    DahengCamera = None  # type: ignore[assignment, misc]
+
 __all__ = ["BaseCamera", "create_camera"]
 
 if _LEGACY_AVAILABLE:
     __all__.append("PiCameraLegacy")
 if _MAKO_AVAILABLE:
     __all__.append("MakoCamera")
+if _DAHENG_AVAILABLE:
+    __all__.append("DahengCamera")

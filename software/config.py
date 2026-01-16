@@ -81,6 +81,7 @@ ROI_UPDATE_INTERVAL_MS = 500  # ROI info update interval
 CAMERA_TYPE_NONE = "none"
 CAMERA_TYPE_RPI = "rpi"
 CAMERA_TYPE_MAKO = "mako"
+CAMERA_TYPE_DAHENG = "daheng"
 
 # File Paths
 SNAPSHOT_FOLDER = "home/pi/snapshots/"

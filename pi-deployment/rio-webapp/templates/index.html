@@ -245,7 +245,7 @@
                                         <h5 class="card-title">
                                             <i class="bi bi-camera-video"></i> Camera Feed
                                         </h5>
-                                        {% if cam.camera in ['rpi', 'mako'] %}
+                                        {% if cam.camera in ['rpi', 'mako', 'daheng'] %}
                                             {% import 'camera_pi.html' as cam_html %}
                                         {% else %}
                                             {% import 'camera_none.html' as cam_html %}
@@ -344,6 +344,7 @@
                                                 <option value="none">None</option>
                                                 <option value="rpi"{% if cam.camera == "rpi" %} selected{%endif%}>Raspberry Pi Camera V2</option>
                                                 <option value="mako"{% if cam.camera == "mako" %} selected{%endif%}>MAKO Camera</option>
+                                                <option value="daheng"{% if cam.camera == "daheng" %} selected{%endif%}>Daheng MER2 Camera</option>
                                             </select>
                                         </div>
                                     </div>

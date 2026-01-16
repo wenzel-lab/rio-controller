@@ -112,7 +112,7 @@ class PiStrobeCam:
         Set camera type and create appropriate camera instance.
 
         Args:
-            camera_type: Camera type ('none', 'rpi', 'mako')
+            camera_type: Camera type ('none', 'rpi', 'mako', 'daheng')
 
         Returns:
             True if camera was created successfully, False otherwise

@@ -1,6 +1,6 @@
 # software/drivers/camera/ — Camera abstraction + backends
 
-This folder provides a single camera interface (`BaseCamera`) for the rest of the app, plus several concrete backends (Pi camera variants and an Allied Vision Mako backend).
+This folder provides a single camera interface (`BaseCamera`) for the rest of the app, plus several concrete backends (Pi camera variants and USB3 backends like Mako and Daheng).
 
 The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camera.create_camera(...)`), which then feeds frames into the web UI and optional droplet detection.
 
@@ -20,8 +20,8 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
 - **`create_camera(camera_type=None, simulation=False, sim_config=None)`**
   - selects a backend based on:
     - `RIO_SIMULATION=true` → simulated camera (`software/simulation/camera_simulated.py`)
-- requested `camera_type` (`"mako"`, `"rpi"`, `"none"`)
-- platform/library availability (picamera)
+- requested `camera_type` (`"mako"`, `"daheng"`, `"rpi"`, `"none"`)
+- platform/library availability (picamera, gxipy, vimba)
 
 ## Backends (what each file provides)
 
@@ -34,11 +34,15 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
   - Allied Vision Mako backend (Vimba stack)
   - often has stricter constraints and different feature/ROI capabilities than Pi camera backends
 
+- `daheng_camera.py`
+  - Daheng MER2 backend (gxipy / Galaxy SDK)
+  - requires vendor SDK + Python bindings on the host
+
 ## ROI in this layer
 
 The interface supports **software ROI** via `get_frame_roi((x, y, w, h))`.
 Some backends also include “hardware ROI” helpers (sensor/stream crop), but *choosing* between software vs hardware ROI is an application policy decision (typically owned by higher layers).
-- Hardware ROI support: `pi_camera_legacy` (picamera) implements `set_roi_hardware`; `mako_camera` exposes it via Vimba. If a backend rejects hardware ROI, callers should fall back to software ROI.
+- Hardware ROI support: `pi_camera_legacy` (picamera) implements `set_roi_hardware`; `mako_camera` exposes it via Vimba; `daheng_camera` exposes it via gxipy. If a backend rejects hardware ROI, callers should fall back to software ROI.
 
 ## Testing
 
