@@ -176,6 +176,35 @@ Use this when validating ROI behavior on actual hardware.
   - Snapshot returns ROI-sized frame.
   - Droplet detection ROI should still align with the visible frame.
 
+## Scenario smoke checklists (hardware-only)
+
+These are manual checks to run before a release. They are **not** in CI.
+
+### Scenario 1 — Pi image (UI on Pi, optional API)
+
+- Boot the Pi image and confirm UI autostarts.
+- Camera stream displays and snapshots work.
+- Strobe enable/disable works and timing updates apply.
+- ROI set/update works; droplet detection start/stop works.
+
+### Scenario 2 — Pi API-only + external UI/camera
+
+- API-only service runs on the Pi (no UI service).
+- External UI controls flow/heater/strobe via API.
+- External camera stream + droplet processing run locally.
+- USB camera backend checks: **Mako** and **Daheng** streaming + snapshot.
+
+### Scenario 2b — Pi API-only + Pi camera via API
+
+- API exposes Pi camera stream and snapshots.
+- ROI set via API works (software default; hardware ROI if supported).
+- Strobe enable/timing via API works where applicable.
+
+## What runs in CI/simulation vs hardware
+
+- **CI / simulation**: `pytest -v` with `RIO_SIMULATION=true` (fast gate).
+- **Hardware-only**: any camera/strobe/ROI checks that depend on physical devices.
+
 Logical stacking:
 - **Imports + environment sanity**: `test_imports.py`
 - **Drivers layer** (`software/drivers/`): SPI packet framing and driver APIs
