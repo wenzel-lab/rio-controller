@@ -36,11 +36,16 @@ from api.schemas import (
     HeaterSetTempRequest,
     HeaterSetPidRequest,
     HeaterSetStirRequest,
+    HeaterSetPowerLimitRequest,
+    HeaterSetAutotuneRequest,
     CameraResolutionRequest,
     CameraSnapshotResolutionRequest,
     CameraROIRequest,
+    CameraSelectRequest,
+    CameraState,
     StrobeEnableRequest,
     StrobeTimingRequest,
+    StrobeState,
     PumpSetFlowRequest,
     PumpSetDiameterRequest,
     PumpSetDirectionRequest,
@@ -394,6 +399,11 @@ def create_app() -> FastAPI:
                     stir_enabled=h.stir_enabled,
                     autotuning=h.autotuning,
                     status_text=h.status_text,
+                    heat_power_limit_pc=h.heat_power_limit_pc,
+                    autotune_status_text=h.autotune_status_text,
+                    autotune_target_temp=h.autotune_target_temp,
+                    stir_speed_target=h.stir_target_speed,
+                    stir_speed_text=h.stir_speed_text,
                 )
             )
         return HeaterState(heaters=items)
@@ -425,6 +435,25 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_stir_running(1 if req.enabled else 0)
         heaters[req.index].stir_enabled = req.enabled
+        return {"ok": True}
+
+    @app.post("/api/control/heater/power_limit")
+    def heater_set_power_limit_legacy(req: HeaterSetPowerLimitRequest):
+        """Legacy endpoint - calls Heater controller directly."""
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].set_heat_power_limit_pc(req.power_limit_pc)
+        return {"ok": True}
+
+    @app.post("/api/control/heater/autotune")
+    def heater_set_autotune_legacy(req: HeaterSetAutotuneRequest):
+        """Legacy endpoint - calls Heater controller directly."""
+        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        if heaters is None or req.index >= len(heaters):
+            raise HTTPException(status_code=503, detail="Heaters unavailable")
+        heaters[req.index].autotune_target_temp = req.temp_c
+        heaters[req.index].set_autotune(1 if req.enabled else 0)
         return {"ok": True}
 
     @app.get("/api/streams/camera/snapshot")
@@ -490,6 +519,59 @@ def create_app() -> FastAPI:
         cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
         return {"ok": True}
 
+    @app.get("/api/control/camera/state", response_model=CameraState)
+    def camera_state_legacy() -> CameraState:
+        """Return current camera state for remote UI clients."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        roi_tuple = cam.get_roi()
+        roi = None
+        if roi_tuple:
+            roi = {"x": roi_tuple[0], "y": roi_tuple[1], "w": roi_tuple[2], "h": roi_tuple[3]}
+        display_width = cam.cam_data.get("display_width")
+        display_height = cam.cam_data.get("display_height")
+        snapshot_width = cam.cam_data.get("snapshot_width")
+        snapshot_height = cam.cam_data.get("snapshot_height")
+        return CameraState(
+            camera=cam.cam_data.get("camera", "none"),
+            status=cam.cam_data.get("status", ""),
+            display_width=display_width,
+            display_height=display_height,
+            snapshot_resolution_mode=cam.cam_data.get("snapshot_resolution_mode"),
+            snapshot_width=snapshot_width,
+            snapshot_height=snapshot_height,
+            roi=roi,
+        )
+
+    @app.post("/api/control/camera/select")
+    def camera_select_legacy(req: CameraSelectRequest):
+        """Select camera backend (legacy endpoint)."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None or cam.strobe_cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        if cam.thread is not None and cam.thread.is_alive():
+            try:
+                if hasattr(cam, "exit_event"):
+                    cam.exit_event.set()
+                cam.thread.join(timeout=2.0)
+            except Exception:
+                pass
+            finally:
+                if hasattr(cam, "exit_event"):
+                    cam.exit_event.clear()
+
+        camera_name = req.camera
+        success = cam.strobe_cam.set_camera_type(camera_name)
+        if not success and camera_name != "none":
+            raise HTTPException(status_code=400, detail="Failed to set camera type")
+        cam.cam_data["camera"] = camera_name if success else "none"
+        if camera_name != "none" and cam.strobe_cam.camera:
+            cam.camera = cam.strobe_cam.camera
+        else:
+            cam.camera = None
+        return {"ok": True, "camera": cam.cam_data["camera"]}
+
     @app.post("/api/control/strobe/enable")
     def strobe_enable_legacy(req: StrobeEnableRequest):
         """Legacy endpoint - calls Camera controller directly."""
@@ -519,6 +601,15 @@ def create_app() -> FastAPI:
             params["wait_ns"] = int(req.wait_ns)
         cam.on_strobe({"cmd": CMD_TIMING, "parameters": params})
         return {"ok": True}
+
+    @app.get("/api/control/strobe/state", response_model=StrobeState)
+    def strobe_state_legacy() -> StrobeState:
+        """Return current strobe state for remote UI clients."""
+        cam: Camera | None = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.update_strobe_data()
+        return StrobeState(**cam.strobe_data)
 
     @app.post("/api/control/droplet/start")
     def droplet_start_legacy():

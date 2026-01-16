@@ -272,6 +272,8 @@ channels:
 - `POST /api/control/heater/set_temp` — Set target temperature
 - `POST /api/control/heater/pid` — Enable/disable PID
 - `POST /api/control/heater/stir` — Enable/disable stirrer
+- `POST /api/control/heater/power_limit` — Set heater power limit (%)
+- `POST /api/control/heater/autotune` — Start/stop autotune
 
 ### Camera/Strobe control
 - `GET /api/streams/camera/snapshot` — Get JPEG snapshot
@@ -279,9 +281,12 @@ channels:
 - `POST /api/control/camera/set_snapshot_resolution` — Set snapshot resolution mode
 - `POST /api/control/camera/roi` — Set ROI
 - `POST /api/control/camera/roi/clear` — Clear ROI
+- `GET /api/control/camera/state` — Get camera state (for remote UI)
+- `POST /api/control/camera/select` — Select camera backend
 - `POST /api/control/strobe/enable` — Enable/disable strobe
 - `POST /api/control/strobe/hold` — Enable/disable hold mode
 - `POST /api/control/strobe/timing` — Set strobe timing (period, wait)
+- `GET /api/control/strobe/state` — Get strobe state (for remote UI)
 
 ### Droplet detection
 - `POST /api/control/droplet/start` — Start detection

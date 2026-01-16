@@ -41,6 +41,8 @@ Where configuration is consumed in code:
   - `RIO_ROI_MODE=software|hardware` (ROI policy; software default. Hardware ROI applies only on camera backends that support it; otherwise it falls back to software ROI.)
   - `RIO_PUMP_ENABLED=true|false` (enable syringe pump controller via USB serial)
   - `RIO_PUMP_PORT=/dev/ttyUSB0` (optional: explicitly select pump serial port)
+  - `RIO_REMOTE_MODULES=flow,heater,pump,camera` (comma-separated modules served by API)
+  - `RIO_REMOTE_API_URL=http://raspberrypi.local:8000` (base URL for remote modules)
 
 Example:
 ```bash

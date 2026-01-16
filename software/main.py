@@ -37,6 +37,18 @@ from path_bootstrap import bootstrap_runtime
 SIMULATION_MODE = os.getenv("RIO_SIMULATION", "false").lower() == "true"
 NO_GEVENT_PATCH = os.getenv("RIO_NO_GEVENT_PATCH", "false").lower() == "true"
 
+# Remote module configuration (hybrid UI)
+REMOTE_MODULES = {
+    item.strip().lower()
+    for item in os.getenv("RIO_REMOTE_MODULES", "").split(",")
+    if item.strip()
+}
+if "all" in REMOTE_MODULES:
+    REMOTE_MODULES = {"flow", "heater", "camera", "pump", "droplet"}
+REMOTE_API_URL = os.getenv(
+    "RIO_REMOTE_API_URL", os.getenv("RIO_FASTAPI_BASE_URL", "http://127.0.0.1:8000")
+).rstrip("/")
+
 # Prefer gevent to avoid eventlet deprecation; fallback to default if not available.
 _async_mode_default = None
 if not SIMULATION_MODE and not NO_GEVENT_PATCH:
@@ -112,18 +124,40 @@ logger.info("=" * 60)
 logger.info("Rio Microfluidics Controller - Starting up")
 logger.info("=" * 60)
 
+# Remote module flags (hybrid UI)
+use_remote_flow = "flow" in REMOTE_MODULES
+use_remote_heater = "heater" in REMOTE_MODULES
+use_remote_camera = "camera" in REMOTE_MODULES
+use_remote_pump = "pump" in REMOTE_MODULES
+use_remote_droplet = "droplet" in REMOTE_MODULES
+
+remote_client = None
+if REMOTE_MODULES:
+    try:
+        from client import RioClient
+
+        remote_client = RioClient(base_url=REMOTE_API_URL)
+        logger.info("Remote modules enabled: %s (base=%s)", ",".join(sorted(REMOTE_MODULES)), REMOTE_API_URL)
+    except Exception as e:
+        logger.error("Failed to initialize remote client: %s", e)
+        raise
+
 # Global state
 exit_event = Event()
 debug_data = {"update_count": 0}
 
 # Initialize hardware communication
 logger.info("Step 1: Initializing SPI communication...")
-try:
-    spi_init(0, 2, 30000)
-    logger.info("Step 1: SPI communication initialized successfully")
-except Exception as e:
-    logger.error(f"Step 1: SPI initialization failed: {e}")
-    raise
+needs_spi = not (use_remote_flow and use_remote_heater and use_remote_camera)
+if needs_spi:
+    try:
+        spi_init(0, 2, 30000)
+        logger.info("Step 1: SPI communication initialized successfully")
+    except Exception as e:
+        logger.error(f"Step 1: SPI initialization failed: {e}")
+        raise
+else:
+    logger.info("Step 1: SPI initialization skipped (all SPI modules are remote)")
 
 # Create Flask app and SocketIO first (needed for Camera initialization)
 logger.info("Step 2: Creating Flask application...")
@@ -181,18 +215,33 @@ except Exception as e:
 
 # Initialize hardware models (after SPI init and Flask/SocketIO setup)
 logger.info("Step 4: Initializing hardware models...")
-heater1 = heater_web(1, PORT_HEATER1)
-heater2 = heater_web(2, PORT_HEATER2)
-heater3 = heater_web(3, PORT_HEATER3)
-heater4 = heater_web(4, PORT_HEATER4)
-heaters = [heater1, heater2, heater3, heater4]
+if use_remote_heater:
+    from controllers.remote import RemoteHeater
 
-flow = FlowWeb(PORT_FLOW)
+    heaters = [RemoteHeater(i, remote_client) for i in range(4)]
+else:
+    heater1 = heater_web(1, PORT_HEATER1)
+    heater2 = heater_web(2, PORT_HEATER2)
+    heater3 = heater_web(3, PORT_HEATER3)
+    heater4 = heater_web(4, PORT_HEATER4)
+    heaters = [heater1, heater2, heater3, heater4]
+
+if use_remote_flow:
+    from controllers.remote import RemoteFlow
+
+    flow = RemoteFlow(remote_client)
+else:
+    flow = FlowWeb(PORT_FLOW)
 
 # Camera needs exit_event and socketio
 logger.info("Step 5: Initializing camera controller...")
 try:
-    cam = Camera(exit_event, socketio)
+    if use_remote_camera:
+        from controllers.remote import RemoteCamera
+
+        cam = RemoteCamera(exit_event, socketio, remote_client)
+    else:
+        cam = Camera(exit_event, socketio)
     logger.info("Step 5: Camera controller initialized")
 except Exception as e:
     logger.error(f"Step 5: Camera initialization failed: {e}")
@@ -210,6 +259,14 @@ pump_web_controller = None
 # Check module enable flag (can be set via environment variable)
 # Format: RIO_DROPLET_ANALYSIS_ENABLED=true or false
 droplet_analysis_enabled = os.getenv("RIO_DROPLET_ANALYSIS_ENABLED", "true").lower() == "true"
+
+if use_remote_droplet:
+    logger.warning("Remote droplet module not implemented yet; disabling droplet analysis.")
+    droplet_analysis_enabled = False
+
+if use_remote_camera and droplet_analysis_enabled:
+    logger.warning("Droplet analysis requires a local camera controller; disabling droplet analysis.")
+    droplet_analysis_enabled = False
 
 if droplet_analysis_enabled:
     try:
@@ -230,7 +287,12 @@ else:
 pump_controller = None
 if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
     try:
-        pump_controller = DevicePumpController()
+        if use_remote_pump:
+            from controllers.remote import RemotePumpController
+
+            pump_controller = RemotePumpController(REMOTE_API_URL)
+        else:
+            pump_controller = DevicePumpController()
         logger.info("Pump controller initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize pump controller: {e}")

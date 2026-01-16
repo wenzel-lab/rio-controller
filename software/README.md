@@ -132,6 +132,7 @@ The repository includes **3 requirements files** for different deployment scenar
    python main.py
    ```
    ROI modes: default is software ROI; set `RIO_ROI_MODE=hardware` to request hardware ROI when the active camera backend supports it (falls back to software if not).
+   Hybrid UI: set `RIO_REMOTE_MODULES=flow,heater,pump,camera` and `RIO_REMOTE_API_URL=http://raspberrypi.local:8000` to use API-backed modules.
 
 3. **Access the web interface**:
    - Open your browser to `http://localhost:5000` (or your specified port)

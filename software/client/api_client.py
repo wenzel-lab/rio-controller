@@ -246,6 +246,20 @@ class RioClient:
         """Enable/disable stirrer for a heater."""
         return self._post("/api/control/heater/stir", data={"index": index, "enabled": enabled})
 
+    def set_heater_power_limit(self, index: int, power_limit_pc: int) -> Dict[str, Any]:
+        """Set heater power limit percent."""
+        return self._post(
+            "/api/control/heater/power_limit",
+            data={"index": index, "power_limit_pc": int(power_limit_pc)},
+        )
+
+    def set_heater_autotune(self, index: int, enabled: bool, temp_c: float) -> Dict[str, Any]:
+        """Enable/disable heater autotune."""
+        return self._post(
+            "/api/control/heater/autotune",
+            data={"index": index, "enabled": enabled, "temp_c": float(temp_c)},
+        )
+
     # Camera control
     def get_camera_snapshot(self) -> bytes:
         """Get JPEG snapshot from camera."""
@@ -273,6 +287,24 @@ class RioClient:
             data["height"] = height
         return self._post("/api/control/camera/set_resolution", data=data)
 
+    def set_camera_snapshot_resolution(
+        self, mode: str, width: Optional[int] = None, height: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Set snapshot resolution mode."""
+        data: Dict[str, Any] = {"mode": mode}
+        if width and height:
+            data["width"] = width
+            data["height"] = height
+        return self._post("/api/control/camera/set_snapshot_resolution", data=data)
+
+    def get_camera_state(self) -> Dict[str, Any]:
+        """Get current camera state."""
+        return self._get("/api/control/camera/state")
+
+    def set_camera_type(self, camera: str) -> Dict[str, Any]:
+        """Select camera backend on the API server."""
+        return self._post("/api/control/camera/select", data={"camera": camera})
+
     def set_camera_roi(self, x: int, y: int, w: int, h: int) -> Dict[str, Any]:
         """Set camera ROI."""
         return self._post("/api/control/camera/roi", data={"x": x, "y": y, "w": w, "h": h})
@@ -296,6 +328,10 @@ class RioClient:
         if wait_ns is not None:
             data["wait_ns"] = wait_ns
         return self._post("/api/control/strobe/timing", data=data)
+
+    def get_strobe_state(self) -> Dict[str, Any]:
+        """Get current strobe state."""
+        return self._get("/api/control/strobe/state")
 
     # Droplet detection
     def droplet_start(self) -> Dict[str, Any]:
