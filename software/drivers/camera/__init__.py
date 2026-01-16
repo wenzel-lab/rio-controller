@@ -1,10 +1,6 @@
 """
-Camera driver module.
-
-Provides camera abstraction layer and backends:
-- PiCameraLegacy: Raspberry Pi camera (32-bit OS, legacy picamera)
-- MakoCamera: Allied Vision Mako (Vimba SDK)
-- DahengCamera: Daheng MER2 (gxipy SDK)
+Droplet Detection Module
+Platform-agnostic droplet detection for Raspberry Pi (32-bit & 64-bit)
 """
 
 from .camera_base import BaseCamera, create_camera
@@ -28,9 +24,19 @@ except ImportError:
     _MAKO_AVAILABLE = False
     MakoCamera = None  # type: ignore[assignment, misc]
 
+try:
+    from .daheng_camera import DahengCamera
+
+    _DAHENG_AVAILABLE = True
+except ImportError:
+    _DAHENG_AVAILABLE = False
+    DahengCamera = None  # type: ignore[assignment, misc]
+
 __all__ = ["BaseCamera", "create_camera"]
 
 if _LEGACY_AVAILABLE:
     __all__.append("PiCameraLegacy")
 if _MAKO_AVAILABLE:
     __all__.append("MakoCamera")
+if _DAHENG_AVAILABLE:
+    __all__.append("DahengCamera")
