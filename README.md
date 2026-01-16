@@ -28,7 +28,7 @@ Our aim is to create a prototype of a _compact_ working station for microfluidic
 For a repository architecture guide, see [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Software (runtime + development)**: [`software/README.md`](software/README.md)
   - Main entry point: `software/main.py`
-- **Deployment bundle (Pi updates)**: [`pi-deployment/README.md`](pi-deployment/README.md)
+- **Deployment bundle (Pi updates)**: generated via `scripts/deploy/create-pi-deployment.sh` into `pi-deployment/`
 - **Hardware modules** (assembly + usage):
   - Pi HAT: [`hardware-modules/rpi-hat/README.md`](hardware-modules/rpi-hat/README.md)
   - Strobe imaging: [`hardware-modules/strobe-imaging/README.md`](hardware-modules/strobe-imaging/README.md)
@@ -77,7 +77,7 @@ A _module_ commonly consists of a compact controller, sensors, and actuators, an
 
 ### Software
 
-The software follows a client-server architecture and allows users to control the physical hardware through a graphical interface. It runs on a Raspberry Pi (32-bit bullseye, or 64-bit operating system).
+The software follows a client-server architecture and allows users to control the physical hardware through a graphical interface. It runs on a Raspberry Pi (legacy 32-bit OS for Pi camera support).
 
 **Installation and Usage:**
 - For detailed software installation and usage instructions, see [software/README.md](software/README.md)
@@ -95,6 +95,14 @@ The software follows a client-server architecture and allows users to control th
 - Device orchestration: `software/controllers/`
 - Hardware adapters: `software/drivers/` (camera backends in `software/drivers/camera/`)
 - Droplet detection pipeline: `software/droplet-detection/`
+
+### Choose Your Scenario
+
+- **Scenario 1 — Pi image (UI on Pi, optional API)**: Flask UI autostarts on the Pi, API is optional.
+- **Scenario 2 — Pi API-only + external UI/camera**: Pi exposes API for Pi-HAT modules; external computer runs UI + image processing.
+- **Scenario 2b — Pi API-only + Pi camera via API**: legacy `picamera` remains on the Pi; clients control via API.
+
+For Pi mode switching, use `scripts/pi/rio-mode` (UI vs API single-owner).
 
 ## Use Cases
 

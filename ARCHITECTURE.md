@@ -5,7 +5,7 @@ This document is a **permanent repository guide**: it explains how the Rio contr
 ## Documentation Gradient (how to read this repo)
 
 - **Top-level docs** (this file, `/README.md`): newcomer- and user-oriented (“what is this, what do I need, where do I start?”).
-- **Subsystem READMEs** (`software/`, `pi-deployment/`, `hardware-modules/*/`): practitioner-oriented (“how do I run/deploy this module?”).
+- **Subsystem READMEs** (`software/`, `hardware-modules/*/`): practitioner-oriented (“how do I run/deploy this module?”).
 - **Deep subfolders** (`software/controllers/`, `software/drivers/`, `software/tests/`, firmware folders): developer/AI-agent oriented (“how it works, invariants, how to change safely without forking logic”).
 
 ## What this repository contains
@@ -17,7 +17,7 @@ Rio is a modular microfluidics controller consisting of:
 Start here:
 - Project overview: [`README.md`](README.md)
 - Software installation/usage: [`software/README.md`](software/README.md)
-- Raspberry Pi deployment package usage: [`pi-deployment/README.md`](pi-deployment/README.md)
+- Raspberry Pi deployment bundle: generated via `scripts/deploy/create-pi-deployment.sh`
 
 ## Repository Structure (high level)
 
@@ -101,7 +101,7 @@ This repo is easiest to understand by reading from shallow → deep:
 
 ### 5) Deployment (practitioner)
 
-- Raspberry Pi deployment bundle: [`pi-deployment/README.md`](pi-deployment/README.md)
+- Raspberry Pi deployment bundle: generated via `scripts/deploy/create-pi-deployment.sh`
 - Example deployment configs: [`pi-deployment/configurations/README.md`](pi-deployment/configurations/README.md)
 
 ## Conceptual Architecture (system level)
@@ -133,7 +133,7 @@ If you want to verify that “who owns what logic” is consistent in code, star
 
 Configuration is primarily driven by environment variables (`RIO_*`) plus a small number of config/constants in `software/config.py`.
 - **Hardware vs simulation**: routine dev/tests use `RIO_SIMULATION=true`; hardware runs use `RIO_SIMULATION=false`.
-- **Feature toggles**: modules such as droplet analysis, flow, heater can be enabled/disabled via env vars (see `software/README.md` and `pi-deployment/README.md`).
+- **Feature toggles**: modules such as droplet analysis, flow, heater can be enabled/disabled via env vars (see `software/README.md`).
 - **Control mode**: strobe-centric vs camera-centric mode is selected via `RIO_STROBE_CONTROL_MODE` (see deployment/software docs).
 - **ROI mode**: `RIO_ROI_MODE=software|hardware` (software default). Hardware ROI applies only on camera backends that support it; otherwise the app falls back to software ROI.
 

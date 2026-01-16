@@ -192,7 +192,7 @@ cd /somewhere/else
 
 ## Related Documentation
 
-- **Deployment**: See `pi-deployment/README.md` for Pi setup instructions
+- **Deployment**: See `software/README.md` for Pi setup instructions (bundle created via `scripts/deploy/create-pi-deployment.sh`)
 - **Development**: See `software/README.md` for development workflow
 - **Architecture**: See `ARCHITECTURE.md` for repository structure
 

@@ -78,7 +78,13 @@ The repository includes **3 requirements files** for different deployment scenar
 - **Raspberry Pi (Production)**: See [Raspberry Pi Deployment](#raspberry-pi-deployment) below
   - Uses system Python (no virtual environment)
   - For actual hardware operation
-  - Follow instructions in `../pi-deployment/README.md`
+  - `pi-deployment/` is generated from `software/` using `scripts/deploy/create-pi-deployment.sh`
+
+### Choose Your Scenario
+
+- **Scenario 1 — Pi image (UI on Pi, optional API)**: Flask UI autostarts on the Pi, API is optional.
+- **Scenario 2 — Pi API-only + external UI/camera**: Pi exposes API for Pi-HAT modules; external computer runs UI + image processing.
+- **Scenario 2b — Pi API-only + Pi camera via API**: legacy `picamera` remains on the Pi; clients control via API.
 
 ---
 
@@ -206,7 +212,7 @@ Later steps will expose full control/streaming surfaces.
 **IMPORTANT:** 
 - **DO NOT use mamba/conda on Raspberry Pi** - use system Python
 - **DO NOT create virtual environments on Pi** - install to system Python
-- Follow the instructions in `../pi-deployment/README.md` for complete deployment steps
+- `pi-deployment/` is a generated bundle; it is the runtime copy used on the Pi
 
 ### Creating the Pi Deployment Bundle (from Mac/PC)
 
@@ -227,9 +233,24 @@ create-pi-deployment.bat
 # Then use your preferred method to copy pi-deployment/ to the Pi (e.g., WinSCP, SCP)
 ```
 
-After syncing, **SSH to your Pi** and follow the instructions in `pi-deployment/README.md`:
+After syncing, **SSH to your Pi**:
 - Run `./setup.sh` (first time only - installs packages to system Python)
 - Run `./run.sh` or `python main.py` (to start the application)
+
+### Pi Mode Switching (UI vs API)
+
+To switch between UI-only and API-only services on the Pi:
+```bash
+./scripts/pi/rio-mode ui
+./scripts/pi/rio-mode api
+./scripts/pi/rio-mode status
+```
+Install the systemd units first:
+```bash
+sudo cp ./scripts/pi/systemd/rio-ui.service /etc/systemd/system/
+sudo cp ./scripts/pi/systemd/rio-api.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
 
 ### Key Differences: Development vs Production
 
@@ -284,6 +305,8 @@ mypy . --exclude droplet-detection
 # Linting (flake8)
 flake8 controllers/ rio-webapp/ main.py tests/ --max-line-length=100
 ```
+
+**CI:** The GitHub Actions workflow (`.github/workflows/ci.yml`) runs `black`, `flake8`, `mypy`, and `pytest` in simulation mode on push/PRs.
 
 See `tests/README.md` for detailed test documentation.
 

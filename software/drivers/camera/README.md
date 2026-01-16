@@ -45,6 +45,11 @@ The interface supports **software ROI** via `get_frame_roi((x, y, w, h))`.
 Some backends also include “hardware ROI” helpers (sensor/stream crop), but *choosing* between software vs hardware ROI is an application policy decision (typically owned by higher layers).
 - Hardware ROI support: `pi_camera_legacy` (picamera) implements `set_roi_hardware`; `mako_camera` exposes it via Vimba; `daheng_camera` exposes it via gxipy. If a backend rejects hardware ROI, callers should fall back to software ROI.
 
+**ROI invariants (all backends):**
+- ROI coordinates are pixel-based and refer to the current stream frame.
+- If hardware ROI is active and matches the requested ROI, the returned frame is already cropped (full frame == ROI).
+- If hardware ROI is active but does not match, callers should treat ROI as software cropping on the decoded frame.
+
 ## Testing
 
 From `software/` (simulation mode unless explicitly testing on hardware):
