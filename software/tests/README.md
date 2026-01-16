@@ -156,6 +156,26 @@ This suite is most useful when read “bottom-up”:
 - **Tier 2 (integration + optional datasets)**: still simulation, but may need optional data (e.g., droplet images). If absent, tests must skip with a clear reason.
 - **Tier 3 (hardware/Pi-only)**: opt-in, marked tests that should not run by default. Run manually on hardware when needed.
 
+## Hardware ROI checklist (manual)
+
+Use this when validating ROI behavior on actual hardware.
+
+### Pi legacy camera (picamera)
+
+- Start the UI with `RIO_ROI_MODE=software` and confirm ROI cropping works (stream + snapshot + droplet detection).
+- Switch to `RIO_ROI_MODE=hardware` and set ROI via the UI:
+  - Stream resolution should shrink to the ROI region.
+  - Snapshot returns ROI-sized frame.
+  - Droplet detection ROI should still align with the visible frame.
+
+### Mako (Vimba)
+
+- Start the UI with `RIO_ROI_MODE=software` and confirm ROI cropping works (stream + snapshot + droplet detection).
+- Switch to `RIO_ROI_MODE=hardware` and set ROI via the UI:
+  - Stream resolution should shrink to the ROI region.
+  - Snapshot returns ROI-sized frame.
+  - Droplet detection ROI should still align with the visible frame.
+
 Logical stacking:
 - **Imports + environment sanity**: `test_imports.py`
 - **Drivers layer** (`software/drivers/`): SPI packet framing and driver APIs
