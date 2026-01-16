@@ -1,0 +1,16 @@
+[Unit]
+Description=Rio Controller API (FastAPI/LabThings)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/rio-controller/pi-deployment
+Environment=RIO_SIMULATION=false
+Environment=RIO_PUMP_ENABLED=false
+ExecStart=/usr/bin/python3 -m api.main
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

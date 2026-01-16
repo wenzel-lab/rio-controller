@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE=${1:-}
+RIO_ROOT=${RIO_ROOT:-/home/pi/rio-controller}
+SYSTEMD_DIR=${SYSTEMD_DIR:-/etc/systemd/system}
+
+UI_SERVICE=rio-ui.service
+API_SERVICE=rio-api.service
+
+print_usage() {
+  cat <<EOF
+Usage: rio-mode <ui|api|stop|status>
+
+Examples:
+  rio-mode ui      # enable UI service, disable API
+  rio-mode api     # enable API service, disable UI
+  rio-mode stop    # stop both services
+  rio-mode status  # show current service status
+
+Env overrides:
+  RIO_ROOT=/home/pi/rio-controller
+  SYSTEMD_DIR=/etc/systemd/system
+EOF
+}
+
+ensure_services_present() {
+  if [[ ! -f "${SYSTEMD_DIR}/${UI_SERVICE}" || ! -f "${SYSTEMD_DIR}/${API_SERVICE}" ]]; then
+    echo "Services not installed in ${SYSTEMD_DIR}."
+    echo "Copy from ${RIO_ROOT}/scripts/pi/systemd/ and run: sudo systemctl daemon-reload"
+    exit 1
+  fi
+}
+
+case "${MODE}" in
+  ui)
+    ensure_services_present
+    sudo systemctl disable --now "${API_SERVICE}"
+    sudo systemctl enable --now "${UI_SERVICE}"
+    ;;
+  api)
+    ensure_services_present
+    sudo systemctl disable --now "${UI_SERVICE}"
+    sudo systemctl enable --now "${API_SERVICE}"
+    ;;
+  stop)
+    ensure_services_present
+    sudo systemctl disable --now "${UI_SERVICE}" "${API_SERVICE}"
+    ;;
+  status)
+    ensure_services_present
+    systemctl --no-pager status "${UI_SERVICE}" "${API_SERVICE}"
+    ;;
+  *)
+    print_usage
+    exit 1
+    ;;
+esac

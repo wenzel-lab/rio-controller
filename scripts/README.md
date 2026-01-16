@@ -13,6 +13,10 @@ This folder contains operational scripts for building, deploying, and developing
   - `setup-simulation.sh` — Set up development environment (mamba/conda)
   - `run-simulation.sh` — Run application in simulation mode
 
+- **`pi/`** — Raspberry Pi operational scripts
+  - `rio-mode` — Switch between UI-only and API-only systemd services
+  - `systemd/` — Example systemd unit files (`rio-ui.service`, `rio-api.service`)
+
 ## Quick Reference
 
 ### Deployment Scripts
@@ -121,6 +125,26 @@ Runs the application in simulation mode using the `rio-simulation` conda environ
 1. Activates `rio-simulation` environment
 2. Sets `RIO_SIMULATION=true`
 3. Runs `python main.py` from `software/` directory
+
+### Raspberry Pi Scripts
+
+#### `pi/rio-mode`
+
+Switches between UI and API services on a Pi (single-owner model).
+
+**Install systemd services:**
+```bash
+sudo cp ./scripts/pi/systemd/rio-ui.service /etc/systemd/system/
+sudo cp ./scripts/pi/systemd/rio-api.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+**Switch modes:**
+```bash
+./scripts/pi/rio-mode ui
+./scripts/pi/rio-mode api
+./scripts/pi/rio-mode status
+```
 
 ## Path Handling
 

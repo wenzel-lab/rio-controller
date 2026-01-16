@@ -1,0 +1,19 @@
+[Unit]
+Description=Rio Controller UI (Flask)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/rio-controller/pi-deployment
+Environment=RIO_SIMULATION=false
+Environment=RIO_DROPLET_ANALYSIS_ENABLED=true
+Environment=RIO_FLOW_ENABLED=true
+Environment=RIO_HEATER_ENABLED=true
+Environment=RIO_PUMP_ENABLED=false
+ExecStart=/usr/bin/python3 /home/pi/rio-controller/pi-deployment/main.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
