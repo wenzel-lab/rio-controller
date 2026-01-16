@@ -5,6 +5,8 @@ Provides camera abstraction layer and backends:
 - PiCameraLegacy: Raspberry Pi camera (32-bit OS, legacy picamera)
 - MakoCamera: Allied Vision Mako (Vimba SDK)
 - DahengCamera: Daheng MER2 (gxipy SDK)
+"""
+
 from .camera_base import BaseCamera, create_camera
 
 # Import camera implementations lazily (only when needed)
