@@ -288,7 +288,6 @@ echo "Next steps:"
 echo "  1. If legacy camera is not enabled, run: sudo raspi-config → Interface Options → Legacy Camera → Enable"
 echo "  2. Reboot if you changed camera settings: sudo reboot"
 echo "  3. After reboot, run the application:"
-echo "     export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric"
 echo "     export RIO_SIMULATION=false"
 echo "     export RIO_DROPLET_ANALYSIS_ENABLED=true"
 echo "     python main.py"
@@ -309,14 +308,12 @@ cat > "$DEPLOY_DIR/run.sh" << 'EOF'
 cd "$(dirname "$0")"
 
 # Set default environment variables if not set
-export RIO_STROBE_CONTROL_MODE=${RIO_STROBE_CONTROL_MODE:-strobe-centric}
 export RIO_SIMULATION=${RIO_SIMULATION:-false}
 export RIO_DROPLET_ANALYSIS_ENABLED=${RIO_DROPLET_ANALYSIS_ENABLED:-true}
 export RIO_FLOW_ENABLED=${RIO_FLOW_ENABLED:-false}
 export RIO_HEATER_ENABLED=${RIO_HEATER_ENABLED:-false}
 
 echo "Starting Rio microfluidics controller..."
-echo "Control mode: $RIO_STROBE_CONTROL_MODE"
 echo "Simulation: $RIO_SIMULATION"
 echo "Droplet detection: $RIO_DROPLET_ANALYSIS_ENABLED"
 echo ""

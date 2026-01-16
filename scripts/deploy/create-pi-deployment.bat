@@ -113,10 +113,9 @@ echo echo ""
 echo echo "Setup complete!"
 echo echo ""
 echo echo "To run the application:"
-echo echo "  1. export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric"
-echo echo "  2. export RIO_SIMULATION=false"
-echo echo "  3. export RIO_DROPLET_ANALYSIS_ENABLED=true"
-echo echo "  4. python main.py"
+echo echo "  1. export RIO_SIMULATION=false"
+echo echo "  2. export RIO_DROPLET_ANALYSIS_ENABLED=true"
+echo echo "  3. python main.py"
 echo echo ""
 echo echo "Or use the run.sh script after setting environment variables."
 echo echo ""
@@ -132,14 +131,12 @@ echo.
 echo cd "$^(dirname "$0"^)"
 echo.
 echo # Set default environment variables if not set
-echo export RIO_STROBE_CONTROL_MODE=${RIO_STROBE_CONTROL_MODE:-strobe-centric}
 echo export RIO_SIMULATION=${RIO_SIMULATION:-false}
 echo export RIO_DROPLET_ANALYSIS_ENABLED=${RIO_DROPLET_ANALYSIS_ENABLED:-true}
 echo export RIO_FLOW_ENABLED=${RIO_FLOW_ENABLED:-false}
 echo export RIO_HEATER_ENABLED=${RIO_HEATER_ENABLED:-false}
 echo.
 echo echo "Starting Rio microfluidics controller..."
-echo echo "Control mode: $RIO_STROBE_CONTROL_MODE"
 echo echo "Simulation: $RIO_SIMULATION"
 echo echo "Droplet detection: $RIO_DROPLET_ANALYSIS_ENABLED"
 echo echo ""

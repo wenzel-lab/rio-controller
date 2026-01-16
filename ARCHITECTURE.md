@@ -134,7 +134,7 @@ If you want to verify that “who owns what logic” is consistent in code, star
 Configuration is primarily driven by environment variables (`RIO_*`) plus a small number of config/constants in `software/config.py`.
 - **Hardware vs simulation**: routine dev/tests use `RIO_SIMULATION=true`; hardware runs use `RIO_SIMULATION=false`.
 - **Feature toggles**: modules such as droplet analysis, flow, heater can be enabled/disabled via env vars (see `software/README.md`).
-- **Control mode**: strobe-centric vs camera-centric mode is selected via `RIO_STROBE_CONTROL_MODE` (see deployment/software docs).
+- **Strobe pacing**: PIC-paced only (camera is triggered by the PIC; no multi-mode selection).
 - **ROI mode**: `RIO_ROI_MODE=software|hardware` (software default). Hardware ROI applies only on camera backends that support it; otherwise the app falls back to software ROI.
 
 Example configuration files live under:

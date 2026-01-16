@@ -21,7 +21,7 @@ This directory contains example configuration files and documentation for the Ri
 
 ### Detailed Reference Examples
 
-- **`config-example-strobe-centric-32bit.yaml`** - Detailed 32-bit PIC-paced configuration
+- **`config-example-strobe-centric-32bit.yaml`** - Detailed 32-bit PIC-paced configuration (legacy filename)
 
 ## Documentation
 

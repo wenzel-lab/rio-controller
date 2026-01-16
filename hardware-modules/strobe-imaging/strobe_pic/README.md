@@ -48,7 +48,7 @@ The host driver should treat the `main.c` packet switch as authoritative for pay
 
 ## Compatibility notes
 
-- Host-side strobe behavior has multiple orchestration modes (strobe-centric vs camera-centric). Ensure the selected host mode is compatible with the firmware/trigger wiring you’re using.
+- Host-side strobe behavior is PIC-paced only (camera is triggered by the PIC). Ensure wiring matches this trigger direction.
 - If you use the hardware-trigger variant, verify the GPIO trigger pin wiring and the corresponding interrupt configuration.
 
 ## AI-generated notice
