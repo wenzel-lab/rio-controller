@@ -37,6 +37,7 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
 - `daheng_camera.py`
   - Daheng MER2 backend (gxipy / Galaxy SDK)
   - requires vendor SDK + Python bindings on the host
+  - optional env: `RIO_DAHENG_SN` (open by serial) or `RIO_DAHENG_INDEX` (0-based index)
 
 ## ROI in this layer
 

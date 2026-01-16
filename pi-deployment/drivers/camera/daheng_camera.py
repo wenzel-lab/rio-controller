@@ -7,6 +7,7 @@ Uses Daheng Galaxy SDK Python bindings (gxipy).
 from __future__ import annotations
 
 import logging
+import os
 from queue import Queue
 from threading import Event
 from typing import Optional, Dict, Tuple, Generator, Any
@@ -35,14 +36,17 @@ except ImportError:
 class DahengCamera(BaseCamera):
     """Daheng MER2 camera implementation using gxipy."""
 
-    def __init__(self, device_index: int = 1):
+    def __init__(self, device_index: int = 0):
         super().__init__()
         if not GXIPY_AVAILABLE:
             raise RuntimeError(
                 "gxipy not available. Install the Daheng Galaxy SDK Python bindings."
             )
 
-        self._device_index = device_index
+        env_index = os.getenv("RIO_DAHENG_INDEX")
+        self._device_index = int(env_index) if env_index is not None else device_index
+        self._serial_number = os.getenv("RIO_DAHENG_SN")
+        self._device_manager = None
         self._device = None
         self._data_stream = None
 
@@ -53,14 +57,24 @@ class DahengCamera(BaseCamera):
         self._open_device()
 
     def _open_device(self) -> None:
-        manager = DeviceManager()
-        dev_num, _ = manager.update_device_list()
-        if dev_num < self._device_index:
+        self._device_manager = DeviceManager()
+        dev_num, _ = self._device_manager.update_device_list()
+        if dev_num < 1:
             raise RuntimeError("No Daheng cameras found (device list empty).")
-        self._device = manager.open_device_by_index(self._device_index)
+        if self._serial_number:
+            self._device = self._device_manager.open_device_by_sn(self._serial_number)
+        else:
+            # gxipy uses 1-based index
+            self._device = self._device_manager.open_device_by_index(self._device_index + 1)
         if not self._device:
             raise RuntimeError("Failed to open Daheng camera.")
         self._data_stream = self._device.data_stream[0]
+        try:
+            self._device.AcquisitionFrameRate.set(1000)
+            self._device.AcquisitionFrameRateMode.set(1)
+            self._device.DeviceLinkThroughputLimitMode.set(0)
+        except Exception:
+            pass
 
     def start(self) -> None:
         if self._device is None:
