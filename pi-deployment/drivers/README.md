@@ -41,7 +41,8 @@ See: `drivers/flow.py`, `drivers/heater.py`, `drivers/strobe.py` (and the corres
 
 - **Strobe**: `strobe.py` → `class PiStrobe`
   - packet types align with `hardware-modules/strobe-imaging/strobe_pic/`
-  - typical calls: `set_enable(...)`, `set_timing(wait_ns, period_ns)`, `set_hold(...)`, `get_cam_read_time()`, `set_trigger_mode(hardware_trigger)`
+  - typical calls: `set_enable(...)`, `set_timing(wait_ns, period_ns)`, `set_hold(...)`, `get_cam_read_time()`
+  - Note: `set_trigger_mode()` exists in the driver but is not used (PIC-paced mode only)
 
 - **Camera**: `camera/` subpackage (see `camera/README.md`)
   - abstraction layer and backends (Pi camera + Mako)

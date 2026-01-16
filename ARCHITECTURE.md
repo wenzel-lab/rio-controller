@@ -108,7 +108,8 @@ This repo is easiest to understand by reading from shallow → deep:
 
 At runtime, the software is layered roughly as:
 - **Drivers** (`software/drivers/`): low-level SPI/GPIO and device-specific hardware access; camera abstraction.
-- **Device controllers** (`software/controllers/`): state + business logic orchestrating drivers (flow, heater, camera, strobe integration, droplet detector controller).
+- **Device controllers** (`software/controllers/`): state + business logic orchestrating drivers (flow, heater, camera, strobe integration, droplet detector controller, pump).
+- **Remote adapters** (`software/controllers/remote/`): adapter layer for hybrid UI mode; forwards controller calls to remote API when `RIO_REMOTE_MODULES` is set.
 - **Web app** (`software/rio-webapp/`): Flask routes/templates/static assets and WebSocket handlers; presents the UI and translates user commands into controller calls.
 - **API interface** (`software/api/`): LabThings/WoT-based network API layer for external control (Jupyter notebooks, scripts, remote clients). Exposes controllers as WoT-compliant Things.
 - **Client library** (`software/client/`): Python client library and Jupyter notebooks for API interaction.
@@ -121,10 +122,11 @@ Terminology note used throughout the repo:
 
 ## Runtime startup sequence (software)
 
-If you want to verify that “who owns what logic” is consistent in code, start with `software/main.py`. In broad strokes it:
+If you want to verify that "who owns what logic" is consistent in code, start with `software/main.py`. In broad strokes it:
 
 - initializes Flask + Socket.IO
-- instantiates device controllers (`Camera`, `FlowWeb`, `heater_web`) and (optionally) `DropletDetectorController`
+- instantiates device controllers (`Camera`, `FlowWeb`, `heater_web`, `PumpController`) and (optionally) `DropletDetectorController`
+- instantiates remote adapters (if `RIO_REMOTE_MODULES` is set) to forward calls to API
 - instantiates web controllers (Socket.IO handlers under `software/rio-webapp/controllers/`)
 - registers HTTP routes and `/api/droplet/*` endpoints via `software/rio-webapp/routes.py`
 - starts a periodic background update task to emit UI refresh data
