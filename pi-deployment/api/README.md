@@ -67,7 +67,7 @@ This folder contains the **network API layer** that exposes Rio hardware control
 
 5. **Access from Jupyter notebook:**
    ```python
-   from client import RioClient
+   from api.client import RioClient
    client = RioClient(base_url="http://raspberrypi.local:8000")
    health = client.health()
    print(health)
@@ -75,7 +75,8 @@ This folder contains the **network API layer** that exposes Rio hardware control
 
 **For detailed Pi installation and Jupyter access guide, see:** `../../docs/api_pi_testing_guide.md`
 
-See `../client/README.md` for the Python client library and example notebooks.
+Note: the API client library and notebooks are not included in the deployment bundle.
+See the source repo at `software/api/client/README.md` for the client and examples.
 
 ## What belongs here / what does not
 
@@ -277,7 +278,7 @@ A lightweight client library is available at `../client/api_client.py`:
 
 Example usage:
 ```python
-from client import RioClient, RioStreamClient
+from api.client import RioClient, RioStreamClient
 
 # REST client
 client = RioClient(base_url="http://192.168.1.100:8000")
@@ -291,11 +292,11 @@ for msg in stream.iter_messages(timeout=10.0):
     print(f"{msg['topic']}: {msg['value']}")
 ```
 
-See `../client/README.md` for complete documentation.
+See the source repo at `software/api/client/README.md` for complete client documentation.
 
 ### Jupyter notebooks
 
-Two example notebooks are available in `../client/notebooks/`:
+Two example notebooks are available in the source repo under `software/api/client/notebooks/`:
 
 1. **`tutorial.ipynb`** — Step-by-step learning notebook:
    - REST API control (flow, heater, camera)
@@ -381,14 +382,14 @@ pip install -r requirements-api.txt
 
 **Control flow from script:**
 ```python
-from client import RioClient
+from api.client import RioClient
 client = RioClient(base_url="http://192.168.1.100:8000")
 client.set_flow(0, 100.0)  # Set channel 0 to 100 ul/hr
 ```
 
 **Monitor sensors in real-time:**
 ```python
-from client import RioStreamClient
+from api.client import RioStreamClient
 stream = RioStreamClient(base_url="http://192.168.1.100:8000")
 stream.subscribe(["flow", "pressure"])
 for msg in stream.iter_messages(timeout=60.0):
@@ -397,7 +398,7 @@ for msg in stream.iter_messages(timeout=60.0):
 
 **Capture data to CSV:**
 ```python
-from client import RioClient
+from api.client import RioClient
 client = RioClient(base_url="http://192.168.1.100:8000")
 client.capture_start(["flow", "pressure"], path="experiment.csv")
 # ... run experiment ...

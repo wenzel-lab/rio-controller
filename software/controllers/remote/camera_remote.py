@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from PIL import Image
 
-from client import RioClient, RioAPIError
+from api.client import RioClient, RioAPIError
 from config import (
     CAMERA_THREAD_WIDTH,
     CAMERA_THREAD_HEIGHT,

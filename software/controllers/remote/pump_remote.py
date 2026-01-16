@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-from client import SyringePumpAPI, PumpAPIError
+from api.client import SyringePumpAPI, PumpAPIError
 
 logger = logging.getLogger(__name__)
 

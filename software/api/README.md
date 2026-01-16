@@ -82,7 +82,7 @@ This folder contains the **network API layer** that exposes Rio hardware control
 
 5. **Access from Jupyter notebook:**
    ```python
-   from client import RioClient
+   from api.client import RioClient
    client = RioClient(base_url="http://raspberrypi.local:8000")
    health = client.health()
    print(health)
@@ -90,7 +90,7 @@ This folder contains the **network API layer** that exposes Rio hardware control
 
 **For detailed Pi installation and Jupyter access guide, see:** `../../docs/api_pi_testing_guide.md`
 
-See `../client/README.md` for the Python client library and example notebooks.
+See `client/README.md` for the Python client library and example notebooks.
 
 ## What belongs here / what does not
 
@@ -318,13 +318,13 @@ channels:
 
 ### Python client library
 
-A lightweight client library is available at `../client/api_client.py`:
+A lightweight client library is available at `client/api_client.py`:
 - `RioClient` — REST API client with error handling and retry logic
 - `RioStreamClient` — WebSocket aggregator client with thread-safe message queue
 
 Example usage:
 ```python
-from client import RioClient, RioStreamClient
+from api.client import RioClient, RioStreamClient
 
 # REST client
 client = RioClient(base_url="http://192.168.1.100:8000")
@@ -338,11 +338,11 @@ for msg in stream.iter_messages(timeout=10.0):
     print(f"{msg['topic']}: {msg['value']}")
 ```
 
-See `../client/README.md` for complete documentation.
+See `client/README.md` for complete documentation.
 
 ### Jupyter notebooks
 
-Two example notebooks are available in `../client/notebooks/`:
+Two example notebooks are available in `software/api/client/notebooks/` (repo root path):
 
 1. **`tutorial.ipynb`** — Step-by-step learning notebook:
    - REST API control (flow, heater, camera)
@@ -389,7 +389,7 @@ To test the API using Jupyter notebooks in simulation mode (without hardware):
    ```
 
 3. **Navigate to the client notebooks**:
-   - Open `client/notebooks/tutorial.ipynb` or `client/notebooks/interactive_control.ipynb`
+   - Open `api/client/notebooks/tutorial.ipynb` or `api/client/notebooks/interactive_control.ipynb`
    - Or create a new notebook
 
 4. **Set up the client in the notebook**:
@@ -398,7 +398,7 @@ To test the API using Jupyter notebooks in simulation mode (without hardware):
    # Add client library to path
    sys.path.insert(0, '/path/to/rio-controller/software')
    
-   from client import RioClient, RioStreamClient
+   from api.client import RioClient, RioStreamClient
    
    # Connect to local API server
    API_BASE_URL = "http://localhost:8000"
@@ -496,14 +496,14 @@ pip install -r requirements-api.txt
 
 **Control flow from script:**
 ```python
-from client import RioClient
+from api.client import RioClient
 client = RioClient(base_url="http://192.168.1.100:8000")
 client.set_flow(0, 100.0)  # Set channel 0 to 100 ul/hr
 ```
 
 **Monitor sensors in real-time:**
 ```python
-from client import RioStreamClient
+from api.client import RioStreamClient
 stream = RioStreamClient(base_url="http://192.168.1.100:8000")
 stream.subscribe(["flow", "pressure"])
 for msg in stream.iter_messages(timeout=60.0):
@@ -512,7 +512,7 @@ for msg in stream.iter_messages(timeout=60.0):
 
 **Capture data to CSV:**
 ```python
-from client import RioClient
+from api.client import RioClient
 client = RioClient(base_url="http://192.168.1.100:8000")
 client.capture_start(["flow", "pressure"], path="experiment.csv")
 # ... run experiment ...

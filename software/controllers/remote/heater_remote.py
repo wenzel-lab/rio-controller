@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-from client import RioClient, RioAPIError
+from api.client import RioClient, RioAPIError
 
 logger = logging.getLogger(__name__)
 

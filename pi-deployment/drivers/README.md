@@ -7,6 +7,10 @@ This folder contains the lowest-level adapters that talk to Rio hardware: SPI/GP
 - **Belongs here**: device protocol constants, packet framing, and “one module ↔ one firmware protocol” drivers.
 - **Does not belong here**: UI semantics and long-running orchestration loops (those belong in `../controllers/`), and HTTP/WebSocket handling (belongs in `../rio-webapp/`).
 
+## Hardware abstraction vs. direct drivers
+
+This folder is the **hardware abstraction layer** for the system. For most modules there is a single concrete driver (flow/heater/strobe/pump). Cameras are the exception: `drivers/camera/` defines a `BaseCamera` abstraction plus multiple backends (Pi legacy, Mako, Daheng). Controllers consume these drivers and provide the higher-level behavior.
+
 ## SPI/GPIO substrate (`spi_handler.py`)
 
 `spi_handler.py` is the shared substrate used by SPI-speaking drivers:

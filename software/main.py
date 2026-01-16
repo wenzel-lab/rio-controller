@@ -134,7 +134,7 @@ use_remote_droplet = "droplet" in REMOTE_MODULES
 remote_client = None
 if REMOTE_MODULES:
     try:
-        from client import RioClient
+        from api.client import RioClient
 
         remote_client = RioClient(base_url=REMOTE_API_URL)
         logger.info("Remote modules enabled: %s (base=%s)", ",".join(sorted(REMOTE_MODULES)), REMOTE_API_URL)

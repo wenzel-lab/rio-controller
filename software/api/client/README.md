@@ -1,4 +1,4 @@
-# software/client/ — Rio API Client Library
+# software/api/client/ — Rio API Client Library
 
 This folder contains the **Python client library** for interacting with the Rio controller API. It provides both REST API and WebSocket streaming clients, along with example Jupyter notebooks.
 
@@ -39,7 +39,7 @@ For Jupyter notebooks, also install:
 pip install ipywidgets matplotlib pandas numpy jupyter
 ```
 
-**Note:** The client library code is in `software/client/api_client.py`. You can either:
+**Note:** The client library code is in `software/api/client/api_client.py`. You can either:
 - Import directly if `software/` is in your Python path
 - Copy `api_client.py` to your project
 - Add `software/` to `PYTHONPATH`
@@ -53,7 +53,7 @@ import sys
 # Add client library to path (adjust path to your rio-controller repository)
 sys.path.insert(0, '/path/to/rio-controller/software')
 
-from client import RioClient, RioStreamClient
+from api.client import RioClient, RioStreamClient
 
 # REST API client (replace with your Pi's IP or hostname)
 PI_ADDRESS = "raspberrypi.local"  # or "192.168.1.100"
@@ -114,7 +114,7 @@ The client raises custom exceptions:
 
 Example:
 ```python
-from client import RioClient, RioConnectionError, RioHTTPError
+from api.client import RioClient, RioConnectionError, RioHTTPError
 
 try:
     client = RioClient(base_url="http://192.168.1.100:8000")
@@ -297,7 +297,7 @@ client = RioClient(base_url="http://192.168.1.100:8000")
 
 ### Import Errors
 
-**"No module named 'client'"**:
+**"No module named 'api.client'"**:
 - Make sure you're running from the repo root or have `software/` in your Python path
 - In Jupyter, the notebook should handle path setup automatically
 - If not, add manually: `sys.path.insert(0, '/path/to/rio-controller/software')`
@@ -319,7 +319,7 @@ See the Jupyter notebooks in `notebooks/` for complete examples:
 ## API Documentation
 
 For complete API documentation, see:
-- API server README: `../api/README.md`
+- API server README: `../README.md`
 - OpenAPI/Swagger docs: `http://<API_BASE_URL>/docs` (when server is running)
 
 ## AI-generated notice

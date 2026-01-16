@@ -6,7 +6,7 @@ import logging
 from types import SimpleNamespace
 from typing import List
 
-from client import RioClient, RioAPIError
+from api.client import RioClient, RioAPIError
 from config import CONTROL_MODE_FIRMWARE_TO_UI, CONTROL_MODE_UI_TO_FIRMWARE, FLOW_CTRL_MODE_STR
 
 logger = logging.getLogger(__name__)

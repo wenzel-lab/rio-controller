@@ -37,7 +37,7 @@ Start here:
   - Device controllers (business logic): `software/controllers/`
   - Web app (Flask UI): `software/rio-webapp/` (web controllers under `software/rio-webapp/controllers/`)
   - API interface (FastAPI): `software/api/` (network API layer for external control)
-  - Client library: `software/client/` (Python client and Jupyter notebooks)
+    - API client library + notebooks: `software/api/client/`
   - Droplet detection pipeline: `software/droplet-detection/`
   - Simulation layer (no-hardware dev/testing): `software/simulation/`
   - Tests: `software/tests/` (pytest config in `software/pyproject.toml`)
@@ -93,7 +93,7 @@ This repo is easiest to understand by reading from shallow → deep:
 - Web app: [`software/rio-webapp/README.md`](software/rio-webapp/README.md)
 - Web controllers: [`software/rio-webapp/controllers/README.md`](software/rio-webapp/controllers/README.md)
 - API interface: [`software/api/README.md`](software/api/README.md)
-- Client library: [`software/client/README.md`](software/client/README.md)
+- API client library: [`software/api/client/README.md`](software/api/client/README.md)
 - Droplet detection pipeline: [`software/droplet-detection/README.md`](software/droplet-detection/README.md)
 - Simulation layer: [`software/simulation/README.md`](software/simulation/README.md)
 - Tests: [`software/tests/README.md`](software/tests/README.md)
@@ -107,18 +107,34 @@ This repo is easiest to understand by reading from shallow → deep:
 ## Conceptual Architecture (system level)
 
 At runtime, the software is layered roughly as:
-- **Drivers** (`software/drivers/`): low-level SPI/GPIO and device-specific hardware access; camera abstraction.
+- **Drivers** (`software/drivers/`): low-level SPI/GPIO and device-specific hardware access. Camera uses an explicit abstraction (`drivers/camera/BaseCamera`) with multiple backend implementations; other drivers are direct hardware adapters.
+- **Simulation** (`software/simulation/`): drop-in replacements for SPI/GPIO and device backends so development/testing can run without physical hardware.
 - **Device controllers** (`software/controllers/`): state + business logic orchestrating drivers (flow, heater, camera, strobe integration, droplet detector controller, pump).
 - **Remote adapters** (`software/controllers/remote/`): adapter layer for hybrid UI mode; forwards controller calls to remote API when `RIO_REMOTE_MODULES` is set.
 - **Web app** (`software/rio-webapp/`): Flask routes/templates/static assets and WebSocket handlers; presents the UI and translates user commands into controller calls.
 - **API interface** (`software/api/`): LabThings/WoT-based network API layer for external control (Jupyter notebooks, scripts, remote clients). Exposes controllers as WoT-compliant Things.
-- **Client library** (`software/client/`): Python client library and Jupyter notebooks for API interaction.
+- **API client library** (`software/api/client/`): Python client library and Jupyter notebooks for API interaction.
 - **Droplet detection pipeline** (`software/droplet-detection/`): image-processing pipeline and utilities (tests/benchmarks/optimization live alongside this code in `software/`).
-- **Simulation** (`software/simulation/`): drop-in replacements so development/testing can run without physical hardware.
 
 Terminology note used throughout the repo:
 - **Device controller**: hardware control logic/state (in `software/controllers/`).
 - **Web controller**: request/WebSocket handling (in `software/rio-webapp/controllers/`).
+
+## Interface layers (web UI vs API)
+
+The project exposes **two parallel interface stacks** that sit above the same device controllers:
+- **Web UI stack**: `software/rio-webapp/controllers/` (Socket.IO handlers) + `software/rio-webapp/templates/` + `software/rio-webapp/static/` (viewer).
+- **API stack**: `software/api/` (FastAPI + LabThings Things + schemas) + `software/api/client/` (Python client + Jupyter notebooks as viewer/examples).
+
+Both stacks call into `software/controllers/` and do not call drivers directly. This separation keeps UI concerns (views + event handling) distinct from device logic and hardware access.
+
+## Hardware abstraction (drivers vs controllers)
+
+The **hardware abstraction layer** lives in `software/drivers/`. It is explicit for cameras (the `BaseCamera` ABC with multiple backends) and direct for other modules (flow/heater/strobe/pump each have a single hardware adapter). The **controller layer** (`software/controllers/`) orchestrates these drivers and applies safety, state, and timing logic.
+
+## Data/analysis layer (parallel pipeline)
+
+The droplet detection pipeline in `software/droplet-detection/` runs **alongside** the main hardware-control layers. It consumes camera frames and ROI configuration from `software/controllers/camera.py` via `software/controllers/droplet_detector_controller.py`, and its outputs are surfaced through both the web UI and API stacks. This keeps analytics logic isolated from hardware control while still integrating through controller boundaries.
 
 ## Runtime startup sequence (software)
 

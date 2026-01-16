@@ -21,7 +21,7 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Tests: [`tests/README.md`](tests/README.md)
 - Configuration examples: [`configurations/README.md`](configurations/README.md)
 - API interface: [`api/README.md`](api/README.md)
-- API client library: [`client/README.md`](client/README.md)
+- API client library: [`api/client/README.md`](api/client/README.md)
 
 ### Runtime wiring (how the software fits together)
 
@@ -199,7 +199,7 @@ python -m api.main  # default port 8000
   - `GET /api/system/health`
   - `GET /api/system/capabilities`
   - See `api/README.md` for complete endpoint documentation
-  - See `client/README.md` for Python client library and Jupyter notebooks
+  - See `api/client/README.md` for Python client library and Jupyter notebooks
 
 Later steps will expose full control/streaming surfaces.
 
