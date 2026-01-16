@@ -212,7 +212,7 @@ class PiCameraLegacy(BaseCamera):
         is_capturing = self.cam_running_event.is_set() if self.cam_running_event else False
 
         try:
-            # Software ROI cropping only (hardware ROI disabled for stability)
+            # Software ROI cropping when the frame is not already at the hardware ROI size
             if is_capturing:
                 # Hardware ROI not matching - use software cropping from decoded frame
                 with self._last_frame_lock:
