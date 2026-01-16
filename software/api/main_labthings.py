@@ -45,6 +45,7 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
+from controllers.pump_controller import PumpController  # noqa: E402
 
 logger = logging.getLogger("api")
 
@@ -120,6 +121,15 @@ def _init_controllers() -> tuple[dict[str, bool], dict[str, Any]]:
             cam.droplet_controller = droplet_ctrl
         except Exception as e:
             logger.warning("Droplet init failed: %s", e)
+
+    # Pump controller (optional)
+    if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
+        try:
+            pump = PumpController()
+            controllers["pump"] = pump
+            cap["pump"] = True
+        except Exception as e:
+            logger.warning("Pump init failed: %s", e)
 
     return cap, controllers
 
@@ -214,11 +224,11 @@ def create_app() -> FastAPI:
             args=[CONTROLLERS["droplet"]],
         )
 
-    # Pump is placeholder (always available)
-    things_config["pump"] = ThingConfig(
-        cls=PumpThing,
-        args=[None],
-    )
+    if CONTROLLERS.get("pump"):
+        things_config["pump"] = ThingConfig(
+            cls=PumpThing,
+            args=[CONTROLLERS["pump"]],
+        )
 
     # Create ThingServer - it will create its own FastAPI app
     thing_server = lt.ThingServer(things_config, settings_folder=None)

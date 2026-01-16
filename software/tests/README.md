@@ -54,7 +54,7 @@ Unit tests for LabThings/WoT Thing classes:
 - **HeaterThing** — Heater control (temperature, PID, stirrer)
 - **CameraThing** — Camera and strobe control (snapshot, resolution, ROI, strobe)
 - **DropletThing** — Droplet detection (status, statistics, histogram, performance)
-- **PumpThing** — Syringe pump control (placeholder, not yet implemented)
+- **PumpThing** — Syringe pump control (USB serial, when enabled)
 
 Tests cover:
 - Properties returning correct state
@@ -72,7 +72,7 @@ Unit tests for LabThings/WoT Thing classes:
 - **HeaterThing** — Heater control (temperature, PID, stirrer)
 - **CameraThing** — Camera and strobe control (snapshot, resolution, ROI, strobe)
 - **DropletThing** — Droplet detection (status, statistics, histogram, performance)
-- **PumpThing** — Syringe pump control (placeholder, not yet implemented)
+- **PumpThing** — Syringe pump control (USB serial, when enabled)
 
 Tests cover:
 - Properties returning correct state

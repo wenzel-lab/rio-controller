@@ -132,6 +132,13 @@ ROI_MODE_SOFTWARE = "software"
 ROI_MODE_HARDWARE = "hardware"
 ROI_MODE = os.getenv("RIO_ROI_MODE", ROI_MODE_SOFTWARE).strip().lower() or ROI_MODE_SOFTWARE
 
+# Syringe pump configuration (USB serial by default)
+PUMP_ENABLED = os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true"
+PUMP_PORT = os.getenv("RIO_PUMP_PORT", "").strip() or None
+PUMP_BAUDRATE = int(os.getenv("RIO_PUMP_BAUDRATE", "115200"))
+PUMP_TIMEOUT_S = float(os.getenv("RIO_PUMP_TIMEOUT_S", "1.0"))
+PUMP_WRITE_TIMEOUT_S = float(os.getenv("RIO_PUMP_WRITE_TIMEOUT_S", "1.0"))
+
 # Logging Configuration
 # Production should use WARNING level to reduce I/O overhead
 # Development can use INFO or DEBUG for more verbose output

@@ -185,6 +185,25 @@ class TestSimulatedStrobe(unittest.TestCase):
         self.assertEqual(self.strobe.period_ns, period_ns)
 
 
+class TestSimulatedPump(unittest.TestCase):
+    """Test simulated syringe pump controller"""
+
+    def setUp(self):
+        from simulation.pump_simulated import SimulatedPump
+
+        self.pump = SimulatedPump()
+
+    def test_pump_creation(self):
+        self.assertIsNotNone(self.pump)
+
+    def test_pump_set_flow(self):
+        self.pump.set_flow("A", 123.0)
+        self.assertEqual(self.pump.get_flow("A"), 123.0)
+
+    def test_pump_state(self):
+        self.pump.set_state("A", "RUN")
+        self.assertTrue(self.pump.get_state("A"))
+
 class TestSimulationConsistency(unittest.TestCase):
     """Test that simulation behaves consistently with real hardware"""
 

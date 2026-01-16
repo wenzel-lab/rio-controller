@@ -76,11 +76,13 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
+from controllers.pump_controller import PumpController as DevicePumpController  # noqa: E402
 
 # Import web controllers and routes (paths already bootstrapped)
 from camera_controller import CameraController  # noqa: E402
 from flow_controller import FlowController  # noqa: E402
 from heater_controller import HeaterController  # noqa: E402
+from pump_controller import PumpController  # noqa: E402
 from view_model import ViewModel  # noqa: E402
 from routes import register_routes, create_background_update_task  # noqa: E402
 
@@ -205,6 +207,7 @@ except Exception as e:
 # Check if module is enabled (default: True for backward compatibility)
 droplet_controller = None
 droplet_web_controller = None
+pump_web_controller = None
 
 # Check module enable flag (can be set via environment variable)
 # Format: RIO_DROPLET_ANALYSIS_ENABLED=true or false
@@ -225,12 +228,23 @@ if droplet_analysis_enabled:
 else:
     logger.info("Droplet analysis module disabled (RIO_DROPLET_ANALYSIS_ENABLED=false)")
 
+# Initialize pump controller (optional)
+pump_controller = None
+if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
+    try:
+        pump_controller = DevicePumpController()
+        logger.info("Pump controller initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize pump controller: {e}")
+
 # Initialize controllers
 logger.info("Step 6: Initializing web controllers...")
 try:
     camera_controller = CameraController(cam, socketio)
     flow_controller = FlowController(flow, socketio)
     heater_controller = HeaterController(heaters, socketio)
+    if pump_controller is not None:
+        pump_web_controller = PumpController(pump_controller, socketio)
     logger.info("Step 6: Web controllers initialized")
 except Exception as e:
     logger.error(f"Step 6: Web controller initialization failed: {e}")
@@ -259,7 +273,9 @@ view_model = ViewModel(
 # Register Flask routes and WebSocket handlers
 logger.info("Step 7: Registering routes and WebSocket handlers...")
 try:
-    register_routes(app, socketio, view_model, heaters, flow, cam, debug_data, droplet_controller)
+    register_routes(
+        app, socketio, view_model, heaters, flow, cam, pump_controller, debug_data, droplet_controller
+    )
     logger.info("Step 7: Routes and handlers registered")
 except Exception as e:
     logger.error(f"Step 7: Route registration failed: {e}")
@@ -292,7 +308,15 @@ if __name__ == "__main__":
 
     # Start background update thread
     background_task = create_background_update_task(
-        socketio, view_model, heaters, flow, cam, debug_data, exit_event, droplet_web_controller
+        socketio,
+        view_model,
+        heaters,
+        flow,
+        cam,
+        pump_controller,
+        debug_data,
+        exit_event,
+        droplet_web_controller,
     )
     socketio.start_background_task(background_task)
 

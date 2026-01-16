@@ -70,6 +70,7 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
+from controllers.pump_controller import PumpController  # noqa: E402
 from config import (  # noqa: E402
     CMD_SET_RESOLUTION,
     CMD_SET_SNAPSHOT_RESOLUTION,
@@ -154,6 +155,15 @@ def _init_controllers() -> tuple[dict[str, bool], dict[str, Any]]:
             cam.droplet_controller = droplet_ctrl
         except Exception as e:
             logger.warning("Droplet init failed: %s", e)
+
+    # Pump controller (optional; USB serial)
+    if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
+        try:
+            pump = PumpController()
+            controllers["pump"] = pump
+            cap["pump"] = True
+        except Exception as e:
+            logger.warning("Pump init failed: %s", e)
 
     return cap, controllers
 
@@ -248,11 +258,11 @@ def create_app() -> FastAPI:
             args=[CONTROLLERS["droplet"]],
         )
 
-    # Pump is placeholder (always available)
-    things_config["pump"] = ThingConfig(
-        cls=PumpThing,
-        args=[None],
-    )
+    if CONTROLLERS.get("pump"):
+        things_config["pump"] = ThingConfig(
+            cls=PumpThing,
+            args=[CONTROLLERS["pump"]],
+        )
 
     # Create ThingServer - it will create its own FastAPI app
     thing_server = lt.ThingServer(things_config, settings_folder=None)
@@ -570,56 +580,104 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Droplet controller unavailable")
         return droplet.get_performance_metrics()
 
-    # Pump endpoints (all return 501 for now)
+    # Pump endpoints
     @app.get("/api/control/pump/state/{pump}")
     def pump_state_legacy(pump: str):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        """Legacy endpoint - calls Pump controller directly."""
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        return pump_ctrl.get_state(pump)
 
     @app.post("/api/control/pump/set_flow")
     def pump_set_flow_legacy(req: PumpSetFlowRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_flow(req.pump, req.flow)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump flow")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_diameter")
     def pump_set_diameter_legacy(req: PumpSetDiameterRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_diameter(req.pump, req.diameter)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump diameter")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_direction")
     def pump_set_direction_legacy(req: PumpSetDirectionRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_direction(req.pump, req.direction)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump direction")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_state")
     def pump_set_state_legacy(req: PumpSetStateRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_state(req.pump, req.state)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump state")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_unit")
     def pump_set_unit_legacy(req: PumpSetUnitRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_unit(req.pump, req.unit)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump unit")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_gearbox")
     def pump_set_gearbox_legacy(req: PumpSetGearboxRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_gearbox(req.pump, req.gearbox)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump gearbox")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_microstep")
     def pump_set_microstep_legacy(req: PumpSetMicrostepRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_microstep(req.pump, req.microstep)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump microstep")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_threadrod")
     def pump_set_threadrod_legacy(req: PumpSetThreadrodRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_threadrod(req.pump, req.threadrod)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump threadrod")
+        return {"ok": True}
 
     @app.post("/api/control/pump/set_enable")
     def pump_set_enable_legacy(req: PumpSetEnableRequest):
-        """Legacy endpoint - placeholder (returns 501)."""
-        raise HTTPException(status_code=501, detail="Pump controller not yet implemented")
+        pump_ctrl = CONTROLLERS.get("pump")
+        if pump_ctrl is None:
+            raise HTTPException(status_code=503, detail="Pump controller unavailable")
+        ok = pump_ctrl.set_enable(req.pump, req.enabled)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to set pump enable")
+        return {"ok": True}
 
     @app.get("/api/config/channels", response_model=ChannelConfigResponse)
     def get_channels() -> ChannelConfigResponse:

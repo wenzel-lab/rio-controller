@@ -33,6 +33,8 @@ This affects:
 - **`camera_simulated.py`**
   - `SimulatedCamera`: a `BaseCamera`-compatible implementation that generates synthetic frames and supports ROI cropping
   - it can optionally load real background/droplet templates from a `droplet_AInalysis` checkout (if found), otherwise it generates synthetic droplets
+- **`pump_simulated.py`**
+  - `SimulatedPump`: in-memory syringe pump behavior for API/UI testing
 
 ## Intended use
 

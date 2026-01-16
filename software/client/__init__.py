@@ -13,6 +13,7 @@ from .api_client import (
     RioThingClient,
     RioWebSocketError,
 )
+from .syringe_pump_api import PumpAPIError, SyringePumpAPI
 
 __all__ = [
     "RioClient",
@@ -22,6 +23,8 @@ __all__ = [
     "RioConnectionError",
     "RioHTTPError",
     "RioWebSocketError",
+    "SyringePumpAPI",
+    "PumpAPIError",
 ]
 
 __version__ = "0.1.0"

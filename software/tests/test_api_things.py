@@ -198,6 +198,64 @@ class MockDropletController:
 
 
 # ============================================================================
+# Pump Mock
+# ============================================================================
+
+class MockPumpController:
+    """Mock pump controller for testing."""
+
+    def __init__(self):
+        self.states = {
+            "A": {"pump": "A", "flow": 100.0, "diameter": 8.17, "direction": 1, "state": False},
+            "B": {"pump": "B", "flow": 200.0, "diameter": 8.17, "direction": -1, "state": True},
+            "C": {"pump": "C", "flow": 0.0, "diameter": 8.17, "direction": 1, "state": False},
+            "D": {"pump": "D", "flow": 0.0, "diameter": 8.17, "direction": 1, "state": False},
+        }
+
+    def get_state(self, pump: str):
+        return self.states[pump]
+
+    def get_all_states(self):
+        return self.states
+
+    def set_flow(self, pump: str, flow: float) -> bool:
+        self.states[pump]["flow"] = flow
+        return True
+
+    def set_diameter(self, pump: str, diameter: float) -> bool:
+        self.states[pump]["diameter"] = diameter
+        return True
+
+    def set_direction(self, pump: str, direction: int) -> bool:
+        self.states[pump]["direction"] = direction
+        return True
+
+    def set_state(self, pump: str, state: bool) -> bool:
+        self.states[pump]["state"] = state
+        return True
+
+    def set_unit(self, pump: str, unit: str) -> bool:
+        self.states[pump]["unit"] = unit
+        return True
+
+    def set_gearbox(self, pump: str, gearbox: str) -> bool:
+        self.states[pump]["gearbox"] = gearbox
+        return True
+
+    def set_microstep(self, pump: str, microstep: str) -> bool:
+        self.states[pump]["microstep"] = microstep
+        return True
+
+    def set_threadrod(self, pump: str, threadrod: str) -> bool:
+        self.states[pump]["threadrod"] = threadrod
+        return True
+
+    def set_enable(self, pump: str, enabled: bool) -> bool:
+        self.states[pump]["enabled"] = enabled
+        return True
+
+
+# ============================================================================
 # FlowThing Tests
 # ============================================================================
 
@@ -701,42 +759,64 @@ class TestDropletThing:
 # ============================================================================
 
 class TestPumpThing:
-    """Tests for PumpThing (placeholder)."""
+    """Tests for PumpThing."""
 
-    def test_pump_thing_state_property_raises_runtime_error(self):
-        """Test PumpThing.state raises RuntimeError (not implemented)."""
-        thing = PumpThing()
+    def test_pump_thing_state_property(self):
+        mock_controller = MockPumpController()
+        thing = PumpThing(mock_controller)
 
-        with pytest.raises(RuntimeError, match="not yet implemented"):
+        state = thing.state
+
+        assert "pumps" in state
+        assert "A" in state["pumps"]
+
+    def test_pump_thing_state_property_unavailable(self):
+        thing = PumpThing(None)
+
+        with pytest.raises(RuntimeError, match="Pump controller unavailable"):
             _ = thing.state
 
-    def test_pump_thing_set_flow_action_raises_invocation_error(self):
-        """Test PumpThing.set_flow raises InvocationError (not implemented)."""
-        thing = PumpThing()
+    def test_pump_thing_set_flow_action(self):
+        mock_controller = MockPumpController()
+        thing = PumpThing(mock_controller)
 
-        with pytest.raises(InvocationError, match="not yet implemented"):
+        result = thing.set_flow(pump="A", flow=10.0)
+
+        assert result == {"ok": True}
+        assert mock_controller.states["A"]["flow"] == 10.0
+
+    def test_pump_thing_set_flow_action_unavailable(self):
+        thing = PumpThing(None)
+
+        with pytest.raises(InvocationError, match="Pump controller unavailable"):
             thing.set_flow(pump="A", flow=10.0)
 
-    def test_pump_thing_set_diameter_action_raises_invocation_error(self):
-        """Test PumpThing.set_diameter raises InvocationError (not implemented)."""
-        thing = PumpThing()
+    def test_pump_thing_set_diameter_action(self):
+        mock_controller = MockPumpController()
+        thing = PumpThing(mock_controller)
 
-        with pytest.raises(InvocationError, match="not yet implemented"):
-            thing.set_diameter(pump="A", diameter=10.0)
+        result = thing.set_diameter(pump="A", diameter=10.0)
 
-    def test_pump_thing_set_direction_action_raises_invocation_error(self):
-        """Test PumpThing.set_direction raises InvocationError (not implemented)."""
-        thing = PumpThing()
+        assert result == {"ok": True}
+        assert mock_controller.states["A"]["diameter"] == 10.0
 
-        with pytest.raises(InvocationError, match="not yet implemented"):
-            thing.set_direction(pump="A", direction="infuse")
+    def test_pump_thing_set_direction_action(self):
+        mock_controller = MockPumpController()
+        thing = PumpThing(mock_controller)
 
-    def test_pump_thing_set_state_action_raises_invocation_error(self):
-        """Test PumpThing.set_state raises InvocationError (not implemented)."""
-        thing = PumpThing()
+        result = thing.set_direction(pump="A", direction=1)
 
-        with pytest.raises(InvocationError, match="not yet implemented"):
-            thing.set_state(pump="A", state="run")
+        assert result == {"ok": True}
+        assert mock_controller.states["A"]["direction"] == 1
+
+    def test_pump_thing_set_state_action(self):
+        mock_controller = MockPumpController()
+        thing = PumpThing(mock_controller)
+
+        result = thing.set_state(pump="A", state=True)
+
+        assert result == {"ok": True}
+        assert mock_controller.states["A"]["state"] is True
 
 
 # ============================================================================

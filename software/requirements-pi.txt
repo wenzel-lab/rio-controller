@@ -32,6 +32,9 @@ Pillow>=9.0.0  # Required for image processing in camera modules
 # Configuration file support
 PyYAML>=6.0
 
+# USB serial (syringe pump controller)
+pyserial>=3.5
+
 # Note: The following system packages should be installed via apt BEFORE installing Python packages:
 # Hardware packages:
 #   For 32-bit: sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy python3-opencv

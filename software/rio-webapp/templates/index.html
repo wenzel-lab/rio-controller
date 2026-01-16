@@ -225,6 +225,13 @@
                         </button>
                     </li>
                     {% endif %}
+                    {% if pump_enabled %}
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pump-tab" data-bs-toggle="tab" data-bs-target="#pump-pane" type="button" role="tab">
+                            <i class="bi bi-droplet"></i> Syringe Pumps
+                        </button>
+                    </li>
+                    {% endif %}
                     {% if droplet_analysis_enabled %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="droplet-tab" data-bs-toggle="tab" data-bs-target="#droplet-pane" type="button" role="tab">
@@ -534,6 +541,83 @@
                     </div>
                     {% endif %}
                     
+                    <!-- Syringe Pumps Tab -->
+                    {% if pump_enabled %}
+                    <div class="tab-pane fade" id="pump-pane" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-droplet"></i> Syringe Pump Control
+                                        </h5>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Pump</label>
+                                                <select id="pump_select" class="form-select form-select-sm" onchange="pump_select_changed()">
+                                                    <option value="A">A</option>
+                                                    <option value="B">B</option>
+                                                    <option value="C">C</option>
+                                                    <option value="D">D</option>
+                                                </select>
+                                                <label class="form-label mt-2">Flow</label>
+                                                <input id="pump_flow" type="number" class="form-control form-control-sm" step="1" value="0">
+                                                <label class="form-label mt-2">Diameter (mm)</label>
+                                                <input id="pump_diameter" type="number" class="form-control form-control-sm" step="0.1" value="5.0">
+                                                <label class="form-label mt-2">Direction</label>
+                                                <select id="pump_direction" class="form-select form-select-sm">
+                                                    <option value="infuse">Infuse</option>
+                                                    <option value="withdraw">Withdraw</option>
+                                                </select>
+                                                <div class="mt-2 d-flex gap-2">
+                                                    <button class="btn btn-sm btn-success" onclick="pump_start()">Start</button>
+                                                    <button class="btn btn-sm btn-danger" onclick="pump_stop()">Stop</button>
+                                                    <button class="btn btn-sm btn-info" onclick="pump_refresh()">Refresh</button>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Unit</label>
+                                                <select id="pump_unit" class="form-select form-select-sm">
+                                                    <option value="UL/MIN">UL/MIN</option>
+                                                    <option value="UL/HR">UL/HR</option>
+                                                    <option value="ML/MIN">ML/MIN</option>
+                                                    <option value="ML/HR">ML/HR</option>
+                                                </select>
+                                                <label class="form-label mt-2">Gearbox</label>
+                                                <select id="pump_gearbox" class="form-select form-select-sm">
+                                                    <option value="1:1">1:1</option>
+                                                    <option value="25:1">25:1</option>
+                                                    <option value="100:1">100:1</option>
+                                                </select>
+                                                <label class="form-label mt-2">Microstep</label>
+                                                <select id="pump_microstep" class="form-select form-select-sm">
+                                                    <option value="1/8">1/8</option>
+                                                    <option value="1/16">1/16</option>
+                                                    <option value="1/32">1/32</option>
+                                                    <option value="1/64">1/64</option>
+                                                </select>
+                                                <label class="form-label mt-2">Thread Rod</label>
+                                                <select id="pump_threadrod" class="form-select form-select-sm">
+                                                    <option value="1-START">1-START</option>
+                                                    <option value="4-START">4-START</option>
+                                                </select>
+                                                <div class="mt-2 d-flex gap-2">
+                                                    <button class="btn btn-sm btn-secondary" onclick="pump_apply_settings()">Apply Settings</button>
+                                                    <button class="btn btn-sm btn-warning" onclick="pump_toggle_enable()">Toggle Enable</button>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Status</label>
+                                                <pre id="pump_status" class="border p-2" style="height: 200px; overflow-y: auto;">No data</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
                     <!-- Droplet Detection Tab -->
                     {% if droplet_analysis_enabled %}
                     <div class="tab-pane fade" id="droplet-pane" role="tabpanel">
@@ -655,6 +739,11 @@
         
         var heaters = {{heaters|tojson}};
         var flows = {{flows|tojson}};
+        {% if pump_enabled %}
+        var pumps = {{pumps|tojson}};
+        {% else %}
+        var pumps = {};
+        {% endif %}
         var channelConfig = null;
         
         // ROI update function
@@ -773,6 +862,85 @@
             }
         }
 
+        // Pump functions
+        function pump_get_selected() {
+            var sel = document.getElementById('pump_select');
+            return sel ? sel.value : 'A';
+        }
+
+        function pump_update_fields() {
+            var pumpId = pump_get_selected();
+            var state = pumps[pumpId] || {};
+            if (document.getElementById('pump_flow')) {
+                if (state.flow !== undefined && state.flow !== null) {
+                    document.getElementById('pump_flow').value = state.flow;
+                }
+                if (state.diameter !== undefined && state.diameter !== null) {
+                    document.getElementById('pump_diameter').value = state.diameter;
+                }
+                if (state.direction !== undefined && state.direction !== null) {
+                    document.getElementById('pump_direction').value =
+                        (parseInt(state.direction) >= 0) ? 'infuse' : 'withdraw';
+                }
+                if (state.unit) {
+                    document.getElementById('pump_unit').value = state.unit;
+                }
+                if (state.gearbox) {
+                    document.getElementById('pump_gearbox').value = state.gearbox;
+                }
+                if (state.microstep) {
+                    document.getElementById('pump_microstep').value = state.microstep;
+                }
+                if (state.threadrod) {
+                    document.getElementById('pump_threadrod').value = state.threadrod;
+                }
+                var statusEl = document.getElementById('pump_status');
+                if (statusEl) {
+                    statusEl.textContent = JSON.stringify(state, null, 2);
+                }
+            }
+        }
+
+        function pump_send(cmd, params) {
+            socket.emit('pump', { cmd: cmd, parameters: params });
+        }
+
+        function pump_select_changed() {
+            pump_update_fields();
+        }
+
+        function pump_refresh() {
+            pump_send('get_state', {});
+        }
+
+        function pump_start() {
+            var pumpId = pump_get_selected();
+            pump_send('set_flow', { pump: pumpId, flow: document.getElementById('pump_flow').value });
+            pump_send('set_diameter', { pump: pumpId, diameter: document.getElementById('pump_diameter').value });
+            pump_send('set_direction', { pump: pumpId, direction: document.getElementById('pump_direction').value });
+            pump_send('set_state', { pump: pumpId, state: true });
+        }
+
+        function pump_stop() {
+            var pumpId = pump_get_selected();
+            pump_send('set_state', { pump: pumpId, state: false });
+        }
+
+        function pump_apply_settings() {
+            var pumpId = pump_get_selected();
+            pump_send('set_unit', { pump: pumpId, unit: document.getElementById('pump_unit').value });
+            pump_send('set_gearbox', { pump: pumpId, gearbox: document.getElementById('pump_gearbox').value });
+            pump_send('set_microstep', { pump: pumpId, microstep: document.getElementById('pump_microstep').value });
+            pump_send('set_threadrod', { pump: pumpId, threadrod: document.getElementById('pump_threadrod').value });
+        }
+
+        function pump_toggle_enable() {
+            var pumpId = pump_get_selected();
+            var state = pumps[pumpId] || {};
+            var enabled = !(state.enabled === true);
+            pump_send('set_enable', { pump: pumpId, enabled: enabled });
+        }
+
         // Channel metadata fetch/save
         function load_channel_config() {
             fetch('/api/config/channels')
@@ -813,6 +981,7 @@
             load_channel_config();
             heaters_update();
             flows_update();
+            pump_update_fields();
             
             socket.on('connect', function() {
                 console.log('✅ WebSocket connected! Socket.connected:', socket.connected);
@@ -860,6 +1029,11 @@
             socket.on('flows', function(data) {
                 flows = data;
                 flows_update();
+            });
+            
+            socket.on('pumps', function(data) {
+                pumps = data || {};
+                pump_update_fields();
             });
             
             // Droplet detection event handlers

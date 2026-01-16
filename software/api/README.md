@@ -28,6 +28,11 @@ This folder contains the **network API layer** that exposes Rio hardware control
    # Or directly
    python -m api.main
    ```
+   Optional pump enable (USB serial):
+   ```bash
+   export RIO_PUMP_ENABLED=true
+   # export RIO_PUMP_PORT=/dev/ttyUSB0
+   ```
 
 3. **Test the API:**
    ```bash
@@ -58,6 +63,11 @@ This folder contains the **network API layer** that exposes Rio hardware control
    export RIO_SIMULATION=false
    export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric
    python3 -m api.main
+   ```
+   Optional pump enable (USB serial):
+   ```bash
+   export RIO_PUMP_ENABLED=true
+   # export RIO_PUMP_PORT=/dev/ttyUSB0
    ```
 
 3. **Test from Pi:**
@@ -282,11 +292,17 @@ channels:
 - `GET /api/control/droplet/statistics` — Get statistics
 - `GET /api/control/droplet/performance` — Get performance metrics
 
-### Pump control (placeholder)
-- `GET /api/control/pump/state/{pump}` — Get pump state (returns 501)
-- `POST /api/control/pump/set_flow` — Set flow (returns 501)
-- `POST /api/control/pump/set_diameter` — Set diameter (returns 501)
-- ... (all pump endpoints return 501 until driver implemented)
+### Pump control (USB serial)
+- `GET /api/control/pump/state/{pump}` — Get pump state
+- `POST /api/control/pump/set_flow` — Set flow
+- `POST /api/control/pump/set_diameter` — Set diameter
+- `POST /api/control/pump/set_direction` — Set direction (infuse/withdraw)
+- `POST /api/control/pump/set_state` — Start/stop
+- `POST /api/control/pump/set_unit` — Set unit
+- `POST /api/control/pump/set_gearbox` — Set gearbox
+- `POST /api/control/pump/set_microstep` — Set microstep
+- `POST /api/control/pump/set_threadrod` — Set threadrod
+- `POST /api/control/pump/set_enable` — Enable/disable
 
 ### Streaming and capture
 - `WS /api/streams/aggregate` — WebSocket aggregator (flow/pressure/heater telemetry)

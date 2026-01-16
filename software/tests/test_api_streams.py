@@ -17,6 +17,8 @@ class DummyFlow:
         self.control_modes = [0, 1]
 
         class FlowLow:
+            NUM_CONTROLLERS = 2
+
             @staticmethod
             def get_pressure_actual(idx):
                 return True, 5.0 * (idx + 1)
@@ -70,7 +72,7 @@ def test_aggregator_flow_calibration_applied():
         "heater": {},
     }
     agg = Aggregator(flow=DummyFlow(), heaters=None, channel_config=channel_config)
-    payload = pytest.run(async_lambda(agg._sample_flow("now", [0, 1])))
+    payload = async_lambda(agg._sample_flow("now", [0, 1]))
     assert payload is not None
     samples = payload["samples"][0]
     assert samples["pressure_actuals_mbar"] == [10.0, 10.0]
@@ -92,4 +94,4 @@ def test_aggregator_capture_writes_csv(tmp_path: Path):
 def async_lambda(coro):
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)

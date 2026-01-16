@@ -24,6 +24,9 @@ PyYAML>=6.0
 # WebSocket support
 python-socketio>=5.14.0
 
+# USB serial (syringe pump controller)
+pyserial>=3.5
+
 # Note: The following packages are NOT needed for simulation:
 # - spidev (Raspberry Pi SPI - simulated by simulation/spi_simulated.py)
 # - RPi.GPIO (Raspberry Pi GPIO - simulated by simulation/spi_simulated.py)

@@ -312,18 +312,18 @@ class TestArtifactRejector(unittest.TestCase):
         self.contour2 = np.array([[[30, 10]], [[40, 10]], [[40, 20]], [[30, 20]]], dtype=np.int32)
 
     def test_first_frame_accept_all(self):
-        """Test that first frame accepts all contours."""
+        """Test that first frame rejects all contours (needs motion)."""
         contours = [self.contour1, self.contour2]
         filtered = self.rejector.filter(contours)
-        # First frame should accept all
-        self.assertEqual(len(filtered), 2)
+        # First frame should reject all (motion required)
+        self.assertEqual(len(filtered), 0)
 
     def test_motion_validation(self):
         """Test motion-based filtering."""
         # First frame
         contours1 = [self.contour1]
         filtered1 = self.rejector.filter(contours1)
-        self.assertEqual(len(filtered1), 1)
+        self.assertEqual(len(filtered1), 0)
 
         # Second frame - contour moved right (downstream)
         contour_moved = np.array([[[15, 10]], [[25, 10]], [[25, 20]], [[15, 20]]], dtype=np.int32)

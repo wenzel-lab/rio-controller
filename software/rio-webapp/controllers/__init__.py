@@ -8,6 +8,7 @@ Modules:
     camera_controller: Camera and strobe control handlers
     flow_controller: Flow control handlers
     heater_controller: Heater control handlers
+    pump_controller: Syringe pump control handlers
     view_model: View model formatters for template data
 """
 
@@ -15,6 +16,7 @@ Modules:
 from .camera_controller import CameraController
 from .flow_controller import FlowController
 from .heater_controller import HeaterController
+from .pump_controller import PumpController
 from .view_model import ViewModel
 
-__all__ = ["CameraController", "FlowController", "HeaterController", "ViewModel"]
+__all__ = ["CameraController", "FlowController", "HeaterController", "PumpController", "ViewModel"]
