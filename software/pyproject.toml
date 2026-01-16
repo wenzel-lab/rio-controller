@@ -48,7 +48,6 @@ module = [
     "spidev",
     "RPi.GPIO",
     "picamera",
-    "picamera2",
     "vimba",
     "eventlet",
     "flask_socketio",

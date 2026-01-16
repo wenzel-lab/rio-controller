@@ -20,9 +20,7 @@ In the default app entrypoint (`software/main.py`), these controllers are instan
 
 - **`strobe_cam.py` — `class PiStrobeCam`**
   - Composition of `drivers.strobe.PiStrobe` + `drivers.camera.BaseCamera`.
-  - Supports two strobe control modes (see `STROBE_CONTROL_MODE` in `software/config.py`):
-    - **strobe-centric**: strobe timing is the “clock”
-    - **camera-centric**: camera frame callbacks trigger a GPIO pulse to the strobe PIC
+  - Implements PIC-paced timing (strobe timing is the “clock”).
   - Exposes camera selection via `set_camera_type(camera_type)`.
 
 - **`flow_web.py` — `class FlowWeb`**

@@ -1,10 +1,9 @@
 """
 Camera Abstraction Layer
-Unified interface for 32-bit and 64-bit Raspberry Pi cameras
+Unified interface for legacy Raspberry Pi cameras
 
 Based on tested code from flow-microscopy-platform repository:
 - PiCamera32 (32-bit, picamera library)
-- PiCamera (64-bit, picamera2 library)
 """
 
 from abc import ABC, abstractmethod
@@ -31,10 +30,10 @@ else:
 
 class BaseCamera(ABC):
     """
-    Unified camera interface for 32-bit and 64-bit Raspberry Pi
+    Unified camera interface for legacy Raspberry Pi
 
-    This abstract base class provides a common interface for both
-    picamera (32-bit) and picamera2 (64-bit) implementations.
+    This abstract base class provides a common interface for legacy
+    picamera implementations.
     Based on tested code from flow-microscopy-platform repository.
     """
 
@@ -205,17 +204,15 @@ def create_camera(
 
     Camera types:
     - 'mako' → MakoCamera (requires vimba-python)
-    - 'rpi_hq' → PiCameraV2 (HQ Camera, requires picamera2 on 64-bit)
-    - 'rpi' → PiCameraV2 (V2 Camera, requires picamera2 on 64-bit) or PiCameraLegacy (32-bit)
+    - 'rpi' → PiCameraLegacy (legacy 32-bit picamera)
     - None → Auto-detect based on available hardware
 
     Auto-detection:
     - Simulation mode → SimulatedCamera
-    - 64-bit OS + picamera2 available → PiCameraV2
-    - 32-bit OS or picamera2 unavailable → PiCameraLegacy
+    - Raspberry Pi with picamera available → PiCameraLegacy
 
     Args:
-        camera_type: Camera type ('mako', 'rpi_hq', 'rpi', or None for auto-detect)
+        camera_type: Camera type ('mako', 'rpi', or None for auto-detect)
         simulation: If True, return simulated camera
         sim_config: Optional simulation configuration dict
 
@@ -234,9 +231,6 @@ def create_camera(
     # Check for specific camera type
     if camera_type == "mako":
         return _create_mako_camera()
-    if camera_type == "rpi_hq":
-        camera_type = "rpi"  # Fall through to rpi handling
-
     # Auto-detect based on platform
     return _create_pi_camera()
 
@@ -277,64 +271,22 @@ def _create_mako_camera() -> BaseCamera:
 
 
 def _create_pi_camera() -> BaseCamera:
-    """Create Raspberry Pi camera instance (auto-detect 32/64-bit)."""
-    # Check strobe control mode: strobe-centric mode REQUIRES picamera (32-bit legacy)
-    # Don't try picamera2 first if we're in strobe-centric mode
-    import os
-
-    strobe_mode = os.getenv("RIO_STROBE_CONTROL_MODE", "").lower()
-    if strobe_mode in ("strobe-centric", "legacy"):
-        # Strobe-centric mode requires picamera (legacy), skip picamera2 entirely
-        logger.info(
-            "Strobe-centric mode detected: using picamera (legacy) only, skipping picamera2"
-        )
-        try:
-            import picamera  # noqa: F401
-            from .pi_camera_legacy import PiCameraLegacy
-
-            return PiCameraLegacy()
-        except ImportError:
-            raise RuntimeError(
-                "Strobe-centric mode requires picamera library (32-bit). "
-                "Install with: sudo apt-get install python3-picamera"
-            )
-
-    # For camera-centric or auto-detect, check architecture
-    machine = platform.machine()
-    is_64bit = machine == "aarch64" or machine == "arm64"
-
-    if is_64bit:
-        try:
-            from picamera2 import Picamera2
-
-            test_cam = Picamera2()
-            test_cam.close()
-            del test_cam
-
-            from .pi_camera_v2 import PiCameraV2
-
-            return PiCameraV2()
-        except (ImportError, Exception) as e:
-            # picamera2 not available (expected on 32-bit or when legacy camera is enabled)
-            # This is normal - we'll use strobe with the picamera library instead
-            logger.debug(f"picamera2 not available ({e}), using picamera (legacy) instead")
-            pass  # Continue to picamera (legacy) fallback
-
+    """Create Raspberry Pi camera instance (legacy picamera only)."""
     try:
         import picamera as picamera_legacy  # noqa: F401
 
         from .pi_camera_legacy import PiCameraLegacy
 
-        logger.info("Using picamera (legacy) for 32-bit Raspberry Pi camera support")
+        logger.info("Using picamera (legacy) for Raspberry Pi camera support")
         return PiCameraLegacy()
     except ImportError:
+        machine = platform.machine()
         if machine not in ("armv7l", "aarch64", "arm64"):
             raise RuntimeError(
                 "No camera library available on this platform. "
                 "Enable simulation mode: export RIO_SIMULATION=true"
             )
         raise RuntimeError(
-            "No camera library available. "
-            "Install either 'picamera' (32-bit) or 'picamera2' (64-bit), "
-            "or enable simulation mode (RIO_SIMULATION=true)"
+            "Legacy Pi camera requires picamera (32-bit). "
+            "Install with: sudo apt-get install python3-picamera"
         )

@@ -30,7 +30,7 @@ pyserial>=3.5
 # Note: The following packages are NOT needed for simulation:
 # - spidev (Raspberry Pi SPI - simulated by simulation/spi_simulated.py)
 # - RPi.GPIO (Raspberry Pi GPIO - simulated by simulation/spi_simulated.py)
-# - picamera/picamera2 (Raspberry Pi camera - simulated by simulation/camera_simulated.py)
+# - picamera (Raspberry Pi camera - simulated by simulation/camera_simulated.py)
 
 # ------------------------------------------------------------
 # Dev / test tooling (installed in simulation/dev environments)

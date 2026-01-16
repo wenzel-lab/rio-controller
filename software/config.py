@@ -34,11 +34,9 @@ CAMERA_RESOLUTION_PRESETS = {
     "1920x1080": (1920, 1080),
 }
 
-# Maximum sensor resolutions
+# Maximum sensor resolutions (legacy Pi camera V2)
 CAMERA_V2_MAX_WIDTH = 3280  # Raspberry Pi Camera V2 (Sony IMX219)
 CAMERA_V2_MAX_HEIGHT = 2464
-CAMERA_HQ_MAX_WIDTH = 4056  # Raspberry Pi HQ Camera (Sony IMX477) - approximate
-CAMERA_HQ_MAX_HEIGHT = 3040
 
 # Snapshot Resolution Modes
 SNAPSHOT_RESOLUTION_DISPLAY = "display"  # Use current display resolution
@@ -52,25 +50,7 @@ STROBE_DEFAULT_PERIOD_NS = 20000  # 20 microseconds
 STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds
 STROBE_PRE_PADDING_NS = 32  # Pre-padding before strobe pulse
 STROBE_POST_PADDING_NS = 20000000  # Post-padding after strobe pulse
-STROBE_TRIGGER_PULSE_US = 0.000001  # 1 microsecond trigger pulse
-STROBE_TRIGGER_GPIO_PIN = 12  # GPIO pin for PIC trigger (BOARD numbering; was BCM 18)
 STROBE_REPLY_PAUSE_S = 0.1  # SPI reply pause time
-
-# Strobe Control Mode
-# Options: "strobe-centric" (software trigger) or "camera-centric" (hardware trigger)
-# strobe-centric: Strobe timing controls camera exposure (works with old firmware)
-#                 Note: Only available on 32-bit due to camera package limitations (picamera)
-#                 Replaced by camera-centric mode with new strobe chip firmware
-# camera-centric: Camera frame callback triggers strobe via GPIO (requires new firmware with hardware trigger)
-# Can be overridden via environment variable RIO_STROBE_CONTROL_MODE
-STROBE_CONTROL_MODE = os.getenv(
-    "RIO_STROBE_CONTROL_MODE", "camera-centric"
-).lower()  # Default to "camera-centric" for strobe-rewrite branch
-STROBE_CONTROL_MODE_STROBE_CENTRIC = "strobe-centric"  # Strobe-centric control (software trigger)
-STROBE_CONTROL_MODE_CAMERA_CENTRIC = "camera-centric"  # Camera trigger-centric (hardware trigger)
-# Backward compatibility aliases (deprecated - use strobe-centric/camera-centric)
-STROBE_CONTROL_MODE_LEGACY = "strobe-centric"  # Alias for strobe-centric
-STROBE_CONTROL_MODE_NEW = "camera-centric"  # Alias for camera-centric
 
 # Flow Control Configuration
 FLOW_REPLY_PAUSE_S = 0.1  # SPI reply pause time for flow controller
@@ -100,7 +80,6 @@ ROI_UPDATE_INTERVAL_MS = 500  # ROI info update interval
 # Camera Types
 CAMERA_TYPE_NONE = "none"
 CAMERA_TYPE_RPI = "rpi"
-CAMERA_TYPE_RPI_HQ = "rpi_hq"
 CAMERA_TYPE_MAKO = "mako"
 
 # File Paths

@@ -17,14 +17,6 @@ except ImportError:
     PiCameraLegacy = None  # type: ignore[assignment, misc]
 
 try:
-    from .pi_camera_v2 import PiCameraV2
-
-    _V2_AVAILABLE = True
-except ImportError:
-    _V2_AVAILABLE = False
-    PiCameraV2 = None  # type: ignore[assignment, misc]
-
-try:
     from .mako_camera import MakoCamera
 
     _MAKO_AVAILABLE = True
@@ -36,7 +28,5 @@ __all__ = ["BaseCamera", "create_camera"]
 
 if _LEGACY_AVAILABLE:
     __all__.append("PiCameraLegacy")
-if _V2_AVAILABLE:
-    __all__.append("PiCameraV2")
 if _MAKO_AVAILABLE:
     __all__.append("MakoCamera")

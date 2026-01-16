@@ -1,7 +1,7 @@
 # Requirements for Rio Controller - Raspberry Pi Deployment
 # This file works for both 32-bit and 64-bit Raspberry Pi OS
 # Install to SYSTEM Python (no virtual environment)
-# Hardware packages (spidev, RPi.GPIO, picamera/picamera2) should be installed via apt (system-wide)
+# Hardware packages (spidev, RPi.GPIO, picamera) should be installed via apt (system-wide)
 
 # Web framework (compatible with both 32-bit and 64-bit)
 Flask>=2.0.0,<4.0.0
@@ -37,14 +37,13 @@ pyserial>=3.5
 
 # Note: The following system packages should be installed via apt BEFORE installing Python packages:
 # Hardware packages:
-#   For 32-bit: sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy python3-opencv
-#   For 64-bit: sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera2 python3-numpy python3-opencv
+#   For 32-bit (legacy Pi camera): sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy python3-opencv
 # BLAS/LAPACK for droplet detection (provides libcblas.so.3):
 #   sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3
 # IMPORTANT: Install python3-opencv from apt (fast, pre-built). Do NOT install opencv-python-headless from pip.
 #
 # Installation instructions for Raspberry Pi:
-# Step 1: Install system packages (see above - choose picamera or picamera2 based on your OS)
+# Step 1: Install system packages (see above - picamera only)
 # Step 2: Install Python packages to system Python (NO virtual environment):
 #   python3 -m pip install --user --upgrade pip wheel
 #   python3 -m pip install --user -r requirements-pi.txt

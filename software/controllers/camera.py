@@ -31,7 +31,6 @@ from config import (
     STROBE_REPLY_PAUSE_S,
     CAMERA_TYPE_NONE,
     CAMERA_TYPE_RPI,
-    CAMERA_TYPE_RPI_HQ,
     SNAPSHOT_FOLDER,
     SNAPSHOT_FILENAME_PREFIX,
     SNAPSHOT_FILENAME_SUFFIX,
@@ -58,8 +57,6 @@ from config import (
     CAMERA_RESOLUTION_PRESETS,
     CAMERA_V2_MAX_WIDTH,
     CAMERA_V2_MAX_HEIGHT,
-    CAMERA_HQ_MAX_WIDTH,
-    CAMERA_HQ_MAX_HEIGHT,
     ROI_MODE,
     ROI_MODE_SOFTWARE,
     ROI_MODE_HARDWARE,
@@ -193,11 +190,7 @@ class Camera:
             return self.display_resolution
         elif self.snapshot_resolution_mode == SNAPSHOT_RESOLUTION_FULL:
             # Determine max resolution based on camera type
-            camera_type = self.cam_data.get("camera", CAMERA_TYPE_RPI)
-            if camera_type == CAMERA_TYPE_RPI_HQ:
-                return (CAMERA_HQ_MAX_WIDTH, CAMERA_HQ_MAX_HEIGHT)
-            else:
-                return (CAMERA_V2_MAX_WIDTH, CAMERA_V2_MAX_HEIGHT)
+            return (CAMERA_V2_MAX_WIDTH, CAMERA_V2_MAX_HEIGHT)
         elif self.snapshot_resolution_mode == SNAPSHOT_RESOLUTION_CUSTOM:
             if self.snapshot_resolution:
                 return self.snapshot_resolution
@@ -237,17 +230,8 @@ class Camera:
 
             # Validate against camera limits (if camera is available)
             if self.camera is not None and new_resolution:
-                camera_type = self.cam_data.get("camera", CAMERA_TYPE_RPI)
-                max_width = (
-                    CAMERA_HQ_MAX_WIDTH
-                    if camera_type == CAMERA_TYPE_RPI_HQ
-                    else CAMERA_V2_MAX_WIDTH
-                )
-                max_height = (
-                    CAMERA_HQ_MAX_HEIGHT
-                    if camera_type == CAMERA_TYPE_RPI_HQ
-                    else CAMERA_V2_MAX_HEIGHT
-                )
+                max_width = CAMERA_V2_MAX_WIDTH
+                max_height = CAMERA_V2_MAX_HEIGHT
 
                 if new_resolution[0] > max_width or new_resolution[1] > max_height:
                     logger.warning(
@@ -762,7 +746,7 @@ class Camera:
         strobe post-padding time based on the actual camera read time. It continues
         until convergence or maximum tries are reached.
 
-        Note: In strobe-centric mode, get_cam_read_time() may not work reliably
+        Note: In PIC-paced mode, get_cam_read_time() may not work reliably
         if the strobe is not enabled. The optimization will fail gracefully if
         camera read time cannot be obtained.
         """

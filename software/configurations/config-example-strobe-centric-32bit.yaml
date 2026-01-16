@@ -1,22 +1,18 @@
 # Rio Controller Configuration
-# Example configuration for 32-bit Raspberry Pi with Strobe-Centric Control
+# Example configuration for 32-bit Raspberry Pi with PIC-paced strobe timing
 #
 # This configuration is for a Raspberry Pi running 32-bit Raspberry Pi OS
-# with only the strobe module connected. Uses strobe-centric control mode
-# compatible with firmware that supports software trigger mode.
+# with only the strobe module connected. Uses PIC-paced strobe timing
+# where strobe timing drives camera exposure.
 #
 # IMPORTANT: This mode works only on 32-bit Raspberry Pi OS because it requires
-# the picamera package, which is 32-bit only. It has been replaced by camera-centric
-# mode (with new strobe chip firmware) for better synchronization, but this mode
-# works perfectly fine if you already have a working 32-bit system.
+# the picamera package, which is 32-bit only.
 #
 # Usage:
-#   1. Set environment variable: export RIO_STROBE_CONTROL_MODE=strobe-centric
+#   1. Set environment variables (see below)
 #   2. Run: python main.py
-#   3. Or edit software/config.py to set default mode
 #
 # Environment Variables (set before running):
-#   export RIO_STROBE_CONTROL_MODE=strobe-centric
 #   export RIO_SIMULATION=false
 
 # Global simulation mode
@@ -39,13 +35,11 @@ camera:
   # Once the application is running, resolution can be changed via web interface
   # Framerate is automatically calculated from strobe timing and optimized via "Optimize" button
 
-# Strobe configuration (strobe-centric control mode)
+# Strobe configuration (PIC-paced)
 strobe:
   port: 24               # SPI device select port (GPIO pin 24, BOARD numbering)
   reply_pause_s: 0.1     # SPI reply pause time (100ms delay for PIC microcontroller to process commands)
-  control_mode: strobe-centric  # Strobe-centric control (software trigger)
-  trigger_gpio_pin: 18   # GPIO pin for trigger signal (BCM numbering, optional in strobe-centric mode)
-  # Strobe-centric mode: Strobe timing controls camera exposure
+  # PIC-paced mode: Strobe timing controls camera exposure
   # The PIC microcontroller runs its internal timer and triggers strobe based on software timing
   # Camera exposure is synchronized to strobe period
 
@@ -64,7 +58,7 @@ spi:
   #   - Heater 4: Port 36 (not used in this configuration)
 
 # Notes:
-# - Firmware requirement: Must use firmware compatible with software trigger mode (strobe-centric)
+# - Firmware requirement: Must use firmware compatible with PIC-paced mode
 # - Camera must be enabled: sudo raspi-config -> Interface Options -> Camera -> Enable
 # - Test camera: raspistill -o test.jpg
 # - SPI must be enabled: sudo raspi-config -> Interface Options -> SPI -> Enable

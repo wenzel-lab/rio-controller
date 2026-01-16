@@ -14,19 +14,17 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
   - numpy access: `get_frame_array() -> np.ndarray` (RGB)
   - ROI access: `get_frame_roi((x, y, w, h)) -> np.ndarray` (RGB)
   - configuration: `set_config(dict)` (keys vary by backend, but width/height/fps are common)
-  - strobe integration hook: `set_frame_callback(callback)` (called per frame in camera-centric strobe mode)
+  - strobe integration hook: `set_frame_callback(callback)` (reserved for future trigger-based modes)
   - optional UI helpers: `list_features()` and backend-specific helpers like ROI constraints
 
 - **`create_camera(camera_type=None, simulation=False, sim_config=None)`**
   - selects a backend based on:
     - `RIO_SIMULATION=true` → simulated camera (`software/simulation/camera_simulated.py`)
-    - requested `camera_type` (`"mako"`, `"rpi"`, `"rpi_hq"`, `"none"`)
-    - platform/library availability (picamera2 vs picamera)
+- requested `camera_type` (`"mako"`, `"rpi"`, `"none"`)
+- platform/library availability (picamera)
 
 ## Backends (what each file provides)
 
-- `pi_camera_v2.py`
-  - Raspberry Pi camera backend built on `picamera2` (typical for 64-bit Pi OS)
   - expected to implement ROI extraction and expose camera controls/features for the UI
 
 - `pi_camera_legacy.py`
@@ -40,7 +38,7 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
 
 The interface supports **software ROI** via `get_frame_roi((x, y, w, h))`.
 Some backends also include “hardware ROI” helpers (sensor/stream crop), but *choosing* between software vs hardware ROI is an application policy decision (typically owned by higher layers).
-- Hardware ROI support: `pi_camera_v2` (picamera2) and `pi_camera_legacy` (picamera) implement `set_roi_hardware`; `mako_camera` exposes it via Vimba. If a backend rejects hardware ROI, callers should fall back to software ROI.
+- Hardware ROI support: `pi_camera_legacy` (picamera) implements `set_roi_hardware`; `mako_camera` exposes it via Vimba. If a backend rejects hardware ROI, callers should fall back to software ROI.
 
 ## Testing
 

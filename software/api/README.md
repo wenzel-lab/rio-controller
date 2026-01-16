@@ -61,7 +61,6 @@ This folder contains the **network API layer** that exposes Rio hardware control
    ```bash
    cd ~/rio-controller
    export RIO_SIMULATION=false
-   export RIO_STROBE_CONTROL_MODE=strobe-centric  # or camera-centric
    python3 -m api.main
    ```
    Optional pump enable (USB serial):

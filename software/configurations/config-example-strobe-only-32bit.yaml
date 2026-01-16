@@ -3,8 +3,7 @@
 #
 # This configuration is for a Raspberry Pi running 32-bit Raspberry Pi OS
 # with only the strobe module and camera connected. Droplet detection is enabled.
-# Uses strobe-centric control mode compatible with firmware that supports
-# software trigger mode.
+# Uses PIC-paced strobe timing (strobe timing drives camera exposure).
 #
 # IMPORTANT: This mode works only on 32-bit Raspberry Pi OS because it requires
 # the picamera package, which is 32-bit only.
@@ -14,7 +13,6 @@
 #   2. Run: python main.py
 #
 # Environment Variables (required):
-#   export RIO_STROBE_CONTROL_MODE=strobe-centric
 #   export RIO_SIMULATION=false
 #   export RIO_DROPLET_ANALYSIS_ENABLED=true
 #   export RIO_FLOW_ENABLED=false      # Hide flow control tab (not used in this config)
@@ -37,17 +35,15 @@ camera:
   height: 768            # Default display height (can be changed in UI)
   fps: 30                # Default framerate (automatically optimized via strobe timing)
 
-# Strobe configuration (strobe-centric control mode)
+# Strobe configuration (PIC-paced)
 strobe:
   port: 24               # SPI device select port (GPIO pin 24, BOARD numbering)
   reply_pause_s: 0.1     # SPI reply pause time (100ms delay for PIC microcontroller to process commands)
-  control_mode: strobe-centric  # Strobe-centric control (software trigger)
-  trigger_gpio_pin: 18   # GPIO pin for trigger signal (BCM numbering, optional in strobe-centric mode)
   default_period_ns: 100000      # Default strobe pulse period (100 microseconds)
   max_period_ns: 16000000        # Maximum strobe pulse period (16 milliseconds)
   pre_padding_ns: 32             # Pre-padding before strobe pulse
   post_padding_ns: 20000000      # Post-padding after strobe pulse
-  # Strobe-centric mode: Strobe timing controls camera exposure
+  # PIC-paced mode: Strobe timing controls camera exposure
   # Camera framerate is automatically calculated and optimized from strobe timing
   # Use the "Optimize" button in the web interface to fine-tune framerate
 
@@ -72,7 +68,7 @@ spi:
   #   Note: Flow controller and heaters are not used in this configuration
 
 # Notes:
-# - Firmware requirement: Must use firmware compatible with software trigger mode (strobe-centric)
+# - Firmware requirement: Must use firmware compatible with PIC-paced mode
 # - Camera must be enabled: sudo raspi-config -> Interface Options -> Camera -> Enable
 # - Test camera: raspistill -o test.jpg
 # - SPI must be enabled: sudo raspi-config -> Interface Options -> SPI -> Enable

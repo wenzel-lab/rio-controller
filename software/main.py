@@ -103,8 +103,6 @@ logger = logging.getLogger(__name__)
 # Reduce Socket.IO and Engine.IO logging verbosity (too noisy at INFO level)
 logging.getLogger("socketio.server").setLevel(logging.WARNING)
 logging.getLogger("engineio.server").setLevel(logging.WARNING)
-# Suppress picamera2 error messages (expected when using legacy camera mode)
-logging.getLogger("picamera2").setLevel(logging.CRITICAL)
 # In simulation, suppress werkzeug dev server warning noise
 if SIMULATION_MODE:
     logging.getLogger("werkzeug").setLevel(logging.ERROR)

@@ -4,7 +4,7 @@ This directory contains all software for the Rio microfluidics controller system
 
 **Platform compatibility (summary):**
 - **Developer machines (Mac/PC/Linux)**: run in **simulation** (`RIO_SIMULATION=true`) using `requirements-simulation.txt`.
-- **Raspberry Pi (32-bit or 64-bit)**: hardware mode with Pi-specific packages (see `requirements-pi.txt` or use the deployment bundle).
+- **Raspberry Pi (32-bit)**: hardware mode with Pi-specific packages (see `requirements-pi.txt` or use the deployment bundle).
 
 ## Structure overview (start here)
 
@@ -52,9 +52,9 @@ The repository includes **3 requirements files** for different deployment scenar
    - Includes testing tools (pytest, black, mypy, etc.)
    - Use with mamba/conda virtual environment
 
-2. **`requirements-pi.txt`** — Raspberry Pi deployment (32-bit and 64-bit)
-   - Works for both Raspberry Pi OS 32-bit and 64-bit
-   - Excludes hardware packages (install via apt: `python3-spidev`, `python3-rpi.gpio`, `python3-picamera` for 32-bit or `python3-picamera2` for 64-bit)
+2. **`requirements-pi.txt`** — Raspberry Pi deployment (32-bit)
+   - Supports legacy Pi camera (`picamera`)
+   - Excludes hardware packages (install via apt: `python3-spidev`, `python3-rpi.gpio`, `python3-picamera`)
    - Excludes OpenCV (install via apt: `python3-opencv` for fast pre-built version)
    - Uses `numpy<2.0.0` for 32-bit compatibility (numpy 2.0+ doesn't work on 32-bit)
    - Used by deployment bundle generation
@@ -64,7 +64,7 @@ The repository includes **3 requirements files** for different deployment scenar
    - Install after base requirements: `pip install -r requirements-api.txt`
    - Used when running the API server (`software/api/main.py`)
 
-**Note**: Hardware packages (spidev, RPi.GPIO, picamera/picamera2) and OpenCV should be installed via `apt` on Raspberry Pi for faster installation and better compatibility. The requirements file documents this in comments. The only difference between 32-bit and 64-bit is the camera package (`picamera` vs `picamera2`), which is installed via apt, not pip.
+**Note**: Hardware packages (spidev, RPi.GPIO, picamera) and OpenCV should be installed via `apt` on Raspberry Pi for faster installation and better compatibility. The requirements file documents this in comments.
 
 ## Setup and Deployment
 

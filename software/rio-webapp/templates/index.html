@@ -252,7 +252,7 @@
                                         <h5 class="card-title">
                                             <i class="bi bi-camera-video"></i> Camera Feed
                                         </h5>
-                                        {% if cam.camera in ['rpi', 'rpi_hq', 'mako'] %}
+                                        {% if cam.camera in ['rpi', 'mako'] %}
                                             {% import 'camera_pi.html' as cam_html %}
                                         {% else %}
                                             {% import 'camera_none.html' as cam_html %}
@@ -350,7 +350,6 @@
                                             <select id="select_camera" class="form-select" onchange="cam_select()">
                                                 <option value="none">None</option>
                                                 <option value="rpi"{% if cam.camera == "rpi" %} selected{%endif%}>Raspberry Pi Camera V2</option>
-                                                <option value="rpi_hq"{% if cam.camera == "rpi_hq" %} selected{%endif%}>Raspberry Pi HQ Camera</option>
                                                 <option value="mako"{% if cam.camera == "mako" %} selected{%endif%}>MAKO Camera</option>
                                             </select>
                                         </div>
@@ -385,7 +384,7 @@
                                                 <option value="full"{% if cam.snapshot_resolution_mode == "full" %} selected{%endif%}>Full Sensor Resolution (High Quality)</option>
                                             </select>
                                             <small class="form-text text-muted">
-                                                Full resolution: {% if cam.camera == "rpi_hq" %}4056 × 3040 (HQ Camera){% else %}3280 × 2464 (V2 Camera){% endif %}<br>
+                                                Full resolution: 3280 × 2464 (V2 Camera)<br>
                                                 <em>Note: Full resolution snapshots take longer to capture (~100-500ms) but provide maximum image quality.</em>
                                             </small>
                                         </div>
