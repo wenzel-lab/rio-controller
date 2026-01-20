@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_BAUDRATE = 115200
 DEFAULT_TIMEOUT_S = 1.0
 
+#print(">>> LOADING PUMP SERIAL DRIVER FROM DRIVERS FOLDER <<<", flush=True)
 
 def find_pump_port() -> Optional[str]:
     """Best-effort port detection for the syringe pump controller."""
@@ -23,7 +25,7 @@ def find_pump_port() -> Optional[str]:
     ports = list(serial.tools.list_ports.comports())
     for port in ports:
         desc = (port.description or "").upper()
-        if "USB" in desc or "CH340" in desc:
+        if "USB" in desc or "CH340" in desc or "CP210" in desc:
             return port.device
     return None
 
@@ -40,29 +42,29 @@ class SerialSyringePump:
     ) -> None:
         try:
             import serial  # type: ignore
-        except Exception as exc:  # pragma: no cover - optional dependency
-            raise ImportError(
-                "pyserial is required for syringe pump USB control. "
-                "Install with: pip install pyserial"
-            ) from exc
+            
+        except ImportError as exc:
+            raise ImportError("pyserial is required. Install with: pip install pyserial") from exc
 
         self._lock = threading.Lock()
+        
         self._serial = serial.Serial(
-            port,
-            baudrate,
+            port=port,
+            baudrate=baudrate,
             timeout=timeout,
             write_timeout=write_timeout,
-            dsrdtr=True,
+            dsrdtr=False,
             rtscts=False,
         )
-        self._serial.reset_input_buffer()
-        self._serial.rts = True
-        # Allow ESP32 to boot and settle before issuing commands
-        import time
 
-        time.sleep(1.0)
+        self._serial.dtr = False
+        self._serial.rts = False
+
+        time.sleep(2.0)
         self._serial.reset_input_buffer()
+        
         self.pumps = ["A", "B", "C", "D"]
+        print(f"--- PUMP DRIVER READY ON {port} ---", flush=True)
 
     # -------------------------
     # High-level setters
@@ -182,14 +184,14 @@ class SerialSyringePump:
 
     def _transaction(self, cmd: str) -> str:
         with self._lock:
-            self._write(cmd + "\n")
-            return self._readline()
+            full_cmd = cmd + "\n"
+            print(f"--- SERIAL SEND: {repr(full_cmd)} ---", flush=True) 
+            
+            self._serial.write(full_cmd.encode())
 
-    def _write(self, s: str) -> None:
-        self._serial.write(s.encode())
-
-    def _readline(self) -> str:
-        return self._serial.readline().decode(errors="ignore").strip()
+            response = self._serial.readline().decode(errors="ignore").strip()
+            print(f"--- SERIAL RECV: {repr(response)} ---", flush=True)
+            return response
 
     def close(self) -> None:
         self._serial.close()

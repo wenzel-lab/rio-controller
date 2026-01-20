@@ -386,6 +386,7 @@ if __name__ == "__main__":
     print("=" * 60, file=sys.stderr, flush=True)
     print("Rio Microfluidics Controller is now running", file=sys.stderr, flush=True)
     print(f"Access the web interface at: http://raspberrypi.local:{port}", file=sys.stderr, flush=True)
+    print(f"If you are running in simulation mode, access the web interface at: http://localhost:{port}", file=sys.stderr, flush=True)
     print("Press Ctrl+C to stop the server", file=sys.stderr, flush=True)
     print("=" * 60, file=sys.stderr, flush=True)
     print("", file=sys.stderr, flush=True)

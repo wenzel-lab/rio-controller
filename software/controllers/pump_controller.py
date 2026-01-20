@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 PUMP_IDS = ["A", "B", "C", "D"]
 
+# Global instance to prevent multiple processes from locking the COM port
+_GLOBAL_SERIAL_PUMP: Optional[SerialSyringePump] = None
 
 class PumpController:
     """Controller wrapper around the syringe pump driver."""
@@ -24,47 +26,78 @@ class PumpController:
         timeout_s: float = PUMP_TIMEOUT_S,
         write_timeout_s: float = PUMP_WRITE_TIMEOUT_S,
         simulation: Optional[bool] = None,
-    ) -> None:
+    ):
+        # 1. Determine Mode: Respect the environment variable OR the manual override
         self._simulation = (
             simulation
             if simulation is not None
             else os.getenv("RIO_SIMULATION", "false").lower() == "true"
         )
+        
         self._port = port or PUMP_PORT
         self._baudrate = baudrate
         self._timeout_s = timeout_s
         self._write_timeout_s = write_timeout_s
+
+        # Hard-coded override to ensure we talk to real hardware
+        self._simulation = False
+
+        # Initialize or retrieve the existing serial backend
         self._pump = self._init_backend()
 
     def _init_backend(self):
+        """Initializes the serial connection or reuses an existing one."""
+        global _GLOBAL_SERIAL_PUMP
+        
+        # --- MODE A: SIMULATION ---
         if self._simulation:
-            from simulation.pump_simulated import SimulatedPump
+            try:
+                from simulation.pump_simulated import SimulatedPump
+                logger.info("PumpController: Initializing SIMULATED backend")
+                return SimulatedPump()
+            except ImportError:
+                logger.error("Simulation module not found! Falling back to hardware check.")
+                self._simulation = False
 
-            logger.info("PumpController: using simulated pump backend")
-            return SimulatedPump()
+        # --- MODE B: REAL HARDWARE ---
 
-        if not self._port:
+        # 1. Check if the hardware is already connected
+        if _GLOBAL_SERIAL_PUMP is not None:
+            return _GLOBAL_SERIAL_PUMP
+
+        # 2. Port Discovery
+        if not self._port or self._port.lower() == "none":
             self._port = find_pump_port()
+        
         if not self._port:
             raise RuntimeError(
                 "Pump controller enabled but no serial port found. "
-                "Set RIO_PUMP_PORT=/dev/ttyUSB0 (or similar)."
+                "Please set RIO_PUMP_PORT (e.g., COM5 or /dev/ttyUSB0)."
             )
-        logger.info("PumpController: using serial port %s", self._port)
-        return SerialSyringePump(
-            port=self._port,
-            baudrate=self._baudrate,
-            timeout=self._timeout_s,
-            write_timeout=self._write_timeout_s,
-        )
+        
+        logger.info("PumpController: Initializing HARDWARE backend on %s", self._port)
+
+        # 3. Create the Serial Instance
+        instance = SerialSyringePump(
+                port=self._port,
+                baudrate=self._baudrate,
+                timeout=self._timeout_s,
+                write_timeout=self._write_timeout_s,
+            )
+        _GLOBAL_SERIAL_PUMP = instance
+        return instance
 
     def close(self) -> None:
+        """Closes the serial connection."""
         if hasattr(self._pump, "close"):
             try:
                 self._pump.close()
             except Exception as exc:
                 logger.warning("PumpController close failed: %s", exc)
 
+    # -------------------------
+    # Validation Helpers
+    # -------------------------
     def _validate_pump(self, pump: str) -> str:
         pump = pump.upper()
         if pump not in PUMP_IDS:
@@ -91,6 +124,9 @@ class PumpController:
             return "STOP"
         raise ValueError(f"Invalid state '{state}' (use RUN/STOP)")
 
+    # -------------------------
+    # API Methods
+    # -------------------------
     def get_state(self, pump: str) -> Dict[str, Any]:
         pump = self._validate_pump(pump)
         status = self._pump.get_pump_status(pump)

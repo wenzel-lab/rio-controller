@@ -125,6 +125,7 @@ The repository includes **3 requirements files** for different deployment scenar
 2. **Run the application in simulation mode**:
    ```bash
    # Default port (5000)
+   # set RIO_SIMULATION=true (Windows)
    export RIO_SIMULATION=true
    python main.py
    
@@ -155,9 +156,17 @@ To run without hardware (for testing on a Mac/PC):
 
 **Option 1: Quick setup and run**
 ```bash
-cd software
+
+# NOTE: These scripts are written for conda/mamba environments. If you are using virtualenv, you will need to modify the scripts. 
+
+# on Linux/Mac
 ./scripts/dev/setup-simulation.sh    # First time setup
 ./scripts/dev/run-simulation.sh      # Run simulation
+
+# on Windows (Git Bash)
+bash ./scripts/dev/setup-simulation.sh 
+bash ./scripts/dev/run-simulation.sh 
+
 ```
 
 Need custom parameters for simulation (frame size, ROI defaults, feature flags)? See `configurations/README.md` for the environment-variable profiles and examples you can export before running.
@@ -165,6 +174,7 @@ Need custom parameters for simulation (frame size, ROI defaults, feature flags)?
 **Option 2: Manual setup**
 ```bash
 cd software
+# set RIO_SIMULATION=true (Windows)
 export RIO_SIMULATION=true
 python main.py
 ```

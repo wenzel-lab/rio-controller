@@ -1,9 +1,9 @@
 # API-specific dependencies (pinned)
 # These are additive to the base requirements; install when running the API.
-fastapi==0.95.2
+
+fastapi>=0.103.0
 uvicorn[standard]==0.21.1
-labthings-fastapi==0.0.6
-pydantic==1.10.14
+labthings-fastapi>=0.0.14
+pydantic>=2.0.0
 typing_extensions>=4.7.0
 PyYAML>=6.0
-
