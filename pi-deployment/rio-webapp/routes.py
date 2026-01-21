@@ -25,6 +25,7 @@ def register_routes(
     heaters: List[Any],
     flow,
     cam,
+    pump,
     debug_data: dict,
     droplet_controller: Optional[Any] = None,
 ) -> None:
@@ -38,13 +39,14 @@ def register_routes(
         heaters: List of heater device controllers
         flow: Flow device controller
         cam: Camera device controller
+        pump: Pump device controller
         debug_data: Dictionary for debug information (mutated)
         droplet_controller: Optional DropletDetectorController instance
     """
     # Pass droplet_controller availability to template
     app.jinja_env.globals["droplet_analysis_enabled"] = droplet_controller is not None
 
-    _register_http_routes(app, view_model, heaters, flow, cam, debug_data, droplet_controller)
+    _register_http_routes(app, view_model, heaters, flow, cam, pump, debug_data, droplet_controller)
     _register_websocket_handlers(socketio)
 
 
@@ -254,19 +256,26 @@ def _register_droplet_api_routes(app: Flask, droplet_controller: Any) -> None:
     _register_droplet_export_route(app, droplet_controller)
 
 
-def _register_http_routes(
+def _register_http_routes(  # noqa: C901
     app: Flask,
     view_model,
     heaters: List[Any],
     flow,
     cam,
+    pump,
     debug_data: dict,
     droplet_controller: Optional[Any] = None,
 ) -> None:
     """Register HTTP routes."""
 
-    @app.route("/api/config/channels", defaults={"subpath": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    @app.route("/api/config/channels/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    @app.route(
+        "/api/config/channels",
+        defaults={"subpath": ""},
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    @app.route(
+        "/api/config/channels/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+    )
     def proxy_config_channels(subpath: str):
         """
         Proxy channel-configuration requests to the FastAPI backend.
@@ -312,8 +321,14 @@ def _register_http_routes(
                 return Response(resp_body, status=resp.getcode(), content_type=resp_ct)
         except urllib.error.HTTPError as e:
             err_body = e.read() if hasattr(e, "read") else b""
-            err_ct = getattr(e, "headers", {}).get("Content-Type") if getattr(e, "headers", None) else None
-            return Response(err_body or b"", status=e.code, content_type=err_ct or "application/json")
+            err_ct = (
+                getattr(e, "headers", {}).get("Content-Type")
+                if getattr(e, "headers", None)
+                else None
+            )
+            return Response(
+                err_body or b"", status=e.code, content_type=err_ct or "application/json"
+            )
         except Exception as e:
             return (
                 jsonify(
@@ -341,6 +356,7 @@ def _register_http_routes(
             flows_data = view_model.format_flow_data(flow)
             camera_data = view_model.format_camera_data(cam)
             strobe_data = view_model.format_strobe_data(cam)
+            pumps_data = view_model.format_pump_data(pump)
             debug_formatted = view_model.format_debug_data(debug_data["update_count"])
 
             # Determine if flow and heater tabs should be shown
@@ -350,6 +366,7 @@ def _register_http_routes(
 
             flow_enabled_env = os.getenv("RIO_FLOW_ENABLED", "").lower()
             heater_enabled_env = os.getenv("RIO_HEATER_ENABLED", "").lower()
+            pump_enabled_env = os.getenv("RIO_PUMP_ENABLED", "").lower()
 
             # If environment variable is explicitly set, use it
             if flow_enabled_env == "false":
@@ -368,6 +385,13 @@ def _register_http_routes(
                 # Default: check if controllers exist and have data
                 heater_enabled = heaters is not None and len(heaters) > 0 and len(heaters_data) > 0
 
+            if pump_enabled_env == "false":
+                pump_enabled = False
+            elif pump_enabled_env == "true":
+                pump_enabled = True
+            else:
+                pump_enabled = pump is not None and len(pumps_data) > 0
+
             return render_template(
                 "index.html",
                 debug=debug_formatted,
@@ -377,6 +401,8 @@ def _register_http_routes(
                 cam=camera_data,
                 flow_enabled=flow_enabled,
                 heater_enabled=heater_enabled,
+                pump_enabled=pump_enabled,
+                pumps=pumps_data,
             )
         except Exception as e:
             logger.error(f"Error rendering template: {e}")
@@ -462,6 +488,7 @@ def create_background_update_task(
     heaters: List[Any],
     flow,
     cam,
+    pump,
     debug_data: dict,
     exit_event: Any,
     droplet_web_controller: Optional[Any] = None,
@@ -478,6 +505,7 @@ def create_background_update_task(
         heaters: List of heater device controllers
         flow: Flow device controller
         cam: Camera device controller
+        pump: Pump device controller
         debug_data: Dictionary for debug information (mutated)
         exit_event: Event to signal shutdown
         droplet_web_controller: Optional droplet web controller
@@ -496,12 +524,12 @@ def create_background_update_task(
         while not exit_event.is_set():
             try:
                 time.sleep(1.0)
-                
+
                 # Check exit_event again after sleep (may have changed during sleep)
                 if exit_event.is_set():
                     logger.debug("Background update loop exiting (exit event set)")
                     break
-                
+
                 debug_data["update_count"] += 1
 
                 # Update hardware device controllers (only if not shutting down)
@@ -519,11 +547,12 @@ def create_background_update_task(
                 # Format data for clients (only if not shutting down)
                 if exit_event.is_set():
                     break
-                
+
                 heaters_data = view_model.format_heater_data(heaters)
                 flows_data = view_model.format_flow_data(flow)
                 camera_data = view_model.format_camera_data(cam)
                 strobe_data = view_model.format_strobe_data(cam)
+                pumps_data = view_model.format_pump_data(pump)
                 debug_formatted = view_model.format_debug_data(debug_data["update_count"])
 
                 # Emit updates to all connected clients (only if not shutting down)
@@ -532,6 +561,7 @@ def create_background_update_task(
                     socketio.emit("flows", flows_data)
                     socketio.emit("cam", camera_data)
                     socketio.emit("strobe", strobe_data)
+                    socketio.emit("pumps", pumps_data)
                     socketio.emit("debug", debug_formatted)
 
                 # Emit droplet detection updates (if controller available and running)

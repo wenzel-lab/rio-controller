@@ -69,7 +69,7 @@ class DropletDetector:
             self.preprocessor.initialize_background(frame)
         self.background_initialized = self.preprocessor.background_initialized
 
-    def process_frame(
+    def process_frame(  # noqa: C901
         self, frame: np.ndarray, timing_callback: Optional[Callable[[str, float], None]] = None
     ) -> List[DropletMetrics]:
         """

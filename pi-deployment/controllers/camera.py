@@ -128,6 +128,7 @@ class Camera:
         self.optimize_fps_btn_enabled = False
 
         # Configure strobe
+        # Note: strobe_cam and strobe are always initialized (PiStrobeCam.__init__ raises on failure)
         try:
             valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
             self.strobe_cam.strobe.set_hold(self.strobe_data["hold"])
@@ -723,6 +724,7 @@ class Camera:
             True if timing was set successfully, False otherwise
         """
         try:
+            # Note: strobe_cam is always initialized (Camera.__init__ raises on failure)
             # Clamp strobe period to maximum allowed value
             self.strobe_period_ns = min(self.strobe_period_ns, STROBE_MAX_PERIOD_NS)
             valid = self.strobe_cam.set_timing(
@@ -833,11 +835,11 @@ class Camera:
         # Don't update if exit event is set (app is shutting down)
         if self.exit_event.is_set():
             return
-        
+
         # Don't update if camera thread is not running (prevents error spam)
         if self.thread is None or not self.thread.is_alive():
             return
-        
+
         self.update()
         self.strobe_data["cam_read_time_us"] = self.cam_read_time_us
         self.strobe_data["period_ns"] = self.strobe_period_ns

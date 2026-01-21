@@ -50,6 +50,8 @@ See: `drivers/flow.py`, `drivers/heater.py`, `drivers/strobe.py` (and the corres
 
 - **Camera**: `camera/` subpackage (see `camera/README.md`)
   - abstraction layer and backends (Pi camera + Mako)
+- **Syringe pump (USB serial)**: `syringe_pump_serial.py`
+  - USB serial protocol for the ESP32 pump controller
 
 ## Testing
 

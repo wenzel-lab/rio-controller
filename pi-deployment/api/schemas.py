@@ -62,6 +62,17 @@ class HeaterSetStirRequest(BaseModel):
     enabled: bool
 
 
+class HeaterSetPowerLimitRequest(BaseModel):
+    index: int = Field(..., ge=0, le=3)
+    power_limit_pc: int = Field(..., ge=0, le=100)
+
+
+class HeaterSetAutotuneRequest(BaseModel):
+    index: int = Field(..., ge=0, le=3)
+    enabled: bool
+    temp_c: float
+
+
 class HeaterStateItem(BaseModel):
     temp_c_actual: float
     temp_c_target: float
@@ -69,6 +80,11 @@ class HeaterStateItem(BaseModel):
     stir_enabled: bool
     autotuning: bool
     status_text: str
+    heat_power_limit_pc: int | None = None
+    autotune_status_text: str | None = None
+    autotune_target_temp: float | None = None
+    stir_speed_target: int | None = None
+    stir_speed_text: str | None = None
 
 
 class HeaterState(BaseModel):
@@ -127,6 +143,21 @@ class CameraROIRequest(BaseModel):
     h: int
 
 
+class CameraSelectRequest(BaseModel):
+    camera: str
+
+
+class CameraState(BaseModel):
+    camera: str
+    status: str
+    display_width: int | None = None
+    display_height: int | None = None
+    snapshot_resolution_mode: str | None = None
+    snapshot_width: int | None = None
+    snapshot_height: int | None = None
+    roi: dict | None = None
+
+
 class StrobeEnableRequest(BaseModel):
     on: bool
 
@@ -134,6 +165,15 @@ class StrobeEnableRequest(BaseModel):
 class StrobeTimingRequest(BaseModel):
     period_ns: int
     wait_ns: int | None = None
+
+
+class StrobeState(BaseModel):
+    hold: int
+    enable: int
+    wait_ns: int
+    period_ns: int
+    framerate: int | float
+    cam_read_time_us: int | float
 
 
 # Pump (syringe pump)

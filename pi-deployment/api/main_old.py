@@ -11,7 +11,7 @@ Rio API server (skeleton + controller wiring).
 import logging
 import os
 from threading import Event
-from typing import Any
+from typing import Any, cast
 
 import uvicorn
 import yaml
@@ -51,7 +51,6 @@ from api.schemas import (
     PumpSetMicrostepRequest,
     PumpSetThreadrodRequest,
     PumpSetEnableRequest,
-    PumpState,
 )
 from api.streams import Aggregator
 
@@ -239,7 +238,7 @@ AGGREGATOR = Aggregator(
 )
 
 
-def create_app() -> FastAPI:
+def create_app() -> FastAPI:  # noqa: C901
     app = FastAPI(title="Rio API", version="0.2.0 (controllers wired)")
 
     if settings.cors_allow_all:
@@ -268,7 +267,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config/channels", response_model=ChannelConfigResponse)
     def get_channels() -> ChannelConfigResponse:
-        return ChannelConfigResponse(channels=CHANNEL_CONFIG)
+        return ChannelConfigResponse(channels=ChannelConfig(**cast(dict[str, Any], CHANNEL_CONFIG)))
 
     @app.post("/api/config/channels", response_model=ChannelConfigResponse)
     def set_channels(config: ChannelConfig) -> ChannelConfigResponse:
@@ -293,7 +292,7 @@ def create_app() -> FastAPI:
                 # calibration factor stays in-memory for now (future: persist)
                 if getattr(v, "calibration_factor", None) is not None:
                     CHANNEL_CONFIG[topic][k]["calibration_factor"] = float(v.calibration_factor)
-        return ChannelConfigResponse(channels=CHANNEL_CONFIG)
+        return ChannelConfigResponse(channels=ChannelConfig(**cast(dict[str, Any], CHANNEL_CONFIG)))
 
     # ----------------------------
     # Flow / Pressure endpoints

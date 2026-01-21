@@ -43,6 +43,9 @@ In the default app entrypoint (`software/main.py`), these controllers are instan
 - **`droplet_detector_controller.py` — `class DropletDetectorController` (optional)**
   - Bridges the camera ROI + frames into the algorithm in `../droplet-detection/`.
   - Public surface used by the web layer includes: `start()`, `stop()`, `reset()`, `update_config(dict)`, `load_profile(path)`, `get_histogram()`, `get_statistics()`, `get_performance_metrics()`, `export_data(format="csv"|"txt")`.
+- **`syringe_pump_controller.py` — `class SyringePumpController`**
+  - Wraps USB serial pump driver (or simulation backend) and exposes safe methods for API/UI.
+  - Typical calls: `set_flow()`, `set_diameter()`, `set_direction()`, `set_state()`, `set_unit()`.
 
 ## Integration points (who calls these?)
 

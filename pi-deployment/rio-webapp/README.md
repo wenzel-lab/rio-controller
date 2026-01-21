@@ -33,7 +33,7 @@ This folder is the web-facing layer: Flask routes, Socket.IO integration, HTML t
 
 ## Interfaces to other layers (where the boundaries are)
 
-- **Calls into**: `software/controllers/*` (camera/flow/heater/droplet control)
+- **Calls into**: `software/controllers/*` (camera/flow/heater/droplet/pump control)
 - **Does not call into**: low-level SPI/camera backends directly (those are in `../drivers/`)
 - **Owns**: event names/payloads that the browser and server agree on (Socket.IO contract)
 

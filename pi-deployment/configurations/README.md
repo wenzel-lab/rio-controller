@@ -19,6 +19,11 @@ This directory contains example configuration files and documentation for the Ri
    - PIC-paced strobe timing
    - Droplet detection enabled
 
+2. **`config-example-hybrid-syringe-pump-hw.yaml`**
+   - Default backend: simulation
+   - Syringe pump: hardware (USB serial)
+   - All other modules: simulated
+
 ### Detailed Reference Examples
 
 - **`config-example-strobe-centric-32bit.yaml`** - Detailed 32-bit PIC-paced configuration (legacy filename)
@@ -29,20 +34,42 @@ The configuration “quick reference” is included in this README (below) to av
 
 ## Usage
 
-Configuration is done via **environment variables**. The YAML files in this folder are **examples / documented presets** (they are not automatically parsed by `software/main.py`).
+Configuration is done via **environment variables** with an optional **YAML runtime block**. The YAML files in this folder are **examples / documented presets**; `software/main.py` now reads the `runtime` section (from `RIO_CONFIG_FILE`, default `rio-config.yaml`) to select hardware vs simulation **per module**.
+
+Example runtime block:
+```yaml
+runtime:
+  default_backend: simulation
+  modules:
+    syringe_pump: hardware
+```
+Note: backend selection does not enable a module; keep using `RIO_PUMP_ENABLED=true` to turn on the syringe pump controller.
+
+To use an example file directly:
+```bash
+export RIO_CONFIG_FILE=software/configurations/config-example-hybrid-syringe-pump-hw.yaml
+```
 
 Where configuration is consumed in code:
 
 - Constants and default values live in `software/config.py`.
 - Runtime toggles are read directly via `os.getenv(...)` in various layers, for example:
   - `RIO_SIMULATION=true|false` (drivers pick simulation vs hardware backends)
+  - `RIO_DEFAULT_BACKEND=simulation|hardware` (override default backend selection)
+  - `RIO_MODULE_BACKENDS="syringe_pump=hardware,camera=simulation"` (per-module overrides)
   - `RIO_DROPLET_ANALYSIS_ENABLED=true|false` (enable droplet controller + UI)
   - `RIO_FLOW_ENABLED` / `RIO_HEATER_ENABLED` (explicitly show/hide tabs in the UI; see `software/rio-webapp/routes.py`)
   - `RIO_ROI_MODE=software|hardware` (ROI policy; software default. Hardware ROI applies only on camera backends that support it; otherwise it falls back to software ROI.)
+  - `RIO_PUMP_ENABLED=true|false` (enable syringe pump controller via USB serial)
+  - `RIO_PUMP_PORT=/dev/ttyUSB0` (optional: explicitly select pump serial port)
+  - `RIO_REMOTE_MODULES=flow,heater,pump,camera` (comma-separated modules served by API)
+  - `RIO_REMOTE_API_URL=http://raspberrypi.local:8000` (base URL for remote modules)
 
 Example:
 ```bash
 export RIO_SIMULATION=false
+export RIO_DEFAULT_BACKEND=hardware
+export RIO_MODULE_BACKENDS="syringe_pump=hardware"
 export RIO_DROPLET_ANALYSIS_ENABLED=true
 export RIO_FLOW_ENABLED=false      # Hide flow control tab (for strobe-only configs)
 export RIO_HEATER_ENABLED=false    # Hide heater tab (for strobe-only configs)
@@ -71,7 +98,8 @@ This will hide the unused tabs in the web interface.
 - **Camera Resolution**: Can be adjusted via the web interface (Camera Configuration tab)
 - **Framerate**: Automatically optimized from strobe timing (use "Optimize" button in UI)
 - **Config files**: Show initial defaults; UI settings override config file defaults
-- YAML files are for documentation - actual configuration is via environment variables
+- `runtime` is the only YAML section read by `software/main.py`; other settings remain env-driven
+- Per-module backend overrides currently apply to the syringe pump only (SPI-based modules still follow the global simulation setting)
 
 ## More Information
 

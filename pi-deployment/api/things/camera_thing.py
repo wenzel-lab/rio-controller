@@ -4,15 +4,9 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import labthings_fastapi as lt
-from labthings_fastapi.outputs import Blob
+from labthings_fastapi.exceptions import InvocationError
+from labthings_fastapi.outputs.blob import Blob
 
-from api.schemas import (
-    CameraResolutionRequest,
-    CameraSnapshotResolutionRequest,
-    CameraROIRequest,
-    StrobeEnableRequest,
-    StrobeTimingRequest,
-)
 from config import (
     CMD_SET_RESOLUTION,
     CMD_SET_SNAPSHOT_RESOLUTION,
@@ -27,6 +21,12 @@ if TYPE_CHECKING:
     from controllers.camera import Camera
 
 logger = logging.getLogger(__name__)
+
+
+class JPEGBlob(Blob):
+    """Blob subclass for JPEG images."""
+
+    media_type: str = "image/jpeg"
 
 
 class CameraThing(lt.Thing):
@@ -58,16 +58,17 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable or no frame available
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         if self._camera.thread is None or not self._camera.thread.is_alive():
             self._camera.initialize()
 
         frame = self._camera.get_frame()
         if not frame:
-            raise lt.InvocationError("No frame available")
+            raise InvocationError("No frame available")
 
-        return Blob(content=frame, media_type="image/jpeg")
+        # Create Blob using from_bytes class method (required for Pydantic 2.x)
+        return JPEGBlob.from_bytes(frame)
 
     @lt.action
     def set_resolution(
@@ -87,7 +88,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         params: dict[str, Any] = {}
         if preset:
@@ -117,7 +118,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         params: dict[str, Any] = {"mode": mode}
         if width and height:
@@ -144,7 +145,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         self._camera.on_roi({"cmd": CMD_SET, "parameters": {"x": x, "y": y, "w": w, "h": h}})
         return {"ok": True}
@@ -160,7 +161,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         self._camera.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
         return {"ok": True}
@@ -179,7 +180,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         self._camera.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if on else 0}})
         return {"ok": True}
@@ -198,7 +199,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         self._camera.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if on else 0}})
         return {"ok": True}
@@ -218,7 +219,7 @@ class CameraThing(lt.Thing):
             InvocationError: If camera unavailable
         """
         if self._camera is None:
-            raise lt.InvocationError("Camera unavailable")
+            raise InvocationError("Camera unavailable")
 
         params = {"period_ns": int(period_ns)}
         if wait_ns is not None:
@@ -226,4 +227,3 @@ class CameraThing(lt.Thing):
 
         self._camera.on_strobe({"cmd": CMD_TIMING, "parameters": params})
         return {"ok": True}
-

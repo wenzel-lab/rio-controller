@@ -10,7 +10,7 @@ import logging
 import os
 from queue import Queue
 from threading import Event
-from typing import Optional, Dict, Tuple, Generator, Any
+from typing import Optional, Dict, Tuple, Generator
 
 import cv2
 import numpy as np

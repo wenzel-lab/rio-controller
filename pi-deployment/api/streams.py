@@ -12,8 +12,6 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
-import os
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -92,12 +90,7 @@ class Aggregator:
         if self.flow is None:
             return None
         num = self.flow.flow.NUM_CONTROLLERS
-        # If a client requests a subset of channels, ensure we return per-channel arrays
-        # (targets/actuals/modes/names) all aligned to the same channel list and order.
-        if channel_list:
-            chans = [i for i in channel_list if isinstance(i, int) and 0 <= i < num]
-        else:
-            chans = list(range(num))
+        chans = channel_list if channel_list else list(range(num))
         # Update cached targets/modes
         self.flow.get_pressure_targets()
         self.flow.get_flow_targets()
@@ -105,11 +98,11 @@ class Aggregator:
 
         pressure_actuals: list[float] = []
         flow_actuals: list[float] = []
-        # Filter targets/modes to the selected channels to avoid inconsistent lengths.
-        pressure_targets: list[float] = [self.flow.pressure_mbar_targets[i] for i in chans]
-        flow_targets: list[float] = [self.flow.flow_ul_hr_targets[i] for i in chans]
+        pressure_targets: list[float] = self.flow.pressure_mbar_targets
+        flow_targets: list[float] = self.flow.flow_ul_hr_targets
+        control_modes_fw: list[int] = self.flow.control_modes
         control_modes_ui: list[int] = [
-            CONTROL_MODE_FIRMWARE_TO_UI.get(self.flow.control_modes[i], 0) for i in chans
+            CONTROL_MODE_FIRMWARE_TO_UI.get(m, 0) for m in control_modes_fw
         ]
 
         for i in chans:

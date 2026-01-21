@@ -214,6 +214,17 @@ class ViewModel:
             }
 
     @staticmethod
+    def format_pump_data(pump) -> Dict[str, Dict[str, Any]]:
+        """Format pump controller data for template rendering."""
+        if pump is None:
+            return {}
+        try:
+            return pump.get_all_states()
+        except Exception as e:
+            logger.error(f"Error formatting pump data: {e}")
+            return {}
+
+    @staticmethod
     def format_debug_data(update_count: int) -> Dict[str, Any]:
         """
         Format debug data for template rendering.

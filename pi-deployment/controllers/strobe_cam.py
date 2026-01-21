@@ -56,6 +56,7 @@ class PiStrobeCam:
         Args:
             port: GPIO port number for SPI device selection
             reply_pause_s: SPI reply pause time in seconds
+            trigger_gpio_pin: GPIO pin number for PIC trigger (BOARD numbering)
         """
         logger.info(f"Initializing PiStrobeCam (port={port})")
 

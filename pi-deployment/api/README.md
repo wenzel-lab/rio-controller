@@ -2,12 +2,13 @@
 
 This folder contains the **network API layer** that exposes Rio hardware control and telemetry over HTTP/REST and WebSockets. It is designed to run alongside the existing Flask UI (`../rio-webapp/`) and provides a machine-readable interface for Jupyter notebooks, scripts, and external applications.
 
-**⚠️ Important:** The API currently uses **plain FastAPI** (standard REST endpoints). It is **NOT Web of Things (WoT) compatible**. 
+**✅ Web of Things (WoT) Compatible:** The API uses **LabThings FastAPI** to expose controllers as WoT-compliant Things.
 
-- `labthings-fastapi` is installed as a dependency but **not used** in the code
-- The API uses standard FastAPI routes (`@app.get`, `@app.post`, etc.)
-- No LabThings "Things", "Properties", "Actions", or "Events" are exposed
-- WoT compatibility is planned as a future enhancement (see "Future enhancements" section)
+- Controllers are wrapped as LabThings Things (FlowThing, HeaterThing, CameraThing, etc.)
+- Auto-generated Thing Descriptions (TD) for each Thing
+- Standard WoT properties, actions, and events
+- OpenAPI/Swagger documentation + Thing Description JSON
+- Custom endpoints remain at `/api/` prefix for backward compatibility
 
 ## Quick Start
 
@@ -27,15 +28,24 @@ This folder contains the **network API layer** that exposes Rio hardware control
    # Or directly
    python -m api.main
    ```
+   Optional pump enable (USB serial):
+   ```bash
+   export RIO_PUMP_ENABLED=true
+   # export RIO_PUMP_PORT=/dev/ttyUSB0
+   ```
 
 3. **Test the API:**
    ```bash
    curl http://localhost:8000/api/system/health
+   # Or test WoT Thing:
+   curl http://localhost:8000/flow/
    ```
 
 4. **View API documentation:**
    - Swagger UI: http://localhost:8000/docs
    - ReDoc: http://localhost:8000/redoc
+   - Thing Descriptions: http://localhost:8000/thing_descriptions/
+   - Individual Thing: http://localhost:8000/flow/ (FlowThing TD)
 
 ### Raspberry Pi Deployment
 
@@ -52,6 +62,11 @@ This folder contains the **network API layer** that exposes Rio hardware control
    cd ~/rio-controller
    export RIO_SIMULATION=false
    python3 -m api.main
+   ```
+   Optional pump enable (USB serial):
+   ```bash
+   export RIO_PUMP_ENABLED=true
+   # export RIO_PUMP_PORT=/dev/ttyUSB0
    ```
 
 3. **Test from Pi:**
@@ -75,12 +90,11 @@ This folder contains the **network API layer** that exposes Rio hardware control
 
 **For detailed Pi installation and Jupyter access guide, see:** `../../docs/api_pi_testing_guide.md`
 
-Note: the API client library and notebooks are not included in the deployment bundle.
-See the source repo at `software/api/client/README.md` for the client and examples.
+See `client/README.md` for the Python client library and example notebooks.
 
 ## What belongs here / what does not
 
-- **Belongs here**: FastAPI routes, WebSocket handlers, request/response schemas (Pydantic models), API configuration, and streaming aggregators.
+- **Belongs here**: LabThings Thing classes, ThingServer setup, WebSocket handlers, request/response schemas (Pydantic models), API configuration, and streaming aggregators.
 - **Does not belong here**: Hardware drivers (belongs in `../drivers/`), device controllers (belongs in `../controllers/`), Flask routes (belongs in `../rio-webapp/`), and browser JavaScript (belongs in `../rio-webapp/static/`).
 
 ## Architecture and integration
@@ -93,10 +107,12 @@ The API layer sits **above** the device controllers (`../controllers/`) and **be
 └──────────────┬──────────────────────┘
                │ HTTP/REST + WebSocket
 ┌──────────────▼──────────────────────┐
-│  software/api/ (this folder)        │
-│  - FastAPI routes                    │
+│  software/api/ (this folder)         │
+│  - LabThings ThingServer (WoT)      │
+│  - Thing classes (FlowThing, etc.)   │
 │  - WebSocket aggregator              │
 │  - Request/response schemas          │
+│  - Legacy /api/control/* routes      │
 └──────────────┬──────────────────────┘
                │ Controller methods
 ┌──────────────▼──────────────────────┐
@@ -114,28 +130,47 @@ The API **does not** call drivers directly; it calls into the controller layer, 
 
 ## Key components
 
-### `main.py` — FastAPI application and routes
+### `main.py` — LabThings ThingServer and routes
 
-- **Entry point**: `create_app()` returns a FastAPI instance with all routes registered.
+- **Entry point**: `create_app()` returns a FastAPI instance with LabThings ThingServer integration.
 - **Controller initialization**: Controllers are instantiated at import time (similar to `software/main.py`) so capabilities reflect actual hardware availability.
-- **REST endpoints**:
+- **WoT Things** (auto-generated routes by LabThings):
+  - `/flow/` — FlowThing (flow/pressure control)
+  - `/heater/` — HeaterThing (heater control)
+  - `/camera/` — CameraThing (camera and strobe control)
+  - `/droplet/` — DropletThing (droplet detection)
+  - `/pump/` — PumpThing (placeholder for future pump support)
+- **Custom endpoints** (backward compatibility):
   - `/api/system/health` — Health check
   - `/api/system/capabilities` — Available modules
   - `/api/config/channels` — Channel metadata (names, liquid types, calibration factors)
-  - `/api/control/flow/*` — Flow/pressure control
-  - `/api/control/heater/*` — Heater control
-  - `/api/control/camera/*` — Camera control (resolution, ROI, snapshot)
-  - `/api/control/strobe/*` — Strobe control (enable, hold, timing)
-  - `/api/control/droplet/*` — Droplet detection control
-  - `/api/control/pump/*` — Syringe pump control (placeholder, returns 501 until driver implemented)
-  - `/api/streams/camera/snapshot` — JPEG snapshot endpoint
+  - `/api/streams/aggregate` — WebSocket aggregator for sensor data
   - `/api/data/capture/*` — On-demand CSV capture control
+- **WoT endpoints** (auto-generated):
+  - `/thing_descriptions/` — All Thing Descriptions
+  - `/docs` — OpenAPI/Swagger UI
+  - `/openapi.json` — OpenAPI specification
+
+### `things/` — LabThings Thing classes
+
+WoT-compliant Thing classes that wrap controllers:
+- **`flow_thing.py`**: FlowThing — flow/pressure control (properties: `state`, actions: `set_pressure`, `set_flow`, `set_mode`, `set_pi_consts`)
+- **`heater_thing.py`**: HeaterThing — heater control (properties: `state`, actions: `set_temp`, `set_pid`, `set_stir`)
+- **`camera_thing.py`**: CameraThing — camera/strobe control (actions: `snapshot`, `set_resolution`, `set_roi`, `strobe_enable`, etc.)
+- **`droplet_thing.py`**: DropletThing — droplet detection (properties: `status`, `statistics`, `histogram`, actions: `start`, `stop`)
+- **`pump_thing.py`**: PumpThing — placeholder for future pump support
+
+Each Thing exposes:
+- **Properties**: Readable state (e.g., `GET /flow/state`)
+- **Actions**: Invocable methods (e.g., `POST /flow/set_pressure`)
+- **Thing Description**: Machine-readable WoT TD at `/flow/`, `/heater/`, etc.
 
 ### `schemas.py` — Request/response models
 
-Pydantic models for all API requests and responses. These provide:
+Pydantic models for API requests and responses. Used by both Things and custom endpoints:
 - **Type validation**: Automatic validation of request bodies and query parameters
 - **OpenAPI documentation**: FastAPI auto-generates OpenAPI/Swagger docs from these models
+- **Thing Descriptions**: LabThings uses these models in WoT TD generation
 - **Clear contracts**: Explicit data structures for clients
 
 Key models:
@@ -237,6 +272,8 @@ channels:
 - `POST /api/control/heater/set_temp` — Set target temperature
 - `POST /api/control/heater/pid` — Enable/disable PID
 - `POST /api/control/heater/stir` — Enable/disable stirrer
+- `POST /api/control/heater/power_limit` — Set heater power limit (%)
+- `POST /api/control/heater/autotune` — Start/stop autotune
 
 ### Camera/Strobe control
 - `GET /api/streams/camera/snapshot` — Get JPEG snapshot
@@ -244,9 +281,12 @@ channels:
 - `POST /api/control/camera/set_snapshot_resolution` — Set snapshot resolution mode
 - `POST /api/control/camera/roi` — Set ROI
 - `POST /api/control/camera/roi/clear` — Clear ROI
+- `GET /api/control/camera/state` — Get camera state (for remote UI)
+- `POST /api/control/camera/select` — Select camera backend
 - `POST /api/control/strobe/enable` — Enable/disable strobe
 - `POST /api/control/strobe/hold` — Enable/disable hold mode
 - `POST /api/control/strobe/timing` — Set strobe timing (period, wait)
+- `GET /api/control/strobe/state` — Get strobe state (for remote UI)
 
 ### Droplet detection
 - `POST /api/control/droplet/start` — Start detection
@@ -256,11 +296,17 @@ channels:
 - `GET /api/control/droplet/statistics` — Get statistics
 - `GET /api/control/droplet/performance` — Get performance metrics
 
-### Pump control (placeholder)
-- `GET /api/control/pump/state/{pump}` — Get pump state (returns 501)
-- `POST /api/control/pump/set_flow` — Set flow (returns 501)
-- `POST /api/control/pump/set_diameter` — Set diameter (returns 501)
-- ... (all pump endpoints return 501 until driver implemented)
+### Pump control (USB serial)
+- `GET /api/control/pump/state/{pump}` — Get pump state
+- `POST /api/control/pump/set_flow` — Set flow
+- `POST /api/control/pump/set_diameter` — Set diameter
+- `POST /api/control/pump/set_direction` — Set direction (infuse/withdraw)
+- `POST /api/control/pump/set_state` — Start/stop
+- `POST /api/control/pump/set_unit` — Set unit
+- `POST /api/control/pump/set_gearbox` — Set gearbox
+- `POST /api/control/pump/set_microstep` — Set microstep
+- `POST /api/control/pump/set_threadrod` — Set threadrod
+- `POST /api/control/pump/set_enable` — Enable/disable
 
 ### Streaming and capture
 - `WS /api/streams/aggregate` — WebSocket aggregator (flow/pressure/heater telemetry)
@@ -272,7 +318,7 @@ channels:
 
 ### Python client library
 
-A lightweight client library is available at `../client/api_client.py`:
+A lightweight client library is available at `client/api_client.py`:
 - `RioClient` — REST API client with error handling and retry logic
 - `RioStreamClient` — WebSocket aggregator client with thread-safe message queue
 
@@ -292,11 +338,11 @@ for msg in stream.iter_messages(timeout=10.0):
     print(f"{msg['topic']}: {msg['value']}")
 ```
 
-See the source repo at `software/api/client/README.md` for complete client documentation.
+See `client/README.md` for complete documentation.
 
 ### Jupyter notebooks
 
-Two example notebooks are available in the source repo under `software/api/client/notebooks/`:
+Two example notebooks are available in `software/api/client/notebooks/` (repo root path):
 
 1. **`tutorial.ipynb`** — Step-by-step learning notebook:
    - REST API control (flow, heater, camera)
@@ -309,6 +355,74 @@ Two example notebooks are available in the source repo under `software/api/clien
    - Live status updates
    - Camera snapshot capture
    - Emergency stop button
+
+### Testing with Jupyter Notebooks in Simulation Mode
+
+To test the API using Jupyter notebooks in simulation mode (without hardware):
+
+1. **Start the API server in simulation mode** (in a terminal):
+   ```bash
+   cd software
+   export RIO_SIMULATION=true
+   python -m api.main
+   ```
+   The server will start on `http://localhost:8000`. You should see:
+   ```
+   INFO:     Uvicorn running on http://0.0.0.0:8000
+   ```
+
+2. **Install Jupyter** (if not already installed in your environment):
+   ```bash
+   pip install jupyter jupyterlab ipywidgets matplotlib pandas numpy
+   ```
+
+3. **Open a Jupyter notebook** (in a new terminal, same environment):
+   ```bash
+   cd software
+   # Make sure you're in the same environment (rio-simulation)
+   mamba activate rio-simulation  # if not already activated
+   jupyter notebook
+   ```
+   Or use JupyterLab:
+   ```bash
+   jupyter lab
+   ```
+
+3. **Navigate to the client notebooks**:
+   - Open `api/client/notebooks/tutorial.ipynb` or `api/client/notebooks/interactive_control.ipynb`
+   - Or create a new notebook
+
+4. **Set up the client in the notebook**:
+   ```python
+   import sys
+   # Add client library to path
+   sys.path.insert(0, '/path/to/rio-controller/software')
+   
+   from api.client import RioClient, RioStreamClient
+   
+   # Connect to local API server
+   API_BASE_URL = "http://localhost:8000"
+   client = RioClient(base_url=API_BASE_URL)
+   
+   # Test connection
+   health = client.health()
+   print(f"API Status: {health['status']}")
+   print(f"Simulation Mode: {health['simulation']}")
+   ```
+
+5. **Run the notebook cells**:
+   - The notebooks will work with the simulation API
+   - Flow, pressure, and heater controllers will use simulated hardware
+   - Camera will use simulated frames (synthetic droplets)
+   - All API endpoints are available and functional
+
+**Note**: Keep the API server running in the terminal while using the notebook. If you stop the server, restart it and the notebook will reconnect automatically.
+
+**Troubleshooting**:
+- **Connection refused**: Make sure the API server is running (`python -m api.main`)
+- **Module not found**: Make sure `software/` is in your Python path (see step 4)
+- **Import errors**: Install client dependencies: `pip install requests websocket-client`
+- **Notebook dependencies**: For plotting and widgets: `pip install matplotlib pandas numpy ipywidgets`
 
 ## Testing
 
@@ -335,13 +449,13 @@ FastAPI automatically generates OpenAPI documentation. When the API server is ru
 ## Dependencies
 
 API-specific dependencies are in `requirements-api.txt`:
-- `fastapi==0.95.2` — Web framework (currently using plain FastAPI, not LabThings)
-- `uvicorn[standard]==0.21.1` — ASGI server
-- `labthings-fastapi==0.0.6` — **Installed but not used** (for future WoT integration)
-- `pydantic==1.10.14` — Data validation
-- `pyyaml` — Config file loading
+- `fastapi[all]>=0.115.0` — Web framework (supports Pydantic 2.x)
+- `uvicorn[standard]>=0.30.0` — ASGI server (compatible with FastAPI 0.115+)
+- `labthings-fastapi>=0.0.6` — **LabThings/WoT framework** (requires Pydantic 2.x)
+- `pydantic>=2.10.0` — Data validation (Pydantic 2.x, required by LabThings)
+- `pyyaml>=6.0` — Config file loading
 
-**Current status:** The API uses standard FastAPI routes and does not expose LabThings "Things", "Properties", "Actions", or "Events". The `labthings-fastapi` package is included for future migration to WoT-compliant endpoints.
+**Current status:** The API uses LabThings ThingServer to expose controllers as WoT-compliant Things. Each controller is wrapped in a Thing class that exposes properties and actions according to the Web of Things standard.
 
 Install with:
 ```bash
@@ -414,11 +528,11 @@ client.capture_stop()
 
 ## Future enhancements
 
-- **LabThings/WoT integration**: Expose Things, Properties, Actions, Events (WoT-compliant)
 - **Authentication**: Token-based or basic auth for LAN security
 - **Remote adapters**: Configuration-driven split-host deployment (Pi + external PC)
-- **Pump driver**: Implement syringe pump driver/controller to enable pump endpoints
+- **Pump driver**: Implement syringe pump driver/controller to enable PumpThing
 - **UI adapters**: Flask UI calls API instead of controllers directly (single-owner rule)
+- **ThingClient migration**: Update client library to use LabThings ThingClient for auto-generated clients
 
 ## AI-generated notice
 
