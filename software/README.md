@@ -27,7 +27,7 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 
 The main runtime entry point is **`software/main.py`**, which wires the layers together in a fairly direct way:
 
-- **SPI/GPIO backend selection** happens inside `drivers/spi_handler.py` (simulation vs hardware is chosen via `RIO_SIMULATION=true|false`).
+- **SPI/GPIO backend selection** happens inside `drivers/spi_handler.py` (simulation vs hardware defaults to `RIO_SIMULATION=true|false`, but `runtime.default_backend` in `rio-config.yaml` can set this when `RIO_SIMULATION` is not explicitly set).
 - **Device controllers** are created in `main.py`:
   - `controllers/flow_web.py` (`FlowWeb`) wraps `drivers/flow.py` (`PiFlow`)
   - `controllers/heater_web.py` (`heater_web`) wraps `drivers/heater.py` (`PiHolder`)
@@ -169,7 +169,7 @@ bash ./scripts/dev/run-simulation.sh
 
 ```
 
-Need custom parameters for simulation (frame size, ROI defaults, feature flags)? See `configurations/README.md` for the environment-variable profiles and examples you can export before running.
+Need custom parameters for simulation (frame size, ROI defaults, feature flags)? See `configurations/README.md` for the environment-variable profiles and examples you can export before running. Mixed backend selection (e.g., syringe pump hardware while other modules are simulated) is configured via the `runtime` block in `rio-config.yaml` or with `RIO_MODULE_BACKENDS`.
 
 **Option 2: Manual setup**
 ```bash
@@ -181,7 +181,7 @@ python main.py
 
 The `scripts/dev/setup-simulation.sh` script creates a conda/mamba environment named **`rio-simulation`** and installs dependencies. The `scripts/dev/run-simulation.sh` script activates that environment and runs the app in simulation mode.
 
-Note: `setup-simulation.sh` also creates a `rio-config.yaml` file for simulation settings, but **the main app currently selects simulation via `RIO_SIMULATION=true`**; `rio-config.yaml` is not a primary runtime configuration source for `main.py`.
+Note: `setup-simulation.sh` also creates a `rio-config.yaml` file for simulation settings. `software/main.py` now reads the `runtime` section from `rio-config.yaml` (or `RIO_CONFIG_FILE`) to choose the default backend and per-module overrides (currently used for the syringe pump).
 
 This enables simulated SPI, GPIO, camera, and device controllers, allowing you to test the web interface and logic without physical hardware.
 

@@ -7,7 +7,6 @@ Tests the detector with images from droplet_AInalysis repository.
 import sys
 import os
 import logging
-from pathlib import Path
 
 # Import droplet_detection module (directory has hyphen, so use importlib)
 import importlib.util
@@ -107,7 +106,7 @@ def test_detector_on_image(image_path: str, roi: tuple = None):
     histogram.update(metrics)
 
     stats = histogram.get_statistics()
-    logger.info(f"\nStatistics:")
+    logger.info("\nStatistics:")
     logger.info(f"  Count: {stats['count']}")
     logger.info(f"  Width - mean: {stats['width']['mean']:.2f}, std: {stats['width']['std']:.2f}")
     logger.info(

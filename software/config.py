@@ -6,12 +6,29 @@ used throughout the application to improve maintainability and readability.
 """
 
 import os
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from controllers.flow_control_modes import (  # single source-of-truth (Phase B / Track 2)
     CONTROL_MODE_FIRMWARE_TO_UI,
     CONTROL_MODE_UI_TO_FIRMWARE,
     FLOW_CTRL_MODE_STR,
 )
+
+# Re-export control mode mappings for backward compatibility.
+_CONTROL_MODE_EXPORTS = (
+    CONTROL_MODE_FIRMWARE_TO_UI,
+    CONTROL_MODE_UI_TO_FIRMWARE,
+    FLOW_CTRL_MODE_STR,
+)
+
+# YAML is optional; runtime config falls back to env-only if unavailable.
+try:
+    import yaml
+
+    YAML_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    YAML_AVAILABLE = False
 
 # Camera Configuration
 CAMERA_DEFAULT_WIDTH = 640
@@ -118,6 +135,82 @@ PUMP_PORT = os.getenv("RIO_PUMP_PORT", "").strip() or None
 PUMP_BAUDRATE = int(os.getenv("RIO_PUMP_BAUDRATE", "115200"))
 PUMP_TIMEOUT_S = float(os.getenv("RIO_PUMP_TIMEOUT_S", "1.0"))
 PUMP_WRITE_TIMEOUT_S = float(os.getenv("RIO_PUMP_WRITE_TIMEOUT_S", "1.0"))
+
+# Runtime config (YAML + env) for backend selection
+CONFIG_FILE_PATH = os.getenv("RIO_CONFIG_FILE", "rio-config.yaml")
+
+
+def _normalize_backend(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if normalized in ("simulation", "sim"):
+        return "simulation"
+    if normalized in ("hardware", "hw", "real"):
+        return "hardware"
+    return None
+
+
+def _parse_module_backend_overrides(raw: str) -> Dict[str, str]:
+    overrides: Dict[str, str] = {}
+    for pair in raw.split(","):
+        if "=" not in pair:
+            continue
+        module, backend = pair.split("=", 1)
+        module_key = module.strip().lower()
+        backend_key = _normalize_backend(backend)
+        if module_key and backend_key:
+            overrides[module_key] = backend_key
+    return overrides
+
+
+def load_runtime_config() -> Dict[str, Any]:
+    """Load runtime backend config from YAML, if available."""
+    if not YAML_AVAILABLE:
+        return {}
+    config_path = Path(CONFIG_FILE_PATH)
+    if not config_path.exists():
+        return {}
+    try:
+        data = yaml.safe_load(config_path.read_text()) or {}
+    except Exception:
+        return {}
+    runtime = data.get("runtime")
+    return runtime if isinstance(runtime, dict) else {}
+
+
+def resolve_default_backend(runtime_config: Optional[Dict[str, Any]] = None) -> str:
+    """Resolve the default backend (simulation|hardware) with env overrides."""
+    env_default = _normalize_backend(os.getenv("RIO_DEFAULT_BACKEND"))
+    if env_default:
+        return env_default
+    if "RIO_SIMULATION" in os.environ:
+        return (
+            "simulation" if os.getenv("RIO_SIMULATION", "false").lower() == "true" else "hardware"
+        )
+    runtime_config = runtime_config or load_runtime_config()
+    cfg_default = _normalize_backend(
+        runtime_config.get("default_backend") if isinstance(runtime_config, dict) else None
+    )
+    if cfg_default:
+        return cfg_default
+    return "hardware"
+
+
+def resolve_module_backend(module: str, runtime_config: Optional[Dict[str, Any]] = None) -> str:
+    """Resolve per-module backend (simulation|hardware), falling back to default."""
+    overrides = _parse_module_backend_overrides(os.getenv("RIO_MODULE_BACKENDS", ""))
+    module_key = module.strip().lower()
+    if module_key in overrides:
+        return overrides[module_key]
+    runtime_config = runtime_config or load_runtime_config()
+    modules = runtime_config.get("modules") if isinstance(runtime_config, dict) else None
+    if isinstance(modules, dict):
+        cfg_value = _normalize_backend(modules.get(module_key))
+        if cfg_value:
+            return cfg_value
+    return resolve_default_backend(runtime_config)
+
 
 # Logging Configuration
 # Production should use WARNING level to reduce I/O overhead

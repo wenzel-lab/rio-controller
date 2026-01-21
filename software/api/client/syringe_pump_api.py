@@ -11,10 +11,15 @@ It supports:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from urllib.parse import urljoin
 
 import requests
+
+LTThingClient: Any
+FailedToInvokeActionError: Any
+ServerActionError: Any
+ClientPropertyError: Any
 
 try:
     from labthings_fastapi.client import ThingClient as LTThingClient
@@ -27,10 +32,10 @@ try:
     HAS_LABTHINGS = True
 except ImportError:  # pragma: no cover - optional dependency
     HAS_LABTHINGS = False
-    LTThingClient = None  # type: ignore
-    FailedToInvokeActionError = Exception  # type: ignore
-    ServerActionError = Exception  # type: ignore
-    ClientPropertyError = Exception  # type: ignore
+    LTThingClient = None
+    FailedToInvokeActionError = Exception
+    ServerActionError = Exception
+    ClientPropertyError = Exception
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +89,7 @@ class SyringePumpAPI:
         try:
             response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except requests.exceptions.RequestException as e:
             raise PumpConnectionError(f"GET {url} failed: {e}") from e
 
@@ -93,16 +98,16 @@ class SyringePumpAPI:
         try:
             response = self.session.post(url, json=payload, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except requests.exceptions.RequestException as e:
             raise PumpConnectionError(f"POST {url} failed: {e}") from e
 
-    def _coerce_result(self, result: Any) -> Any:
+    def _coerce_result(self, result: Any) -> Dict[str, Any]:
         if hasattr(result, "dict"):
-            return result.dict()
+            return cast(Dict[str, Any], result.dict())
         if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return result
+            return cast(Dict[str, Any], result.model_dump())
+        return cast(Dict[str, Any], result)
 
     def _get_pump_thing(self) -> Any:
         if not self.use_wot:
@@ -116,7 +121,9 @@ class SyringePumpAPI:
                 raise PumpConnectionError(f"Failed to connect to PumpThing: {e}") from e
         return self._pump_thing
 
-    def _call_action(self, name: str, payload: Dict[str, Any], legacy_endpoint: str) -> Dict[str, Any]:
+    def _call_action(
+        self, name: str, payload: Dict[str, Any], legacy_endpoint: str
+    ) -> Dict[str, Any]:
         if self.use_wot:
             try:
                 pump_thing = self._get_pump_thing()
@@ -135,15 +142,15 @@ class SyringePumpAPI:
     def get_state(self, pump: Optional[str] = None) -> Dict[str, Any]:
         """Get pump state. For legacy endpoints, pump must be provided."""
         if self.use_wot:
-            state = self._get_pump_thing().state
-            state = self._coerce_result(state)
+            state = self._coerce_result(self._get_pump_thing().state)
             if pump is None:
                 return state
             if isinstance(state, dict):
                 if pump in state:
-                    return state[pump]
-                if isinstance(state.get("pumps"), dict) and pump in state["pumps"]:
-                    return state["pumps"][pump]
+                    return cast(Dict[str, Any], state[pump])
+                pumps = state.get("pumps")
+                if isinstance(pumps, dict) and pump in pumps:
+                    return cast(Dict[str, Any], pumps[pump])
             return {"pump": pump, "state": state}
         if pump is None:
             raise PumpAPIError("Pump ID required for legacy pump state endpoint.")
@@ -164,7 +171,7 @@ class SyringePumpAPI:
         )
 
     def set_direction(self, pump: str, direction: str) -> Dict[str, Any]:
-        direction_value = direction
+        direction_value: Any = direction
         if isinstance(direction, str):
             value = direction.strip().lower()
             if value in ("infuse", "in", "forward", "1"):
@@ -178,7 +185,7 @@ class SyringePumpAPI:
         )
 
     def set_state(self, pump: str, state: str) -> Dict[str, Any]:
-        state_value = state
+        state_value: Any = state
         if isinstance(state, str):
             value = state.strip().lower()
             if value in ("run", "start", "on", "1", "true"):
@@ -205,7 +212,7 @@ class SyringePumpAPI:
             "/api/control/pump/set_gearbox",
         )
 
-    def set_microstep(self, pump: str, microstep: int) -> Dict[str, Any]:
+    def set_microstep(self, pump: str, microstep: str) -> Dict[str, Any]:
         return self._call_action(
             "set_microstep",
             {"pump": pump, "microstep": microstep},

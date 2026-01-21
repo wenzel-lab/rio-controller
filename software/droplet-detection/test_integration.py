@@ -171,7 +171,6 @@ class IntegrationTest:
         histogram = DropletHistogram(window_size=100, pixel_ratio=1.0, unit="px")
 
         # Create some dummy metrics
-        from droplet_detection import DropletMetrics
         import cv2
 
         dummy_contours = []
@@ -195,10 +194,10 @@ class IntegrationTest:
 
         # Test histogram retrieval
         try:
-            width_hist = histogram.get_histogram("width")
-            height_hist = histogram.get_histogram("height")
-            area_hist = histogram.get_histogram("area")
-            diameter_hist = histogram.get_histogram("diameter")
+            _ = histogram.get_histogram("width")
+            _ = histogram.get_histogram("height")
+            _ = histogram.get_histogram("area")
+            _ = histogram.get_histogram("diameter")
 
             stats = histogram.get_statistics()
 
@@ -293,13 +292,6 @@ def main():
     parser.add_argument("--config", type=str, help="Path to configuration JSON file (optional)")
 
     args = parser.parse_args()
-
-    # Load config if provided
-    config = None
-    if args.config:
-        from droplet_detection import load_config
-
-        config = load_config(args.config)
 
     # Run tests
     test = IntegrationTest(max_images=args.images)

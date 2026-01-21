@@ -27,21 +27,37 @@ Usage:
 import os
 import logging
 import warnings
+from typing import Any, Optional, cast
 from threading import Event
 from flask import Flask
 from flask_socketio import SocketIO
 
 from path_bootstrap import bootstrap_runtime
 
+bootstrap_runtime()
+
+from config import (  # noqa: E402
+    load_runtime_config,
+    resolve_default_backend,
+    resolve_module_backend,
+)
+
+# Runtime backend selection (YAML + env)
+_runtime_config = load_runtime_config()
+_default_backend = resolve_default_backend(_runtime_config)
+if "RIO_SIMULATION" not in os.environ:
+    os.environ["RIO_SIMULATION"] = "true" if _default_backend == "simulation" else "false"
+
 # Environment flags
 SIMULATION_MODE = os.getenv("RIO_SIMULATION", "false").lower() == "true"
 NO_GEVENT_PATCH = os.getenv("RIO_NO_GEVENT_PATCH", "false").lower() == "true"
 
+# Mixed backend selection (per-module)
+_pump_backend = resolve_module_backend("syringe_pump", _runtime_config)
+
 # Remote module configuration (hybrid UI)
 REMOTE_MODULES = {
-    item.strip().lower()
-    for item in os.getenv("RIO_REMOTE_MODULES", "").split(",")
-    if item.strip()
+    item.strip().lower() for item in os.getenv("RIO_REMOTE_MODULES", "").split(",") if item.strip()
 }
 if "all" in REMOTE_MODULES:
     REMOTE_MODULES = {"flow", "heater", "camera", "pump", "droplet"}
@@ -73,8 +89,6 @@ try:
 except ImportError:
     import importlib_metadata  # type: ignore
 
-bootstrap_runtime()
-
 software_dir = os.path.dirname(os.path.abspath(__file__))
 
 from drivers.spi_handler import (  # noqa: E402
@@ -88,13 +102,15 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
-from controllers.pump_controller import PumpController as DevicePumpController  # noqa: E402
+from controllers.syringe_pump_controller import (  # noqa: E402
+    SyringePumpController as DeviceSyringePumpController,
+)
 
 # Import web controllers and routes (paths already bootstrapped)
 from camera_controller import CameraController  # noqa: E402
 from flow_controller import FlowController  # noqa: E402
 from heater_controller import HeaterController  # noqa: E402
-from pump_controller import PumpController  # noqa: E402
+from syringe_pump_controller import SyringePumpWebController  # noqa: E402
 from view_model import ViewModel  # noqa: E402
 from routes import register_routes, create_background_update_task  # noqa: E402
 
@@ -122,6 +138,8 @@ if SIMULATION_MODE:
 # Log startup immediately to verify logging works
 logger.info("=" * 60)
 logger.info("Rio Microfluidics Controller - Starting up")
+logger.info("Default backend: %s", _default_backend)
+logger.info("Syringe pump backend: %s", _pump_backend)
 logger.info("=" * 60)
 
 # Remote module flags (hybrid UI)
@@ -131,13 +149,15 @@ use_remote_camera = "camera" in REMOTE_MODULES
 use_remote_pump = "pump" in REMOTE_MODULES
 use_remote_droplet = "droplet" in REMOTE_MODULES
 
-remote_client = None
+remote_client: Optional["RioClient"] = None
 if REMOTE_MODULES:
     try:
         from api.client import RioClient
 
         remote_client = RioClient(base_url=REMOTE_API_URL)
-        logger.info("Remote modules enabled: %s (base=%s)", ",".join(sorted(REMOTE_MODULES)), REMOTE_API_URL)
+        logger.info(
+            "Remote modules enabled: %s (base=%s)", ",".join(sorted(REMOTE_MODULES)), REMOTE_API_URL
+        )
     except Exception as e:
         logger.error("Failed to initialize remote client: %s", e)
         raise
@@ -218,7 +238,10 @@ logger.info("Step 4: Initializing hardware models...")
 if use_remote_heater:
     from controllers.remote import RemoteHeater
 
-    heaters = [RemoteHeater(i, remote_client) for i in range(4)]
+    assert remote_client is not None
+    heaters: list["RemoteHeater"] | list["heater_web"] = [
+        RemoteHeater(i, remote_client) for i in range(4)
+    ]
 else:
     heater1 = heater_web(1, PORT_HEATER1)
     heater2 = heater_web(2, PORT_HEATER2)
@@ -229,7 +252,8 @@ else:
 if use_remote_flow:
     from controllers.remote import RemoteFlow
 
-    flow = RemoteFlow(remote_client)
+    assert remote_client is not None
+    flow: "RemoteFlow" | "FlowWeb" = RemoteFlow(remote_client)
 else:
     flow = FlowWeb(PORT_FLOW)
 
@@ -239,7 +263,8 @@ try:
     if use_remote_camera:
         from controllers.remote import RemoteCamera
 
-        cam = RemoteCamera(exit_event, socketio, remote_client)
+        assert remote_client is not None
+        cam: "RemoteCamera" | "Camera" = RemoteCamera(exit_event, socketio, remote_client)
     else:
         cam = Camera(exit_event, socketio)
     logger.info("Step 5: Camera controller initialized")
@@ -265,16 +290,19 @@ if use_remote_droplet:
     droplet_analysis_enabled = False
 
 if use_remote_camera and droplet_analysis_enabled:
-    logger.warning("Droplet analysis requires a local camera controller; disabling droplet analysis.")
+    logger.warning(
+        "Droplet analysis requires a local camera controller; disabling droplet analysis."
+    )
     droplet_analysis_enabled = False
 
-if droplet_analysis_enabled:
+if droplet_analysis_enabled and not use_remote_camera:
     try:
         from controllers.droplet_detector_controller import DropletDetectorController
 
-        droplet_controller = DropletDetectorController(cam, cam.strobe_cam)
+        local_cam = cast("Camera", cam)
+        droplet_controller = DropletDetectorController(local_cam, local_cam.strobe_cam)
         # Set droplet controller reference in camera for frame feeding
-        cam.droplet_controller = droplet_controller
+        local_cam.droplet_controller = droplet_controller
         logger.info("Droplet detector controller initialized")
     except ImportError as e:
         logger.warning(f"Droplet detection not available (missing dependencies): {e}")
@@ -284,7 +312,7 @@ else:
     logger.info("Droplet analysis module disabled (RIO_DROPLET_ANALYSIS_ENABLED=false)")
 
 # Initialize pump controller (optional)
-pump_controller = None
+pump_controller: Optional[Any] = None
 if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
     try:
         if use_remote_pump:
@@ -292,7 +320,7 @@ if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
 
             pump_controller = RemotePumpController(REMOTE_API_URL)
         else:
-            pump_controller = DevicePumpController()
+            pump_controller = DeviceSyringePumpController(simulation=_pump_backend == "simulation")
         logger.info("Pump controller initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize pump controller: {e}")
@@ -304,7 +332,7 @@ try:
     flow_controller = FlowController(flow, socketio)
     heater_controller = HeaterController(heaters, socketio)
     if pump_controller is not None:
-        pump_web_controller = PumpController(pump_controller, socketio)
+        pump_web_controller = SyringePumpWebController(pump_controller, socketio)
     logger.info("Step 6: Web controllers initialized")
 except Exception as e:
     logger.error(f"Step 6: Web controller initialization failed: {e}")
@@ -334,7 +362,15 @@ view_model = ViewModel(
 logger.info("Step 7: Registering routes and WebSocket handlers...")
 try:
     register_routes(
-        app, socketio, view_model, heaters, flow, cam, pump_controller, debug_data, droplet_controller
+        app,
+        socketio,
+        view_model,
+        heaters,
+        flow,
+        cam,
+        pump_controller,
+        debug_data,
+        droplet_controller,
     )
     logger.info("Step 7: Routes and handlers registered")
 except Exception as e:
@@ -382,11 +418,18 @@ if __name__ == "__main__":
 
     # Print friendly startup message (use print with flush to ensure it appears)
     import sys
+
     print("", file=sys.stderr, flush=True)
     print("=" * 60, file=sys.stderr, flush=True)
     print("Rio Microfluidics Controller is now running", file=sys.stderr, flush=True)
-    print(f"Access the web interface at: http://raspberrypi.local:{port}", file=sys.stderr, flush=True)
-    print(f"If you are running in simulation mode, access the web interface at: http://localhost:{port}", file=sys.stderr, flush=True)
+    print(
+        f"Access the web interface at: http://raspberrypi.local:{port}", file=sys.stderr, flush=True
+    )
+    print(
+        f"If you are running in simulation mode, access the web interface at: http://localhost:{port}",
+        file=sys.stderr,
+        flush=True,
+    )
     print("Press Ctrl+C to stop the server", file=sys.stderr, flush=True)
     print("=" * 60, file=sys.stderr, flush=True)
     print("", file=sys.stderr, flush=True)

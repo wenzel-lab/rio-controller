@@ -204,6 +204,7 @@ class TestSimulatedPump(unittest.TestCase):
         self.pump.set_state("A", "RUN")
         self.assertTrue(self.pump.get_state("A"))
 
+
 class TestSimulationConsistency(unittest.TestCase):
     """Test that simulation behaves consistently with real hardware"""
 

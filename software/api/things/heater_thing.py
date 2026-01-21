@@ -74,7 +74,9 @@ class HeaterThing(lt.Thing):
         if self._heaters is None:
             raise InvocationError("Heaters unavailable")
         if index < 0 or index >= len(self._heaters):
-            raise InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
+            raise InvocationError(
+                f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})"
+            )
 
         self._heaters[index].set_temp(temp_c)
         return {"ok": True}
@@ -96,7 +98,9 @@ class HeaterThing(lt.Thing):
         if self._heaters is None:
             raise InvocationError("Heaters unavailable")
         if index < 0 or index >= len(self._heaters):
-            raise InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
+            raise InvocationError(
+                f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})"
+            )
 
         self._heaters[index].set_pid_running(1 if enabled else 0)
         self._heaters[index].pid_enabled = enabled
@@ -119,9 +123,10 @@ class HeaterThing(lt.Thing):
         if self._heaters is None:
             raise InvocationError("Heaters unavailable")
         if index < 0 or index >= len(self._heaters):
-            raise InvocationError(f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})")
+            raise InvocationError(
+                f"Invalid heater index: {index} (must be 0-{len(self._heaters)-1})"
+            )
 
         self._heaters[index].set_stir_running(1 if enabled else 0)
         self._heaters[index].stir_enabled = enabled
         return {"ok": True}
-

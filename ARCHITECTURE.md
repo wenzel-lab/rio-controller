@@ -141,7 +141,7 @@ The droplet detection pipeline in `software/droplet-detection/` runs **alongside
 If you want to verify that "who owns what logic" is consistent in code, start with `software/main.py`. In broad strokes it:
 
 - initializes Flask + Socket.IO
-- instantiates device controllers (`Camera`, `FlowWeb`, `heater_web`, `PumpController`) and (optionally) `DropletDetectorController`
+- instantiates device controllers (`Camera`, `FlowWeb`, `heater_web`, `SyringePumpController`) and (optionally) `DropletDetectorController`
 - instantiates remote adapters (if `RIO_REMOTE_MODULES` is set) to forward calls to API
 - instantiates web controllers (Socket.IO handlers under `software/rio-webapp/controllers/`)
 - registers HTTP routes and `/api/droplet/*` endpoints via `software/rio-webapp/routes.py`
@@ -150,7 +150,8 @@ If you want to verify that "who owns what logic" is consistent in code, start wi
 ## Configuration (what decides which parts run)
 
 Configuration is primarily driven by environment variables (`RIO_*`) plus a small number of config/constants in `software/config.py`.
-- **Hardware vs simulation**: routine dev/tests use `RIO_SIMULATION=true`; hardware runs use `RIO_SIMULATION=false`.
+- **Hardware vs simulation**: routine dev/tests use `RIO_SIMULATION=true`; hardware runs use `RIO_SIMULATION=false`. `rio-config.yaml` can optionally set `runtime.default_backend` and per-module overrides when `RIO_SIMULATION` is not explicitly set.
+- **Mixed backend (per-module)**: set `runtime.modules.syringe_pump: hardware` (or `RIO_MODULE_BACKENDS="syringe_pump=hardware"`) to run syringe pump hardware while keeping other modules in simulation.
 - **Feature toggles**: modules such as droplet analysis, flow, heater can be enabled/disabled via env vars (see `software/README.md`).
 - **Strobe pacing**: PIC-paced only (camera is triggered by the PIC; no multi-mode selection).
 - **ROI mode**: `RIO_ROI_MODE=software|hardware` (software default). Hardware ROI applies only on camera backends that support it; otherwise the app falls back to software ROI.

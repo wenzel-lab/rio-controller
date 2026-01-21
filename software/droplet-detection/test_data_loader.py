@@ -4,7 +4,6 @@ Test data loader for droplet detection.
 Loads test images from droplet_AInalysis repository for testing and validation.
 """
 
-import os
 import cv2
 import numpy as np
 from pathlib import Path

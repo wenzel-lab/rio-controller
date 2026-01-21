@@ -6,13 +6,7 @@ from typing import TYPE_CHECKING
 import labthings_fastapi as lt
 from labthings_fastapi.exceptions import InvocationError
 
-from api.schemas import (
-    FlowState,
-    FlowSetPressureRequest,
-    FlowSetFlowRequest,
-    FlowSetModeRequest,
-    FlowSetPIRequest,
-)
+from api.schemas import FlowState
 from config import CONTROL_MODE_UI_TO_FIRMWARE, CONTROL_MODE_FIRMWARE_TO_UI
 
 if TYPE_CHECKING:
@@ -172,4 +166,3 @@ class FlowThing(lt.Thing):
         if not ok:
             raise InvocationError("Failed to set PI constants")
         return {"ok": True}
-

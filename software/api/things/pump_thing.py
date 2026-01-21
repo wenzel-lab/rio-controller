@@ -1,8 +1,6 @@
 """Syringe pump controller Thing for LabThings/WoT."""
 
 import logging
-from typing import TYPE_CHECKING
-
 import labthings_fastapi as lt
 from labthings_fastapi.exceptions import InvocationError
 
@@ -161,4 +159,3 @@ class PumpThing(lt.Thing):
         if not ok:
             raise InvocationError("Failed to set enable")
         return {"ok": True}
-

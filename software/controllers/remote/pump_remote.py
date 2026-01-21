@@ -1,4 +1,4 @@
-"""Remote pump controller adapter (API-backed)."""
+"""Remote syringe pump controller adapter (API-backed)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ PUMP_IDS = ["A", "B", "C", "D"]
 
 
 class RemotePumpController:
-    """API-backed adapter that mimics PumpController for the Flask UI."""
+    """API-backed adapter that mimics the syringe pump controller for the Flask UI."""
 
     def __init__(self, base_url: str) -> None:
         self._client = SyringePumpAPI(base_url=base_url)

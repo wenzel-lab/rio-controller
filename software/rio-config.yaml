@@ -20,6 +20,12 @@
 # Set to false for hardware operation
 simulation: false
 
+# Runtime backend selection (optional; used by software/main.py)
+runtime:
+  default_backend: hardware
+  # modules:
+  #   syringe_pump: hardware  # override for mixed setups
+
 # Camera configuration (32-bit Raspberry Pi Camera V2)
 # Camera sensor: Sony IMX219, 3280 × 2464 pixels (8 megapixels)
 # https://www.raspberrypi.com/documentation/accessories/camera.html#camera-module-2

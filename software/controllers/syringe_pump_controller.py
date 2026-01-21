@@ -7,7 +7,7 @@ import os
 from typing import Any, Dict, Optional
 
 from config import PUMP_BAUDRATE, PUMP_PORT, PUMP_TIMEOUT_S, PUMP_WRITE_TIMEOUT_S
-from drivers.pump_serial import SerialSyringePump, find_pump_port
+from drivers.syringe_pump_serial import SerialSyringePump, find_pump_port
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,8 @@ PUMP_IDS = ["A", "B", "C", "D"]
 # Global instance to prevent multiple processes from locking the COM port
 _GLOBAL_SERIAL_PUMP: Optional[SerialSyringePump] = None
 
-class PumpController:
+
+class SyringePumpController:
     """Controller wrapper around the syringe pump driver."""
 
     def __init__(
@@ -26,34 +27,35 @@ class PumpController:
         timeout_s: float = PUMP_TIMEOUT_S,
         write_timeout_s: float = PUMP_WRITE_TIMEOUT_S,
         simulation: Optional[bool] = None,
+        backend: Optional[Any] = None,
     ):
-        # 1. Determine Mode: Respect the environment variable OR the manual override
         self._simulation = (
             simulation
             if simulation is not None
             else os.getenv("RIO_SIMULATION", "false").lower() == "true"
         )
-        
         self._port = port or PUMP_PORT
         self._baudrate = baudrate
         self._timeout_s = timeout_s
         self._write_timeout_s = write_timeout_s
+        self._backend_override = backend
 
-        # Hard-coded override to ensure we talk to real hardware
-        self._simulation = False
-
-        # Initialize or retrieve the existing serial backend
+        # Initialize or retrieve the existing backend
         self._pump = self._init_backend()
 
     def _init_backend(self):
         """Initializes the serial connection or reuses an existing one."""
         global _GLOBAL_SERIAL_PUMP
-        
+
+        if self._backend_override is not None:
+            return self._backend_override
+
         # --- MODE A: SIMULATION ---
         if self._simulation:
             try:
                 from simulation.pump_simulated import SimulatedPump
-                logger.info("PumpController: Initializing SIMULATED backend")
+
+                logger.info("SyringePumpController: Initializing SIMULATED backend")
                 return SimulatedPump()
             except ImportError:
                 logger.error("Simulation module not found! Falling back to hardware check.")
@@ -68,22 +70,22 @@ class PumpController:
         # 2. Port Discovery
         if not self._port or self._port.lower() == "none":
             self._port = find_pump_port()
-        
+
         if not self._port:
             raise RuntimeError(
-                "Pump controller enabled but no serial port found. "
+                "Syringe pump controller enabled but no serial port found. "
                 "Please set RIO_PUMP_PORT (e.g., COM5 or /dev/ttyUSB0)."
             )
-        
-        logger.info("PumpController: Initializing HARDWARE backend on %s", self._port)
+
+        logger.info("SyringePumpController: Initializing HARDWARE backend on %s", self._port)
 
         # 3. Create the Serial Instance
         instance = SerialSyringePump(
-                port=self._port,
-                baudrate=self._baudrate,
-                timeout=self._timeout_s,
-                write_timeout=self._write_timeout_s,
-            )
+            port=self._port,
+            baudrate=self._baudrate,
+            timeout=self._timeout_s,
+            write_timeout=self._write_timeout_s,
+        )
         _GLOBAL_SERIAL_PUMP = instance
         return instance
 
@@ -93,7 +95,7 @@ class PumpController:
             try:
                 self._pump.close()
             except Exception as exc:
-                logger.warning("PumpController close failed: %s", exc)
+                logger.warning("SyringePumpController close failed: %s", exc)
 
     # -------------------------
     # Validation Helpers

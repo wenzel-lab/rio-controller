@@ -193,7 +193,10 @@ class PiStrobe:
         valid, data = self.packet_query(5, [mode])
         if not valid or len(data) == 0:
             import logging
+
             logger = logging.getLogger(__name__)
-            logger.error("SPI communication failed for set_trigger_mode - check hardware connection")
+            logger.error(
+                "SPI communication failed for set_trigger_mode - check hardware connection"
+            )
             return False
         return data[0] == 0

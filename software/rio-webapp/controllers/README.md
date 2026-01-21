@@ -19,7 +19,7 @@ This folder owns the Socket.IO contract between the browser UI and the server. T
   - supported commands include: `"temp_c_target"`, `"pid_enable"`, `"power_limit_pc"`, `"autotune"`, `"stir"`
   - emits **`"heaters"`** with formatted state
 
-- `pump_controller.py` — `PumpController`
+- `syringe_pump_controller.py` — `SyringePumpWebController`
   - listens on **`"pump"`**
   - supported commands include: `"set_flow"`, `"set_diameter"`, `"set_direction"`, `"set_state"`, `"set_unit"`, `"set_gearbox"`, `"set_microstep"`, `"set_threadrod"`, `"set_enable"`
   - emits **`"pumps"`** with formatted state

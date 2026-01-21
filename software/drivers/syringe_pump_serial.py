@@ -5,14 +5,15 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Callable, Optional, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BAUDRATE = 115200
 DEFAULT_TIMEOUT_S = 1.0
 
-#print(">>> LOADING PUMP SERIAL DRIVER FROM DRIVERS FOLDER <<<", flush=True)
+T = TypeVar("T")
+
 
 def find_pump_port() -> Optional[str]:
     """Best-effort port detection for the syringe pump controller."""
@@ -26,7 +27,7 @@ def find_pump_port() -> Optional[str]:
     for port in ports:
         desc = (port.description or "").upper()
         if "USB" in desc or "CH340" in desc or "CP210" in desc:
-            return port.device
+            return cast(str, port.device)
     return None
 
 
@@ -41,13 +42,12 @@ class SerialSyringePump:
         write_timeout: float = DEFAULT_TIMEOUT_S,
     ) -> None:
         try:
-            import serial  # type: ignore
-            
+            import serial
         except ImportError as exc:
             raise ImportError("pyserial is required. Install with: pip install pyserial") from exc
 
         self._lock = threading.Lock()
-        
+
         self._serial = serial.Serial(
             port=port,
             baudrate=baudrate,
@@ -62,7 +62,7 @@ class SerialSyringePump:
 
         time.sleep(2.0)
         self._serial.reset_input_buffer()
-        
+
         self.pumps = ["A", "B", "C", "D"]
         print(f"--- PUMP DRIVER READY ON {port} ---", flush=True)
 
@@ -94,9 +94,7 @@ class SerialSyringePump:
         return self._transaction(self._build_set_cmd(pump, ROD=val))
 
     def set_enable(self, pump: str, on: bool) -> str:
-        return self._transaction(
-            self._build_set_cmd(pump, ENABLE=("ON" if on else "OFF"))
-        )
+        return self._transaction(self._build_set_cmd(pump, ENABLE=("ON" if on else "OFF")))
 
     # -------------------------
     # GET helpers
@@ -115,20 +113,14 @@ class SerialSyringePump:
         return data
 
     def _parse_status_response(
-        self, response: str, param_name: str, default=None, value_type=str
-    ):
+        self, response: str, param_name: str, default: T, parser: Callable[[str], T]
+    ) -> T:
         parts = response.split()
         for part in parts:
             if part.startswith(f"{param_name}="):
                 value = part.split("=", 1)[1]
                 try:
-                    if value_type == float:
-                        return float(value)
-                    if value_type == int:
-                        return int(value)
-                    if value_type == bool:
-                        return value.upper() in ("ON", "RUN", "TRUE")
-                    return value
+                    return parser(value)
                 except (ValueError, IndexError):
                     pass
         return default
@@ -143,35 +135,33 @@ class SerialSyringePump:
 
     def get_direction(self, pump: str) -> int:
         response = self.get_pump_status(pump)
-        direction = self._parse_status_response(response, "DIRECTION", "INFUSE")
-        if isinstance(direction, str):
-            return 1 if direction.upper() == "INFUSE" else -1
-        return direction
+        direction = self._parse_status_response(response, "DIRECTION", "INFUSE", str)
+        return 1 if direction.upper() == "INFUSE" else -1
 
     def get_state(self, pump: str) -> bool:
         response = self.get_pump_status(pump)
-        state = self._parse_status_response(response, "STATE", "STOP")
-        return isinstance(state, str) and state.upper() == "RUN"
+        state = self._parse_status_response(response, "STATE", "STOP", str)
+        return state.upper() == "RUN"
 
     def get_unit(self, pump: str) -> str:
         response = self.get_pump_status(pump)
-        return self._parse_status_response(response, "UNIT", "UL/HR")
+        return self._parse_status_response(response, "UNIT", "UL/HR", str)
 
     def get_gearbox(self, pump: str) -> str:
         response = self.get_pump_status(pump)
-        return self._parse_status_response(response, "GEARBOX", "1:1")
+        return self._parse_status_response(response, "GEARBOX", "1:1", str)
 
     def get_microstep(self, pump: str) -> str:
         response = self.get_pump_status(pump)
-        return self._parse_status_response(response, "MICROSTEP", "1/16")
+        return self._parse_status_response(response, "MICROSTEP", "1/16", str)
 
     def get_threadrod(self, pump: str) -> str:
         response = self.get_pump_status(pump)
-        return self._parse_status_response(response, "ROD", "1-START")
+        return self._parse_status_response(response, "ROD", "1-START", str)
 
     def get_enable(self, pump: str) -> bool:
         response = self.get_pump_status(pump)
-        return self._parse_status_response(response, "ENABLE", "OFF") == "ON"
+        return self._parse_status_response(response, "ENABLE", "OFF", str) == "ON"
 
     # -------------------------
     # Internals
@@ -185,11 +175,12 @@ class SerialSyringePump:
     def _transaction(self, cmd: str) -> str:
         with self._lock:
             full_cmd = cmd + "\n"
-            print(f"--- SERIAL SEND: {repr(full_cmd)} ---", flush=True) 
-            
+            print(f"--- SERIAL SEND: {repr(full_cmd)} ---", flush=True)
+
             self._serial.write(full_cmd.encode())
 
-            response = self._serial.readline().decode(errors="ignore").strip()
+            response_bytes = cast(bytes, self._serial.readline())
+            response = response_bytes.decode(errors="ignore").strip()
             print(f"--- SERIAL RECV: {repr(response)} ---", flush=True)
             return response
 

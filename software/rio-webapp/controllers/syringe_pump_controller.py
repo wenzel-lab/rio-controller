@@ -1,23 +1,24 @@
 """
-Pump controller for handling syringe pump WebSocket events.
+Syringe pump web controller for handling WebSocket events.
 
-Handles WebSocket commands and forwards them to the device pump controller.
+Handles WebSocket commands and forwards them to the device syringe pump controller.
 """
 
 import logging
 from typing import Dict, Any
+
 from flask_socketio import SocketIO
 
 logger = logging.getLogger(__name__)
 
 
-class PumpController:
+class SyringePumpWebController:
     """WebSocket controller for syringe pump operations."""
 
     def __init__(self, pump, socketio: SocketIO):
         """
         Args:
-            pump: PumpController device instance
+            pump: SyringePumpController device instance
             socketio: Flask-SocketIO instance
         """
         self.pump = pump

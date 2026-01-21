@@ -84,7 +84,6 @@ class ArtifactRejector:
             for i, (cnt, centroid) in enumerate(zip(contours, centroids)):
                 # Check if this centroid moved downstream
                 is_moving = False
-                is_new = True  # Assume new droplet until proven otherwise
 
                 # Vectorized calculation: compute all distances at once
                 dx = curr_array[i, 0] - prev_array[:, 0]  # x-direction (flow direction)
@@ -94,15 +93,9 @@ class ArtifactRejector:
                 motion_mask = (dx > self.config.min_motion) & (dy < self.config.max_perp_drift)
                 if np.any(motion_mask):
                     is_moving = True
-                    is_new = False
                 else:
-                    # Check if it's close to a previous centroid (same droplet, not moving enough)
-                    close_mask = (np.abs(dx) < self.config.max_perp_drift * 2) & (
-                        dy < self.config.max_perp_drift * 2
-                    )
-                    if np.any(close_mask):
-                        is_new = False  # It's a tracked droplet, just not moving enough
-
+                    # No motion detected; treat as static artifact.
+                    pass
                 # Accept only if moving (strict mode - reject static artifacts even if "new")
                 # New droplets entering frame must show motion in subsequent frames to be accepted
                 if is_moving:

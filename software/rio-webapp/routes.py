@@ -46,9 +46,7 @@ def register_routes(
     # Pass droplet_controller availability to template
     app.jinja_env.globals["droplet_analysis_enabled"] = droplet_controller is not None
 
-    _register_http_routes(
-        app, view_model, heaters, flow, cam, pump, debug_data, droplet_controller
-    )
+    _register_http_routes(app, view_model, heaters, flow, cam, pump, debug_data, droplet_controller)
     _register_websocket_handlers(socketio)
 
 
@@ -258,7 +256,7 @@ def _register_droplet_api_routes(app: Flask, droplet_controller: Any) -> None:
     _register_droplet_export_route(app, droplet_controller)
 
 
-def _register_http_routes(
+def _register_http_routes(  # noqa: C901
     app: Flask,
     view_model,
     heaters: List[Any],
@@ -270,8 +268,14 @@ def _register_http_routes(
 ) -> None:
     """Register HTTP routes."""
 
-    @app.route("/api/config/channels", defaults={"subpath": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    @app.route("/api/config/channels/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    @app.route(
+        "/api/config/channels",
+        defaults={"subpath": ""},
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    @app.route(
+        "/api/config/channels/<path:subpath>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+    )
     def proxy_config_channels(subpath: str):
         """
         Proxy channel-configuration requests to the FastAPI backend.
@@ -317,8 +321,14 @@ def _register_http_routes(
                 return Response(resp_body, status=resp.getcode(), content_type=resp_ct)
         except urllib.error.HTTPError as e:
             err_body = e.read() if hasattr(e, "read") else b""
-            err_ct = getattr(e, "headers", {}).get("Content-Type") if getattr(e, "headers", None) else None
-            return Response(err_body or b"", status=e.code, content_type=err_ct or "application/json")
+            err_ct = (
+                getattr(e, "headers", {}).get("Content-Type")
+                if getattr(e, "headers", None)
+                else None
+            )
+            return Response(
+                err_body or b"", status=e.code, content_type=err_ct or "application/json"
+            )
         except Exception as e:
             return (
                 jsonify(
@@ -514,12 +524,12 @@ def create_background_update_task(
         while not exit_event.is_set():
             try:
                 time.sleep(1.0)
-                
+
                 # Check exit_event again after sleep (may have changed during sleep)
                 if exit_event.is_set():
                     logger.debug("Background update loop exiting (exit event set)")
                     break
-                
+
                 debug_data["update_count"] += 1
 
                 # Update hardware device controllers (only if not shutting down)
@@ -537,7 +547,7 @@ def create_background_update_task(
                 # Format data for clients (only if not shutting down)
                 if exit_event.is_set():
                     break
-                
+
                 heaters_data = view_model.format_heater_data(heaters)
                 flows_data = view_model.format_flow_data(flow)
                 camera_data = view_model.format_camera_data(cam)

@@ -835,11 +835,11 @@ class Camera:
         # Don't update if exit event is set (app is shutting down)
         if self.exit_event.is_set():
             return
-        
+
         # Don't update if camera thread is not running (prevents error spam)
         if self.thread is None or not self.thread.is_alive():
             return
-        
+
         self.update()
         self.strobe_data["cam_read_time_us"] = self.cam_read_time_us
         self.strobe_data["period_ns"] = self.strobe_period_ns

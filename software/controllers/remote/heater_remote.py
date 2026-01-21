@@ -41,7 +41,9 @@ class RemoteHeater:
         self.stir_enabled = bool(state.get("stir_enabled", False))
         self.autotuning = bool(state.get("autotuning", False))
         self.status_text = state.get("status_text", "Connected")
-        self.heat_power_limit_pc = int(state.get("heat_power_limit_pc", self.heat_power_limit_pc) or 0)
+        self.heat_power_limit_pc = int(
+            state.get("heat_power_limit_pc", self.heat_power_limit_pc) or 0
+        )
         self.autotune_status_text = state.get("autotune_status_text", self.autotune_status_text)
         self.autotune_target_temp = float(
             state.get("autotune_target_temp", self.autotune_target_temp) or 0.0
@@ -102,7 +104,9 @@ class RemoteHeater:
 
     def set_autotune(self, enabled: bool) -> bool:
         try:
-            self._client.set_heater_autotune(self.index, bool(enabled), float(self.autotune_target_temp))
+            self._client.set_heater_autotune(
+                self.index, bool(enabled), float(self.autotune_target_temp)
+            )
             return True
         except RioAPIError as exc:
             logger.warning("Remote set_autotune failed: %s", exc)

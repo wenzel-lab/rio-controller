@@ -1,11 +1,9 @@
 """Unit tests for LabThings Thing classes."""
 
 import pytest
-import threading
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock
 from typing import List
 
-import labthings_fastapi as lt
 from labthings_fastapi.exceptions import InvocationError
 
 from api.things.flow_thing import FlowThing
@@ -20,6 +18,7 @@ from labthings_fastapi.outputs.blob import Blob
 # ============================================================================
 # Mock Controllers
 # ============================================================================
+
 
 class MockFlow:
     """Mock flow controller for testing."""
@@ -201,6 +200,7 @@ class MockDropletController:
 # Pump Mock
 # ============================================================================
 
+
 class MockPumpController:
     """Mock pump controller for testing."""
 
@@ -258,6 +258,7 @@ class MockPumpController:
 # ============================================================================
 # FlowThing Tests
 # ============================================================================
+
 
 class TestFlowThing:
     """Tests for FlowThing."""
@@ -429,6 +430,7 @@ class TestFlowThing:
 # HeaterThing Tests
 # ============================================================================
 
+
 class TestHeaterThing:
     """Tests for HeaterThing."""
 
@@ -529,6 +531,7 @@ class TestHeaterThing:
 # ============================================================================
 # CameraThing Tests
 # ============================================================================
+
 
 class TestCameraThing:
     """Tests for CameraThing."""
@@ -651,6 +654,7 @@ class TestCameraThing:
 # DropletThing Tests
 # ============================================================================
 
+
 class TestDropletThing:
     """Tests for DropletThing."""
 
@@ -758,6 +762,7 @@ class TestDropletThing:
 # PumpThing Tests
 # ============================================================================
 
+
 class TestPumpThing:
     """Tests for PumpThing."""
 
@@ -822,6 +827,7 @@ class TestPumpThing:
 # ============================================================================
 # Edge Cases and Boundary Tests
 # ============================================================================
+
 
 class TestThingEdgeCases:
     """Edge case tests for Things."""

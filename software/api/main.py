@@ -9,12 +9,11 @@ Rio API server with LabThings/WoT integration.
 import logging
 import os
 from threading import Event
-from typing import Any
+from typing import Any, cast
 
 import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 
 import labthings_fastapi as lt
 
@@ -64,6 +63,18 @@ from path_bootstrap import bootstrap_runtime
 
 bootstrap_runtime()
 
+from config import (  # noqa: E402
+    load_runtime_config,
+    resolve_default_backend,
+    resolve_module_backend,
+)
+
+_runtime_config = load_runtime_config()
+_default_backend = resolve_default_backend(_runtime_config)
+if "RIO_SIMULATION" not in os.environ:
+    os.environ["RIO_SIMULATION"] = "true" if _default_backend == "simulation" else "false"
+_pump_backend = resolve_module_backend("syringe_pump", _runtime_config)
+
 from drivers.spi_handler import (  # noqa: E402
     spi_init,
     PORT_HEATER1,
@@ -75,7 +86,7 @@ from drivers.spi_handler import (  # noqa: E402
 from controllers.heater_web import heater_web  # noqa: E402
 from controllers.flow_web import FlowWeb  # noqa: E402
 from controllers.camera import Camera  # noqa: E402
-from controllers.pump_controller import PumpController  # noqa: E402
+from controllers.syringe_pump_controller import SyringePumpController  # noqa: E402
 from config import (  # noqa: E402
     CMD_SET_RESOLUTION,
     CMD_SET_SNAPSHOT_RESOLUTION,
@@ -164,7 +175,7 @@ def _init_controllers() -> tuple[dict[str, bool], dict[str, Any]]:
     # Pump controller (optional; USB serial)
     if os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true":
         try:
-            pump = PumpController()
+            pump = SyringePumpController(simulation=_pump_backend == "simulation")
             controllers["pump"] = pump
             cap["pump"] = True
         except Exception as e:
@@ -195,11 +206,13 @@ def _load_channels_from_yaml() -> dict[str, dict[str, dict[str, Any]]]:
 
 def _default_channel_map() -> dict[str, dict[str, dict[str, Any]]]:
     """Create default channel config."""
+
     def _make(n: int):
         return {
             str(i): {"enabled": True, "name": "", "liquid_type": "", "calibration_factor": 1.0}
             for i in range(n)
         }
+
     return {
         "flow": _make(4),
         "pressure": _make(4),
@@ -231,7 +244,7 @@ AGGREGATOR = Aggregator(
 )
 
 
-def create_app() -> FastAPI:
+def create_app() -> FastAPI:  # noqa: C901
     """Create FastAPI app with LabThings ThingServer integration."""
     from labthings_fastapi.server.config_model import ThingConfig
 
@@ -469,6 +482,7 @@ def create_app() -> FastAPI:
             if not frame:
                 raise HTTPException(status_code=503, detail="No frame available")
             from fastapi.responses import Response
+
             return Response(content=frame, media_type="image/jpeg")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to get snapshot: {e}") from e
@@ -772,7 +786,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config/channels", response_model=ChannelConfigResponse)
     def get_channels() -> ChannelConfigResponse:
-        return ChannelConfigResponse(channels=ChannelConfig(**CHANNEL_CONFIG))
+        return ChannelConfigResponse(channels=ChannelConfig(**cast(dict[str, Any], CHANNEL_CONFIG)))
 
     @app.post("/api/config/channels", response_model=ChannelConfigResponse)
     def set_channels(config: ChannelConfig) -> ChannelConfigResponse:
@@ -796,7 +810,7 @@ def create_app() -> FastAPI:
                 CHANNEL_CONFIG[topic][k]["liquid_type"] = v.liquid_type or ""
                 if getattr(v, "calibration_factor", None) is not None:
                     CHANNEL_CONFIG[topic][k]["calibration_factor"] = float(v.calibration_factor)
-        return ChannelConfigResponse(channels=ChannelConfig(**CHANNEL_CONFIG))
+        return ChannelConfigResponse(channels=ChannelConfig(**cast(dict[str, Any], CHANNEL_CONFIG)))
 
     @app.websocket("/api/streams/aggregate")
     async def aggregate_ws(websocket):
@@ -834,4 +848,3 @@ if __name__ == "__main__":
         port=settings.port,
         reload=False,
     )
-

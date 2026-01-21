@@ -14,13 +14,14 @@ import logging
 import queue
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, NoReturn, cast
 from urllib.parse import urljoin
 
 import requests
 import websocket
 
 # Try to import ThingClient - optional dependency
+LTThingClient: Any
 try:
     from labthings_fastapi.client import ThingClient as LTThingClient
     from labthings_fastapi.exceptions import (
@@ -28,10 +29,11 @@ try:
         ServerActionError,
         ClientPropertyError,
     )
+
     HAS_LABTHINGS = True
 except ImportError:
     HAS_LABTHINGS = False
-    LTThingClient = None  # type: ignore
+    LTThingClient = None
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +452,7 @@ class RioThingClient:
         """Close the HTTP client."""
         self.http_client.close()
 
-    def _get_flow_thing(self) -> LTThingClient:
+    def _get_flow_thing(self) -> Any:
         """Get or create FlowThing client."""
         if self._flow_thing is None:
             try:
@@ -461,7 +463,7 @@ class RioThingClient:
                 raise RioConnectionError(f"Failed to connect to FlowThing: {e}") from e
         return self._flow_thing
 
-    def _get_heater_thing(self) -> LTThingClient:
+    def _get_heater_thing(self) -> Any:
         """Get or create HeaterThing client."""
         if self._heater_thing is None:
             try:
@@ -472,7 +474,7 @@ class RioThingClient:
                 raise RioConnectionError(f"Failed to connect to HeaterThing: {e}") from e
         return self._heater_thing
 
-    def _get_camera_thing(self) -> LTThingClient:
+    def _get_camera_thing(self) -> Any:
         """Get or create CameraThing client."""
         if self._camera_thing is None:
             try:
@@ -483,7 +485,7 @@ class RioThingClient:
                 raise RioConnectionError(f"Failed to connect to CameraThing: {e}") from e
         return self._camera_thing
 
-    def _get_droplet_thing(self) -> LTThingClient:
+    def _get_droplet_thing(self) -> Any:
         """Get or create DropletThing client."""
         if self._droplet_thing is None:
             try:
@@ -494,7 +496,7 @@ class RioThingClient:
                 raise RioConnectionError(f"Failed to connect to DropletThing: {e}") from e
         return self._droplet_thing
 
-    def _handle_action_error(self, e: Exception) -> None:
+    def _handle_action_error(self, e: Exception) -> NoReturn:
         """Convert LabThings exceptions to Rio exceptions and re-raise."""
         if isinstance(e, FailedToInvokeActionError):
             raise RioAPIError(f"Failed to invoke action: {e}") from e
@@ -505,13 +507,20 @@ class RioThingClient:
         # Re-raise other exceptions as-is
         raise
 
+    def _coerce_result(self, result: Any) -> Dict[str, Any]:
+        if hasattr(result, "dict"):
+            return cast(Dict[str, Any], result.dict())
+        if hasattr(result, "model_dump"):
+            return cast(Dict[str, Any], result.model_dump())
+        return cast(Dict[str, Any], result)
+
     # System endpoints (use legacy routes for compatibility)
     def health(self) -> Dict[str, Any]:
         """Get API health status."""
         try:
             response = self.http_client.get(f"{self.base_url}/api/system/health")
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to get health: {e}") from e
 
@@ -520,7 +529,7 @@ class RioThingClient:
         try:
             response = self.http_client.get(f"{self.base_url}/api/system/capabilities")
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to get capabilities: {e}") from e
 
@@ -530,18 +539,16 @@ class RioThingClient:
         try:
             response = self.http_client.get(f"{self.base_url}/api/config/channels")
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to get channels: {e}") from e
 
     def set_channels(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Update channel metadata (runtime-only, not persisted)."""
         try:
-            response = self.http_client.post(
-                f"{self.base_url}/api/config/channels", json=config
-            )
+            response = self.http_client.post(f"{self.base_url}/api/config/channels", json=config)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to set channels: {e}") from e
 
@@ -551,12 +558,7 @@ class RioThingClient:
         try:
             flow_thing = self._get_flow_thing()
             state = flow_thing.state  # Property access (auto-converted to dict)
-            # Convert Pydantic model to dict if needed
-            if hasattr(state, "dict"):
-                return state.dict()
-            elif hasattr(state, "model_dump"):
-                return state.model_dump()
-            return state
+            return self._coerce_result(state)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -567,12 +569,7 @@ class RioThingClient:
         try:
             flow_thing = self._get_flow_thing()
             result = flow_thing.set_pressure(index=index, pressure_mbar=pressure_mbar)
-            # Convert to dict if needed
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -583,11 +580,7 @@ class RioThingClient:
         try:
             flow_thing = self._get_flow_thing()
             result = flow_thing.set_flow(index=index, flow_ul_hr=flow_ul_hr)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -598,11 +591,7 @@ class RioThingClient:
         try:
             flow_thing = self._get_flow_thing()
             result = flow_thing.set_mode(index=index, mode_ui=mode_ui)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -613,11 +602,7 @@ class RioThingClient:
         try:
             flow_thing = self._get_flow_thing()
             result = flow_thing.set_pi_consts(index=index, p=p, i=i)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -629,11 +614,7 @@ class RioThingClient:
         try:
             heater_thing = self._get_heater_thing()
             state = heater_thing.state
-            if hasattr(state, "dict"):
-                return state.dict()
-            elif hasattr(state, "model_dump"):
-                return state.model_dump()
-            return state
+            return self._coerce_result(state)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -644,11 +625,7 @@ class RioThingClient:
         try:
             heater_thing = self._get_heater_thing()
             result = heater_thing.set_temp(index=index, temp_c=temp_c)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -659,11 +636,7 @@ class RioThingClient:
         try:
             heater_thing = self._get_heater_thing()
             result = heater_thing.set_pid(index=index, enabled=enabled)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -674,11 +647,7 @@ class RioThingClient:
         try:
             heater_thing = self._get_heater_thing()
             result = heater_thing.set_stir(index=index, enabled=enabled)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -708,14 +677,8 @@ class RioThingClient:
         """Set camera display resolution."""
         try:
             camera_thing = self._get_camera_thing()
-            result = camera_thing.set_resolution(
-                preset=preset, width=width, height=height
-            )
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            result = camera_thing.set_resolution(preset=preset, width=width, height=height)
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -726,11 +689,7 @@ class RioThingClient:
         try:
             camera_thing = self._get_camera_thing()
             result = camera_thing.set_roi(x=x, y=y, w=w, h=h)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -741,11 +700,7 @@ class RioThingClient:
         try:
             camera_thing = self._get_camera_thing()
             result = camera_thing.clear_roi()
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -757,11 +712,7 @@ class RioThingClient:
         try:
             camera_thing = self._get_camera_thing()
             result = camera_thing.strobe_enable(on=enabled)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -772,11 +723,7 @@ class RioThingClient:
         try:
             camera_thing = self._get_camera_thing()
             result = camera_thing.strobe_hold(on=hold)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -787,11 +734,7 @@ class RioThingClient:
         try:
             camera_thing = self._get_camera_thing()
             result = camera_thing.strobe_timing(period_ns=period_ns, wait_ns=wait_ns)
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -803,11 +746,7 @@ class RioThingClient:
         try:
             droplet_thing = self._get_droplet_thing()
             result = droplet_thing.start()
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -818,11 +757,7 @@ class RioThingClient:
         try:
             droplet_thing = self._get_droplet_thing()
             result = droplet_thing.stop()
-            if hasattr(result, "dict"):
-                return result.dict()
-            elif hasattr(result, "model_dump"):
-                return result.model_dump()
-            return result
+            return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -833,11 +768,7 @@ class RioThingClient:
         try:
             droplet_thing = self._get_droplet_thing()
             status = droplet_thing.status
-            if hasattr(status, "dict"):
-                return status.dict()
-            elif hasattr(status, "model_dump"):
-                return status.model_dump()
-            return status
+            return self._coerce_result(status)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -848,11 +779,7 @@ class RioThingClient:
         try:
             droplet_thing = self._get_droplet_thing()
             histogram = droplet_thing.histogram
-            if hasattr(histogram, "dict"):
-                return histogram.dict()
-            elif hasattr(histogram, "model_dump"):
-                return histogram.model_dump()
-            return histogram
+            return self._coerce_result(histogram)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -863,11 +790,7 @@ class RioThingClient:
         try:
             droplet_thing = self._get_droplet_thing()
             stats = droplet_thing.statistics
-            if hasattr(stats, "dict"):
-                return stats.dict()
-            elif hasattr(stats, "model_dump"):
-                return stats.model_dump()
-            return stats
+            return self._coerce_result(stats)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)
         except Exception as e:
@@ -889,7 +812,7 @@ class RioThingClient:
                 data["path"] = path
             response = self.http_client.post(f"{self.base_url}/api/data/capture/start", json=data)
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to start capture: {e}") from e
 
@@ -898,7 +821,7 @@ class RioThingClient:
         try:
             response = self.http_client.post(f"{self.base_url}/api/data/capture/stop")
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to stop capture: {e}") from e
 
@@ -907,7 +830,7 @@ class RioThingClient:
         try:
             response = self.http_client.get(f"{self.base_url}/api/data/capture/status")
             response.raise_for_status()
-            return response.json()
+            return cast(Dict[str, Any], response.json())
         except Exception as e:
             raise RioAPIError(f"Failed to get capture status: {e}") from e
 

@@ -7,13 +7,6 @@ import labthings_fastapi as lt
 from labthings_fastapi.exceptions import InvocationError
 from labthings_fastapi.outputs.blob import Blob
 
-from api.schemas import (
-    CameraResolutionRequest,
-    CameraSnapshotResolutionRequest,
-    CameraROIRequest,
-    StrobeEnableRequest,
-    StrobeTimingRequest,
-)
 from config import (
     CMD_SET_RESOLUTION,
     CMD_SET_SNAPSHOT_RESOLUTION,
@@ -32,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class JPEGBlob(Blob):
     """Blob subclass for JPEG images."""
+
     media_type: str = "image/jpeg"
 
 
@@ -233,4 +227,3 @@ class CameraThing(lt.Thing):
 
         self._camera.on_strobe({"cmd": CMD_TIMING, "parameters": params})
         return {"ok": True}
-

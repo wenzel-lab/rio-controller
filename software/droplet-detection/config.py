@@ -29,7 +29,9 @@ class DropletDetectionConfig:
         """
         # Preprocessing parameters
         self.background_method: str = "static"  # "static" or "highpass"
-        self.background_frames: int = 15  # Number of frames for static background (reduced from 30 for faster ROI initialization)
+        self.background_frames: int = (
+            15  # Number of frames for static background (reduced from 30 for faster ROI initialization)
+        )
         self.gaussian_blur_kernel: tuple = (11, 11)  # Kernel size for high-pass
         self.threshold_method: str = "otsu"  # "otsu" or "adaptive"
         self.adaptive_block_size: int = 11  # For adaptive thresholding

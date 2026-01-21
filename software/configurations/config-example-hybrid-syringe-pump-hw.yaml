@@ -1,0 +1,17 @@
+# Hybrid example: syringe pump hardware + everything else simulated
+#
+# Usage:
+# - Set RIO_CONFIG_FILE to point to this file (optional if you copy to rio-config.yaml)
+# - Ensure RIO_PUMP_ENABLED=true
+# - Run main.py (no manual env override needed unless you want to override defaults)
+
+runtime:
+  default_backend: simulation
+  modules:
+    syringe_pump: hardware
+
+# Example pump settings (optional overrides via env):
+# RIO_PUMP_PORT=/dev/ttyUSB0
+# RIO_PUMP_BAUDRATE=115200
+# RIO_PUMP_TIMEOUT_S=1.0
+# RIO_PUMP_WRITE_TIMEOUT_S=1.0

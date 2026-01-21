@@ -20,7 +20,9 @@ class DropletThing(lt.Thing):
 
     title = "Droplet Detection Controller"
 
-    def __init__(self, droplet_controller: "DropletDetectorController", thing_server_interface=None):
+    def __init__(
+        self, droplet_controller: "DropletDetectorController", thing_server_interface=None
+    ):
         """Initialize DropletThing with a DropletDetectorController.
 
         Args:
@@ -116,4 +118,3 @@ class DropletThing(lt.Thing):
 
         self._droplet.stop()
         return {"ok": True}
-
