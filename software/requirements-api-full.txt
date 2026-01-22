@@ -1,0 +1,10 @@
+# API-specific dependencies (full extras)
+# Use this on desktops/servers where build tools are available and faster.
+# Note: LabThings FastAPI requires Pydantic 2.x, so FastAPI must be 0.115.0+
+fastapi[all]>=0.115.0
+uvicorn[standard]>=0.30.0
+labthings-fastapi==0.0.6
+pydantic>=2.10.0
+typing_extensions>=4.7.0
+PyYAML>=6.0
+pyserial>=3.5

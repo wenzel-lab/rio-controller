@@ -1,9 +1,16 @@
-# API-specific dependencies (pinned)
+# API-specific dependencies (lightweight)
 # These are additive to the base requirements; install when running the API.
 # Note: LabThings FastAPI requires Pydantic 2.x, so FastAPI must be 0.115.0+
-fastapi[all]>=0.115.0
-uvicorn[standard]>=0.30.0
-labthings-fastapi>=0.0.6
+#
+# This "light" set avoids heavy extras that may require compilation (uvloop, httptools)
+# and is recommended for Raspberry Pi installs.
+#
+# Pi note:
+# - Install numpy from apt (python3-numpy) to keep 32-bit compatibility.
+# - Install labthings-fastapi with --no-deps on Pi to avoid pulling numpy>=1.20.
+fastapi>=0.115.0
+uvicorn>=0.30.0
+labthings-fastapi==0.0.6
 pydantic>=2.10.0
 typing_extensions>=4.7.0
 PyYAML>=6.0
