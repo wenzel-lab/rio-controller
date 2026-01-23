@@ -364,6 +364,14 @@ This folder intentionally mirrors the runtime-relevant parts of `software/`:
 
 **IMPORTANT:** Packages are installed to **system Python** (no virtual environment). The setup script uses `--user` flag to avoid permission issues.
 
+**IMPORTANT:** Running `pip install -r requirements-pi.txt` alone is **not sufficient**. You must install the system packages first (camera + OpenCV + BLAS/LAPACK). The setup script does this for you, but if you run steps manually, use:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy python3-opencv
+sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3
+```
+
 **Prerequisites:** Ensure you've copied all files from `pi-deployment/` to `~/rio-controller/` on your Pi (see [Copying Deployment to Pi](#copying-deployment-to-pi) below).
 
 ```bash
