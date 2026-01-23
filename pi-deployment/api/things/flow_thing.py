@@ -4,7 +4,43 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+
+# Handle Thing import with fallback
+Thing = None
+try:
+    Thing = lt.Thing
+except AttributeError:
+    # Try alternate import path
+    try:
+        from labthings_fastapi.thing import Thing
+    except (ImportError, AttributeError):
+        # Fallback - create a simple base class
+        class Thing:
+            """Fallback Thing base class for when labthings_fastapi.Thing is unavailable."""
+            def __init__(self, thing_server_interface=None):
+                self.thing_server_interface = thing_server_interface
+
+# Handle decorators with fallback
+property_decorator = None
+action_decorator = None
+try:
+    property_decorator = lt.property
+    action_decorator = lt.action
+except AttributeError:
+    # Fallback decorators that do nothing
+    def property_decorator(func):
+        return func
+    
+    def action_decorator(func):
+        return func
+
+# Handle InvocationError import with fallback
+InvocationError = None
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except (ImportError, AttributeError):
+    # Fallback if labthings_fastapi doesn't have exceptions module
+    InvocationError = Exception
 
 from api.schemas import FlowState
 from config import CONTROL_MODE_UI_TO_FIRMWARE, CONTROL_MODE_FIRMWARE_TO_UI
@@ -15,7 +51,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class FlowThing(lt.Thing):
+class FlowThing(Thing):
     """Flow and pressure controller Thing.
 
     Exposes flow and pressure control as WoT-compliant properties and actions.
@@ -33,7 +69,7 @@ class FlowThing(lt.Thing):
         super().__init__(thing_server_interface)
         self._flow = flow_controller
 
-    @lt.property
+    @property_decorator
     def state(self) -> FlowState:
         """Get current flow and pressure state for all channels.
 
@@ -67,7 +103,7 @@ class FlowThing(lt.Thing):
             control_modes_text=self._flow.control_modes_text,
         )
 
-    @lt.action
+    @action_decorator
     def set_pressure(self, index: int, pressure_mbar: float) -> dict:
         """Set pressure target for a channel.
 
@@ -91,7 +127,7 @@ class FlowThing(lt.Thing):
             raise InvocationError("Failed to set pressure")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_flow(self, index: int, flow_ul_hr: float) -> dict:
         """Set flow rate target for a channel.
 
@@ -115,7 +151,7 @@ class FlowThing(lt.Thing):
             raise InvocationError("Failed to set flow rate")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_mode(self, index: int, mode_ui: int) -> dict:
         """Set control mode for a channel.
 
@@ -140,7 +176,7 @@ class FlowThing(lt.Thing):
             raise InvocationError("Failed to set control mode")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_pi_consts(self, index: int, p: int, i: int) -> dict:
         """Set PI control constants for a channel.
 

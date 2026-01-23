@@ -9,7 +9,7 @@ Rio API server with LabThings/WoT integration.
 import logging
 import os
 from threading import Event
-from typing import Any, cast
+from typing import Any, cast, Optional
 
 import uvicorn
 import yaml
@@ -107,7 +107,14 @@ class _DummySocketIO:
         logger.debug("DummySocketIO emit: args=%s kwargs=%s", args, kwargs)
 
     def on(self, event, handler=None):
+        """Decorator for WebSocket event handlers (no-op in dummy)."""
         logger.debug("DummySocketIO on: event=%s handler=%s", event, handler)
+        # When used as @socketio.on(event), handler is None and we return a decorator
+        if handler is None:
+            def decorator(func):
+                return func
+            return decorator
+        # When used as socketio.on(event, handler), just return the handler
         return handler
 
 
@@ -246,11 +253,24 @@ AGGREGATOR = Aggregator(
 
 def create_app() -> FastAPI:  # noqa: C901
     """Create FastAPI app with LabThings ThingServer integration."""
-    from labthings_fastapi.server.config_model import ThingConfig
+    
+    # Try to import ThingConfig, fall back to a simple config dict if not available
+    ThingConfig = None
+    try:
+        from labthings_fastapi.server.config_model import ThingConfig
+    except (ImportError, AttributeError):
+        # Fallback: create a simple ThingConfig class
+        class ThingConfig:
+            """Fallback ThingConfig for when labthings_fastapi.server.config_model is unavailable."""
+            def __init__(self, cls, args=None, kwargs=None):
+                self.cls = cls
+                self.args = args or []
+                self.kwargs = kwargs or {}
 
     # Create Thing configurations with controller dependencies
     # ThingServer will instantiate them with proper interfaces
-    things_config: dict[str, ThingConfig | type[lt.Thing]] = {}
+    from typing import Union
+    things_config: dict[str, Union[ThingConfig, type[lt.Thing]]] = {}
 
     if CONTROLLERS.get("flow"):
         things_config["flow"] = ThingConfig(
@@ -283,12 +303,18 @@ def create_app() -> FastAPI:  # noqa: C901
         )
 
     # Create ThingServer - it will create its own FastAPI app
-    thing_server = lt.ThingServer(things_config, settings_folder=None)
-
-    # Use ThingServer's app as the base - add our custom routes to it
-    # ThingServer routes are at root level (e.g., /flow/, /heater/, /docs)
-    # We'll add custom routes at /api/ prefix for backward compatibility
-    app = thing_server.app
+    # Fall back to plain FastAPI if ThingServer is not available
+    app = None
+    try:
+        thing_server = lt.ThingServer(things_config, settings_folder=None)
+        # Use ThingServer's app as the base - add our custom routes to it
+        # ThingServer routes are at root level (e.g., /flow/, /heater/, /docs)
+        # We'll add custom routes at /api/ prefix for backward compatibility
+        app = thing_server.app
+    except (AttributeError, TypeError) as e:
+        # Fallback: create a plain FastAPI app if ThingServer is not available
+        logger.warning(f"Could not create ThingServer: {e}. Using plain FastAPI app instead.")
+        app = FastAPI()
 
     # Update app title
     app.title = "Rio API"
@@ -321,7 +347,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.get("/api/control/flow/state", response_model=FlowState)
     def flow_state_legacy() -> FlowState:
         """Legacy endpoint - calls Flow controller directly."""
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
 
@@ -350,7 +376,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/flow/set_pressure")
     def flow_set_pressure_legacy(req: FlowSetPressureRequest):
         """Legacy endpoint - calls Flow controller directly."""
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_pressure(req.index, req.pressure_mbar)
@@ -361,7 +387,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/flow/set_flow")
     def flow_set_flow_legacy(req: FlowSetFlowRequest):
         """Legacy endpoint - calls Flow controller directly."""
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_flow(req.index, req.flow_ul_hr)
@@ -372,7 +398,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/flow/set_mode")
     def flow_set_mode_legacy(req: FlowSetModeRequest):
         """Legacy endpoint - calls Flow controller directly."""
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         from config import CONTROL_MODE_UI_TO_FIRMWARE
@@ -386,7 +412,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/flow/set_pi_consts")
     def flow_set_pi_legacy(req: FlowSetPIRequest):
         """Legacy endpoint - calls Flow controller directly."""
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_flow_pi_consts(req.index, [req.p, req.i])
@@ -472,7 +498,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.get("/api/streams/camera/snapshot")
     def camera_snapshot_legacy():
         """Legacy endpoint - uses Camera controller directly (snapshot is synchronous)."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         try:
@@ -490,7 +516,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/camera/set_resolution")
     def camera_set_resolution_legacy(req: CameraResolutionRequest):
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params: dict[str, Any] = {}
@@ -505,7 +531,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/camera/set_snapshot_resolution")
     def camera_set_snapshot_resolution_legacy(req: CameraSnapshotResolutionRequest):
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params: dict[str, Any] = {"mode": req.mode}
@@ -518,7 +544,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/camera/roi")
     def camera_set_roi_legacy(req: CameraROIRequest):
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_roi({"cmd": CMD_SET, "parameters": {"x": req.x, "y": req.y, "w": req.w, "h": req.h}})
@@ -527,7 +553,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/camera/roi/clear")
     def camera_clear_roi_legacy():
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
@@ -536,7 +562,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.get("/api/control/camera/state", response_model=CameraState)
     def camera_state_legacy() -> CameraState:
         """Return current camera state for remote UI clients."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         roi_tuple = cam.get_roi()
@@ -561,7 +587,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/camera/select")
     def camera_select_legacy(req: CameraSelectRequest):
         """Select camera backend (legacy endpoint)."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None or cam.strobe_cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         if cam.thread is not None and cam.thread.is_alive():
@@ -589,7 +615,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/strobe/enable")
     def strobe_enable_legacy(req: StrobeEnableRequest):
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if req.on else 0}})
@@ -598,7 +624,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/strobe/hold")
     def strobe_hold_legacy(req: StrobeEnableRequest):
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if req.on else 0}})
@@ -607,7 +633,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.post("/api/control/strobe/timing")
     def strobe_timing_legacy(req: StrobeTimingRequest):
         """Legacy endpoint - calls Camera controller directly."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params = {"period_ns": int(req.period_ns)}
@@ -619,7 +645,7 @@ def create_app() -> FastAPI:  # noqa: C901
     @app.get("/api/control/strobe/state", response_model=StrobeState)
     def strobe_state_legacy() -> StrobeState:
         """Return current strobe state for remote UI clients."""
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.update_strobe_data()

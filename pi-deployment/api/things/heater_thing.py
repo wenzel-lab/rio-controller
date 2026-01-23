@@ -4,7 +4,43 @@ import logging
 from typing import TYPE_CHECKING, List
 
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+
+# Handle Thing import with fallback
+Thing = None
+try:
+    Thing = lt.Thing
+except AttributeError:
+    # Try alternate import path
+    try:
+        from labthings_fastapi.thing import Thing
+    except (ImportError, AttributeError):
+        # Fallback - create a simple base class
+        class Thing:
+            """Fallback Thing base class for when labthings_fastapi.Thing is unavailable."""
+            def __init__(self, thing_server_interface=None):
+                self.thing_server_interface = thing_server_interface
+
+# Handle decorators with fallback
+property_decorator = None
+action_decorator = None
+try:
+    property_decorator = lt.property
+    action_decorator = lt.action
+except AttributeError:
+    # Fallback decorators that do nothing
+    def property_decorator(func):
+        return func
+    
+    def action_decorator(func):
+        return func
+
+# Handle InvocationError import with fallback
+InvocationError = None
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except (ImportError, AttributeError):
+    # Fallback if labthings_fastapi doesn't have exceptions module
+    InvocationError = Exception
 
 from api.schemas import HeaterState, HeaterStateItem
 
@@ -14,7 +50,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HeaterThing(lt.Thing):
+class HeaterThing(Thing):
     """Heater controller Thing.
 
     Exposes heater control (temperature, PID, stirrer) as WoT-compliant properties and actions.
@@ -32,7 +68,7 @@ class HeaterThing(lt.Thing):
         super().__init__(thing_server_interface)
         self._heaters = heaters
 
-    @lt.property
+    @property_decorator
     def state(self) -> HeaterState:
         """Get current heater state for all heaters.
 
@@ -57,7 +93,7 @@ class HeaterThing(lt.Thing):
             )
         return HeaterState(heaters=items)
 
-    @lt.action
+    @action_decorator
     def set_temp(self, index: int, temp_c: float) -> dict:
         """Set target temperature for a heater.
 
@@ -81,7 +117,7 @@ class HeaterThing(lt.Thing):
         self._heaters[index].set_temp(temp_c)
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_pid(self, index: int, enabled: bool) -> dict:
         """Enable or disable PID control for a heater.
 
@@ -106,7 +142,7 @@ class HeaterThing(lt.Thing):
         self._heaters[index].pid_enabled = enabled
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_stir(self, index: int, enabled: bool) -> dict:
         """Enable or disable stirrer for a heater.
 

@@ -4,7 +4,43 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+
+# Handle Thing import with fallback
+Thing = None
+try:
+    Thing = lt.Thing
+except AttributeError:
+    # Try alternate import path
+    try:
+        from labthings_fastapi.thing import Thing
+    except (ImportError, AttributeError):
+        # Fallback - create a simple base class
+        class Thing:
+            """Fallback Thing base class for when labthings_fastapi.Thing is unavailable."""
+            def __init__(self, thing_server_interface=None):
+                self.thing_server_interface = thing_server_interface
+
+# Handle decorators with fallback
+property_decorator = None
+action_decorator = None
+try:
+    property_decorator = lt.property
+    action_decorator = lt.action
+except AttributeError:
+    # Fallback decorators that do nothing
+    def property_decorator(func):
+        return func
+    
+    def action_decorator(func):
+        return func
+
+# Handle InvocationError import with fallback
+InvocationError = None
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except (ImportError, AttributeError):
+    # Fallback if labthings_fastapi doesn't have exceptions module
+    InvocationError = Exception
 
 if TYPE_CHECKING:
     from controllers.droplet_detector_controller import DropletDetectorController
@@ -12,7 +48,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class DropletThing(lt.Thing):
+class DropletThing(Thing):
     """Droplet detection controller Thing.
 
     Exposes droplet detection control and statistics as WoT-compliant properties and actions.
@@ -32,7 +68,7 @@ class DropletThing(lt.Thing):
         super().__init__(thing_server_interface)
         self._droplet = droplet_controller
 
-    @lt.property
+    @property_decorator
     def status(self) -> dict:
         """Get current droplet detection status.
 
@@ -49,7 +85,7 @@ class DropletThing(lt.Thing):
             "processing_rate_hz": round(getattr(self._droplet, "processing_rate_hz", 0.0), 2),
         }
 
-    @lt.property
+    @property_decorator
     def statistics(self) -> dict:
         """Get droplet detection statistics.
 
@@ -61,7 +97,7 @@ class DropletThing(lt.Thing):
 
         return self._droplet.get_statistics()
 
-    @lt.property
+    @property_decorator
     def histogram(self) -> dict:
         """Get droplet size histogram.
 
@@ -73,7 +109,7 @@ class DropletThing(lt.Thing):
 
         return self._droplet.get_histogram()
 
-    @lt.property
+    @property_decorator
     def performance(self) -> dict:
         """Get performance metrics.
 
@@ -85,7 +121,7 @@ class DropletThing(lt.Thing):
 
         return self._droplet.get_performance_metrics()
 
-    @lt.action
+    @action_decorator
     def start(self) -> dict:
         """Start droplet detection.
 
@@ -103,7 +139,7 @@ class DropletThing(lt.Thing):
             raise InvocationError("Failed to start droplet detection (check ROI)")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def stop(self) -> dict:
         """Stop droplet detection.
 

@@ -2,13 +2,49 @@
 
 import logging
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+
+# Handle Thing import with fallback
+Thing = None
+try:
+    Thing = lt.Thing
+except AttributeError:
+    # Try alternate import path
+    try:
+        from labthings_fastapi.thing import Thing
+    except (ImportError, AttributeError):
+        # Fallback - create a simple base class
+        class Thing:
+            """Fallback Thing base class for when labthings_fastapi.Thing is unavailable."""
+            def __init__(self, thing_server_interface=None):
+                self.thing_server_interface = thing_server_interface
+
+# Handle decorators with fallback
+property_decorator = None
+action_decorator = None
+try:
+    property_decorator = lt.property
+    action_decorator = lt.action
+except AttributeError:
+    # Fallback decorators that do nothing
+    def property_decorator(func):
+        return func
+    
+    def action_decorator(func):
+        return func
+
+# Handle InvocationError import with fallback
+InvocationError = None
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except (ImportError, AttributeError):
+    # Fallback if labthings_fastapi doesn't have exceptions module
+    InvocationError = Exception
 
 
 logger = logging.getLogger(__name__)
 
 
-class PumpThing(lt.Thing):
+class PumpThing(Thing):
     """Syringe pump controller Thing."""
 
     title = "Syringe Pump Controller"
@@ -23,7 +59,7 @@ class PumpThing(lt.Thing):
         super().__init__(thing_server_interface)
         self._pump = pump_controller
 
-    @lt.property
+    @property_decorator
     def state(self) -> dict:
         """Get current pump state.
 
@@ -34,7 +70,7 @@ class PumpThing(lt.Thing):
             raise RuntimeError("Pump controller unavailable")
         return {"pumps": self._pump.get_all_states()}
 
-    @lt.action
+    @action_decorator
     def set_flow(self, pump: str, flow: float) -> dict:
         """Set flow rate for a pump.
 
@@ -53,7 +89,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set flow")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_diameter(self, pump: str, diameter: float) -> dict:
         """Set syringe diameter for a pump.
 
@@ -72,7 +108,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set diameter")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_direction(self, pump: str, direction: int) -> dict:
         """Set flow direction for a pump.
 
@@ -91,7 +127,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set direction")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_state(self, pump: str, state: bool) -> dict:
         """Set pump state.
 
@@ -110,7 +146,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set state")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_unit(self, pump: str, unit: str) -> dict:
         """Set pump flow unit."""
         if self._pump is None:
@@ -120,7 +156,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set unit")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_gearbox(self, pump: str, gearbox: str) -> dict:
         """Set pump gearbox configuration."""
         if self._pump is None:
@@ -130,7 +166,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set gearbox")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_microstep(self, pump: str, microstep: str) -> dict:
         """Set pump microstep configuration."""
         if self._pump is None:
@@ -140,7 +176,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set microstep")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_threadrod(self, pump: str, threadrod: str) -> dict:
         """Set pump threadrod configuration."""
         if self._pump is None:
@@ -150,7 +186,7 @@ class PumpThing(lt.Thing):
             raise InvocationError("Failed to set threadrod")
         return {"ok": True}
 
-    @lt.action
+    @action_decorator
     def set_enable(self, pump: str, enabled: bool) -> dict:
         """Enable or disable pump."""
         if self._pump is None:
