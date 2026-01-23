@@ -224,6 +224,15 @@ Later steps will expose full control/streaming surfaces.
 - **DO NOT create virtual environments on Pi** - install to system Python
 - `pi-deployment/` is a generated bundle; it is the runtime copy used on the Pi
 
+**IMPORTANT:** `pip install -r requirements-pi.txt` alone is **not sufficient**.
+Install these system packages first (camera + OpenCV + BLAS/LAPACK):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3-numpy python3-opencv
+sudo apt-get install -y libatlas-base-dev libatlas3-base libblas3 liblapack3
+```
+
 ### Creating the Pi Deployment Bundle (from Mac/PC)
 
 **On your Mac/PC (not on the Pi):** Generate the deployment bundle and copy it to your Raspberry Pi:
