@@ -14,7 +14,10 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - older labthings versions
     class InvocationError(RuntimeError):
         """Fallback invocation error for older labthings-fastapi versions."""
-from labthings_fastapi.outputs.blob import Blob
+try:
+    from labthings_fastapi.outputs.blob import Blob
+except ImportError:  # pragma: no cover - labthings-fastapi 0.0.6
+    from labthings_fastapi.outputs.blob import BlobOutput as Blob
 
 from config import (
     CMD_SET_RESOLUTION,
