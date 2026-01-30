@@ -706,6 +706,17 @@ class RioThingClient:
         except Exception as e:
             raise RioAPIError(f"API call failed: {e}") from e
 
+    def record_roi_frames(self, frames: int) -> Dict[str, Any]:
+        """Record a fixed number of ROI frames as JPEGs."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.record_roi_frames(frames=frames)
+            return self._coerce_result(result)
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
     # Strobe control (use WoT Thing)
     def set_strobe_enable(self, enabled: bool) -> Dict[str, Any]:
         """Enable/disable strobe."""

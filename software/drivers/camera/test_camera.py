@@ -25,70 +25,48 @@ import numpy as np  # noqa: F401, E402
 def test_camera_creation():
     """Test camera factory function"""
     print("Testing camera creation...")
-    try:
-        camera = create_camera()
-        print(f"✓ Camera created: {type(camera).__name__}")
-        return camera
-    except Exception as e:
-        print(f"✗ Camera creation failed: {e}")
-        return None
+    camera = create_camera(simulation=True)
+    assert camera is not None
+    print(f"✓ Camera created: {type(camera).__name__}")
 
 
 def test_camera_start_stop(camera: BaseCamera):
     """Test camera start/stop"""
     print("\nTesting camera start/stop...")
-    try:
-        camera.start()
-        print("✓ Camera started")
-        camera.stop()
-        print("✓ Camera stopped")
-        return True
-    except Exception as e:
-        print(f"✗ Start/stop failed: {e}")
-        return False
+    camera.start()
+    print("✓ Camera started")
+    camera.stop()
+    print("✓ Camera stopped")
 
 
 def test_frame_capture(camera: BaseCamera):
     """Test single frame capture"""
     print("\nTesting frame capture...")
-    try:
-        camera.start()
-        frame = camera.get_frame_array()
-        print(f"✓ Frame captured: shape={frame.shape}, dtype={frame.dtype}")
-        camera.stop()
-        return True
-    except Exception as e:
-        print(f"✗ Frame capture failed: {e}")
-        return False
+    camera.start()
+    frame = camera.get_frame_array()
+    assert frame is not None
+    print(f"✓ Frame captured: shape={frame.shape}, dtype={frame.dtype}")
+    camera.stop()
 
 
 def test_roi_capture(camera: BaseCamera):
     """Test ROI capture"""
     print("\nTesting ROI capture...")
-    try:
-        camera.start()
-        # Test ROI: (x, y, width, height) = (100, 100, 200, 150)
-        roi = (100, 100, 200, 150)
-        roi_frame = camera.get_frame_roi(roi)
-        print(f"✓ ROI captured: shape={roi_frame.shape}, expected=(150, 200, 3)")
-        camera.stop()
-        return True
-    except Exception as e:
-        print(f"✗ ROI capture failed: {e}")
-        return False
+    camera.start()
+    # Test ROI: (x, y, width, height) = (100, 100, 200, 150)
+    roi = (100, 100, 200, 150)
+    roi_frame = camera.get_frame_roi(roi)
+    assert roi_frame is not None
+    print(f"✓ ROI captured: shape={roi_frame.shape}, expected=(150, 200, 3)")
+    camera.stop()
 
 
 def test_configuration(camera: BaseCamera):
     """Test camera configuration"""
     print("\nTesting configuration...")
-    try:
-        config = {"Width": 640, "Height": 480, "FrameRate": 30}
-        camera.set_config(config)
-        print("✓ Configuration set")
-        return True
-    except Exception as e:
-        print(f"✗ Configuration failed: {e}")
-        return False
+    config = {"Width": 640, "Height": 480, "FrameRate": 30}
+    camera.set_config(config)
+    print("✓ Configuration set")
 
 
 def main():
@@ -97,8 +75,7 @@ def main():
     print("Camera Abstraction Layer Test")
     print("=" * 50)
 
-    # Test camera creation
-    camera = test_camera_creation()
+    camera = create_camera(simulation=True)
     if camera is None:
         print("\n✗ Cannot continue without camera")
         return
@@ -114,8 +91,8 @@ def main():
     results = []
     for name, test_func in tests:
         try:
-            result = test_func()
-            results.append((name, result))
+            test_func()
+            results.append((name, True))
         except Exception as e:
             print(f"✗ {name} test crashed: {e}")
             results.append((name, False))

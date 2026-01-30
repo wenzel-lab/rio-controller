@@ -80,6 +80,15 @@ for msg in stream.iter_messages(timeout=10.0):
     print(f"{msg['topic']} channel {msg['channel']}: {msg['value']}")
 ```
 
+**ROI recording (WoT / RioThingClient):**
+```python
+from api.client import RioThingClient
+
+thing_client = RioThingClient(base_url=API_URL)
+result = thing_client.record_roi_frames(frames=50)
+print(result)
+```
+
 **For local development (API on same machine):**
 ```python
 client = RioClient(base_url="http://localhost:8000")

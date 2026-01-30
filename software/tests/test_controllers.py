@@ -11,7 +11,9 @@ Usage:
 """
 
 import os
+import tempfile
 import unittest
+from unittest.mock import patch
 
 # Mock imports available if needed for future tests
 # from unittest.mock import Mock, MagicMock, patch
@@ -130,6 +132,16 @@ class TestCameraController(unittest.TestCase):
         """Test strobe data structure"""
         self.assertIn("enable", self.strobe_data)
         self.assertIn("period_ns", self.strobe_data)
+
+    def test_record_roi_frames(self):
+        """Test recording ROI frames to disk."""
+        self.camera.roi = {"x": 10, "y": 10, "width": 64, "height": 48}
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch("controllers.camera.SNAPSHOT_FOLDER", tmp_dir):
+                result = self.camera.record_roi_frames(3)
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(result["frames_saved"], 1)
+        self.assertTrue(result["folder"].startswith(tmp_dir))
 
     @property
     def strobe_data(self):
