@@ -38,7 +38,11 @@ class HeaterThing(lt_thing.Thing):
             heaters: List of heater_web controller instances
             thing_server_interface: LabThings server interface (provided by ThingServer)
         """
-        super().__init__(thing_server_interface)
+        try:
+            super().__init__(thing_server_interface)
+        except TypeError:
+            # LabThings 0.0.6 Thing has no __init__ params
+            super().__init__()
         self._heaters = heaters
 
     @lt_property

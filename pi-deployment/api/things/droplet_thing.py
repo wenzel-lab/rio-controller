@@ -38,7 +38,11 @@ class DropletThing(lt_thing.Thing):
             droplet_controller: DropletDetectorController instance
             thing_server_interface: LabThings server interface (provided by ThingServer)
         """
-        super().__init__(thing_server_interface)
+        try:
+            super().__init__(thing_server_interface)
+        except TypeError:
+            # LabThings 0.0.6 Thing has no __init__ params
+            super().__init__()
         self._droplet = droplet_controller
 
     @lt_property
