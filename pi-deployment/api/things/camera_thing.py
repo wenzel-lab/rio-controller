@@ -5,6 +5,9 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import labthings_fastapi as lt
 from labthings_fastapi import decorators as lt_decorators
+
+lt_action = getattr(lt_decorators, "action", None) or lt_decorators.thing_action
+lt_property = getattr(lt_decorators, "property", None) or lt_decorators.thing_property
 from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
@@ -53,7 +56,7 @@ class CameraThing(lt_thing.Thing):
         super().__init__(thing_server_interface)
         self._camera = camera
 
-    @lt_decorators.action
+    @lt_action
     def snapshot(self) -> Blob:
         """Capture a single frame from the camera.
 
@@ -76,7 +79,7 @@ class CameraThing(lt_thing.Thing):
         # Create Blob using from_bytes class method (required for Pydantic 2.x)
         return JPEGBlob.from_bytes(frame)
 
-    @lt_decorators.action
+    @lt_action
     def set_resolution(
         self, preset: Optional[str] = None, width: Optional[int] = None, height: Optional[int] = None
     ) -> dict:
@@ -106,7 +109,7 @@ class CameraThing(lt_thing.Thing):
         self._camera.on_cam({"cmd": CMD_SET_RESOLUTION, "parameters": params})
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_snapshot_resolution(
         self, mode: str, width: Optional[int] = None, height: Optional[int] = None
     ) -> dict:
@@ -134,7 +137,7 @@ class CameraThing(lt_thing.Thing):
         self._camera.on_cam({"cmd": CMD_SET_SNAPSHOT_RESOLUTION, "parameters": params})
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_roi(self, x: int, y: int, w: int, h: int) -> dict:
         """Set region of interest (ROI) for camera.
 
@@ -156,7 +159,7 @@ class CameraThing(lt_thing.Thing):
         self._camera.on_roi({"cmd": CMD_SET, "parameters": {"x": x, "y": y, "w": w, "h": h}})
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def clear_roi(self) -> dict:
         """Clear region of interest (ROI).
 
@@ -172,7 +175,7 @@ class CameraThing(lt_thing.Thing):
         self._camera.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def record_roi_frames(self, frames: int) -> dict:
         """Record a fixed number of ROI frames as JPEGs.
 
@@ -193,7 +196,7 @@ class CameraThing(lt_thing.Thing):
             raise InvocationError(result.get("error") or "ROI recording failed")
         return result
 
-    @lt_decorators.action
+    @lt_action
     def strobe_enable(self, on: bool) -> dict:
         """Enable or disable strobe.
 
@@ -212,7 +215,7 @@ class CameraThing(lt_thing.Thing):
         self._camera.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if on else 0}})
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def strobe_hold(self, on: bool) -> dict:
         """Enable or disable strobe hold mode.
 
@@ -231,7 +234,7 @@ class CameraThing(lt_thing.Thing):
         self._camera.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if on else 0}})
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def strobe_timing(self, period_ns: int, wait_ns: Optional[int] = None) -> dict:
         """Set strobe timing parameters.
 

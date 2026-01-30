@@ -5,6 +5,9 @@ from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
 from labthings_fastapi import decorators as lt_decorators
+
+lt_action = getattr(lt_decorators, "action", None) or lt_decorators.thing_action
+lt_property = getattr(lt_decorators, "property", None) or lt_decorators.thing_property
 from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
@@ -40,7 +43,7 @@ class FlowThing(lt_thing.Thing):
         super().__init__(thing_server_interface)
         self._flow = flow_controller
 
-    @lt_decorators.property
+    @lt_property
     def state(self) -> FlowState:
         """Get current flow and pressure state for all channels.
 
@@ -74,7 +77,7 @@ class FlowThing(lt_thing.Thing):
             control_modes_text=self._flow.control_modes_text,
         )
 
-    @lt_decorators.action
+    @lt_action
     def set_pressure(self, index: int, pressure_mbar: float) -> dict:
         """Set pressure target for a channel.
 
@@ -98,7 +101,7 @@ class FlowThing(lt_thing.Thing):
             raise InvocationError("Failed to set pressure")
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_flow(self, index: int, flow_ul_hr: float) -> dict:
         """Set flow rate target for a channel.
 
@@ -122,7 +125,7 @@ class FlowThing(lt_thing.Thing):
             raise InvocationError("Failed to set flow rate")
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_mode(self, index: int, mode_ui: int) -> dict:
         """Set control mode for a channel.
 
@@ -147,7 +150,7 @@ class FlowThing(lt_thing.Thing):
             raise InvocationError("Failed to set control mode")
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_pi_consts(self, index: int, p: int, i: int) -> dict:
         """Set PI control constants for a channel.
 

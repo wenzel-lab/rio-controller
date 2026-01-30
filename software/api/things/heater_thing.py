@@ -5,6 +5,9 @@ from typing import TYPE_CHECKING, List
 
 import labthings_fastapi as lt
 from labthings_fastapi import decorators as lt_decorators
+
+lt_action = getattr(lt_decorators, "action", None) or lt_decorators.thing_action
+lt_property = getattr(lt_decorators, "property", None) or lt_decorators.thing_property
 from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
@@ -38,7 +41,7 @@ class HeaterThing(lt_thing.Thing):
         super().__init__(thing_server_interface)
         self._heaters = heaters
 
-    @lt_decorators.property
+    @lt_property
     def state(self) -> HeaterState:
         """Get current heater state for all heaters.
 
@@ -63,7 +66,7 @@ class HeaterThing(lt_thing.Thing):
             )
         return HeaterState(heaters=items)
 
-    @lt_decorators.action
+    @lt_action
     def set_temp(self, index: int, temp_c: float) -> dict:
         """Set target temperature for a heater.
 
@@ -87,7 +90,7 @@ class HeaterThing(lt_thing.Thing):
         self._heaters[index].set_temp(temp_c)
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_pid(self, index: int, enabled: bool) -> dict:
         """Enable or disable PID control for a heater.
 
@@ -112,7 +115,7 @@ class HeaterThing(lt_thing.Thing):
         self._heaters[index].pid_enabled = enabled
         return {"ok": True}
 
-    @lt_decorators.action
+    @lt_action
     def set_stir(self, index: int, enabled: bool) -> dict:
         """Enable or disable stirrer for a heater.
 
