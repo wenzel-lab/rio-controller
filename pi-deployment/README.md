@@ -137,6 +137,32 @@ ssh pi@raspberrypi.local
 # Or: ssh pi@<IP_ADDRESS>
 ```
 
+### Pi Mode Switching (UI vs API)
+
+If you installed the systemd units, use the mode switcher to avoid camera contention:
+
+```bash
+./scripts/pi/rio-mode ui
+./scripts/pi/rio-mode api
+./scripts/pi/rio-mode status
+```
+
+Install the systemd units once (on the Pi):
+
+```bash
+sudo cp ./scripts/pi/systemd/rio-ui.service /etc/systemd/system/
+sudo cp ./scripts/pi/systemd/rio-api.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+If you are not using systemd, stop one process before starting the other:
+
+```bash
+pkill -f "python.*main.py"
+pkill -f "python.*api.main"
+pkill -f "python.*pi_webapp.py"
+```
+
 ### Stop Application
 
 ```bash

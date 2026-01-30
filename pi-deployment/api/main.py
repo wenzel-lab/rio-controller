@@ -16,6 +16,7 @@ import yaml
 from fastapi import FastAPI, HTTPException
 
 import labthings_fastapi as lt
+from labthings_fastapi import server as lt_server
 
 from api.config import settings
 from api.schemas import (
@@ -283,7 +284,7 @@ def create_app() -> FastAPI:  # noqa: C901
         )
 
     # Create ThingServer - it will create its own FastAPI app
-    thing_server = lt.ThingServer(things_config, settings_folder=None)
+    thing_server = lt_server.ThingServer(things_config, settings_folder=None)
 
     # Use ThingServer's app as the base - add our custom routes to it
     # ThingServer routes are at root level (e.g., /flow/, /heater/, /docs)

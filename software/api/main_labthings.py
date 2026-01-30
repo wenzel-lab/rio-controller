@@ -15,6 +15,7 @@ import uvicorn
 import yaml
 from fastapi import FastAPI
 import labthings_fastapi as lt
+from labthings_fastapi import server as lt_server
 
 from api.config import settings
 from api.schemas import (
@@ -244,7 +245,7 @@ def create_app() -> FastAPI:
         )
 
     # Create ThingServer - it will create its own FastAPI app
-    thing_server = lt.ThingServer(things_config, settings_folder=None)
+    thing_server = lt_server.ThingServer(things_config, settings_folder=None)
 
     # Get ThingServer's app
     app = thing_server.app

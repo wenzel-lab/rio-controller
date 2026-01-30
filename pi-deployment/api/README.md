@@ -133,6 +133,7 @@ The API **does not** call drivers directly; it calls into the controller layer, 
 ### `main.py` — LabThings ThingServer and routes
 
 - **Entry point**: `create_app()` returns a FastAPI instance with LabThings ThingServer integration.
+- **Note**: LabThings `ThingServer` is imported from `labthings_fastapi.server` (0.0.6).
 - **Controller initialization**: Controllers are instantiated at import time (similar to `software/main.py`) so capabilities reflect actual hardware availability.
 - **WoT Things** (auto-generated routes by LabThings):
   - `/flow/` — FlowThing (flow/pressure control)
