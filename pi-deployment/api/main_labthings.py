@@ -208,44 +208,64 @@ AGGREGATOR = Aggregator(
 
 def create_app() -> FastAPI:
     """Create FastAPI app with LabThings ThingServer integration."""
-    from labthings_fastapi.server.config_model import ThingConfig
+    try:
+        from labthings_fastapi.server.config_model import ThingConfig
+    except ModuleNotFoundError:
+        ThingConfig = None
 
-    # Create Thing configurations with controller dependencies
-    # ThingServer will instantiate them with proper interfaces
-    things_config: dict[str, ThingConfig | type[lt.Thing]] = {}
+    if ThingConfig is None:
+        thing_server = lt_server.ThingServer(settings_folder=None)
 
-    if CONTROLLERS.get("flow"):
-        things_config["flow"] = ThingConfig(
-            cls=FlowThing,
-            args=[CONTROLLERS["flow"]],
-        )
+        def add_thing(path: str, cls, args) -> None:
+            thing_server.add_thing(cls(*args), f"/{path}")
 
-    if CONTROLLERS.get("heaters"):
-        things_config["heater"] = ThingConfig(
-            cls=HeaterThing,
-            args=[CONTROLLERS["heaters"]],
-        )
+        if CONTROLLERS.get("flow"):
+            add_thing("flow", FlowThing, [CONTROLLERS["flow"]])
+        if CONTROLLERS.get("heaters"):
+            add_thing("heater", HeaterThing, [CONTROLLERS["heaters"]])
+        if CONTROLLERS.get("camera"):
+            add_thing("camera", CameraThing, [CONTROLLERS["camera"]])
+        if CONTROLLERS.get("droplet"):
+            add_thing("droplet", DropletThing, [CONTROLLERS["droplet"]])
+        if CONTROLLERS.get("pump"):
+            add_thing("pump", PumpThing, [CONTROLLERS["pump"]])
+    else:
+        # Create Thing configurations with controller dependencies
+        # ThingServer will instantiate them with proper interfaces
+        things_config: dict[str, Any] = {}
 
-    if CONTROLLERS.get("camera"):
-        things_config["camera"] = ThingConfig(
-            cls=CameraThing,
-            args=[CONTROLLERS["camera"]],
-        )
+        if CONTROLLERS.get("flow"):
+            things_config["flow"] = ThingConfig(
+                cls=FlowThing,
+                args=[CONTROLLERS["flow"]],
+            )
 
-    if CONTROLLERS.get("droplet"):
-        things_config["droplet"] = ThingConfig(
-            cls=DropletThing,
-            args=[CONTROLLERS["droplet"]],
-        )
+        if CONTROLLERS.get("heaters"):
+            things_config["heater"] = ThingConfig(
+                cls=HeaterThing,
+                args=[CONTROLLERS["heaters"]],
+            )
 
-    if CONTROLLERS.get("pump"):
-        things_config["pump"] = ThingConfig(
-            cls=PumpThing,
-            args=[CONTROLLERS["pump"]],
-        )
+        if CONTROLLERS.get("camera"):
+            things_config["camera"] = ThingConfig(
+                cls=CameraThing,
+                args=[CONTROLLERS["camera"]],
+            )
 
-    # Create ThingServer - it will create its own FastAPI app
-    thing_server = lt_server.ThingServer(things_config, settings_folder=None)
+        if CONTROLLERS.get("droplet"):
+            things_config["droplet"] = ThingConfig(
+                cls=DropletThing,
+                args=[CONTROLLERS["droplet"]],
+            )
+
+        if CONTROLLERS.get("pump"):
+            things_config["pump"] = ThingConfig(
+                cls=PumpThing,
+                args=[CONTROLLERS["pump"]],
+            )
+
+        # Create ThingServer - it will create its own FastAPI app
+        thing_server = lt_server.ThingServer(things_config, settings_folder=None)
 
     # Get ThingServer's app
     app = thing_server.app
