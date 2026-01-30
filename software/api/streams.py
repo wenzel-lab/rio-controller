@@ -186,7 +186,7 @@ class Aggregator:
 
     # Capture support
     def start_capture(
-        self, topics: List[str], channels: Dict[str, List[int]], path: str | None = None
+        self, topics: List[str], channels: Dict[str, List[int]], path: Optional[str] = None
     ):
         if self.capture.enabled:
             self.stop_capture()

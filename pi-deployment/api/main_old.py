@@ -11,7 +11,7 @@ Rio API server (skeleton + controller wiring).
 import logging
 import os
 from threading import Event
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import uvicorn
 import yaml
@@ -300,7 +300,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.get("/api/control/flow/state", response_model=FlowState)
     def flow_state() -> FlowState:
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
 
@@ -328,7 +328,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/flow/set_pressure")
     def flow_set_pressure(req: FlowSetPressureRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_pressure(req.index, req.pressure_mbar)
@@ -338,7 +338,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/flow/set_flow")
     def flow_set_flow(req: FlowSetFlowRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_flow(req.index, req.flow_ul_hr)
@@ -348,7 +348,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/flow/set_mode")
     def flow_set_mode(req: FlowSetModeRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         firmware_mode = CONTROL_MODE_UI_TO_FIRMWARE.get(req.mode_ui, 0)
@@ -359,7 +359,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/flow/set_pi_consts")
     def flow_set_pi(req: FlowSetPIRequest):
-        flow: FlowWeb | None = CONTROLLERS.get("flow")
+        flow: Optional[FlowWeb] = CONTROLLERS.get("flow")
         if flow is None:
             raise HTTPException(status_code=503, detail="Flow controller unavailable")
         ok = flow.set_flow_pi_consts(req.index, [req.p, req.i])
@@ -373,7 +373,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.get("/api/control/heater/state", response_model=HeaterState)
     def heater_state():
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        heaters: Optional[list[heater_web]] = CONTROLLERS.get("heaters")
         if heaters is None:
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         items: list[HeaterStateItem] = []
@@ -393,7 +393,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/heater/set_temp")
     def heater_set_temp(req: HeaterSetTempRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        heaters: Optional[list[heater_web]] = CONTROLLERS.get("heaters")
         if heaters is None or req.index >= len(heaters):
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_temp(req.temp_c)
@@ -401,7 +401,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/heater/pid")
     def heater_set_pid(req: HeaterSetPidRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        heaters: Optional[list[heater_web]] = CONTROLLERS.get("heaters")
         if heaters is None or req.index >= len(heaters):
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_pid_running(1 if req.enabled else 0)
@@ -410,7 +410,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/heater/stir")
     def heater_set_stir(req: HeaterSetStirRequest):
-        heaters: list[heater_web] | None = CONTROLLERS.get("heaters")
+        heaters: Optional[list[heater_web]] = CONTROLLERS.get("heaters")
         if heaters is None or req.index >= len(heaters):
             raise HTTPException(status_code=503, detail="Heaters unavailable")
         heaters[req.index].set_stir_running(1 if req.enabled else 0)
@@ -423,7 +423,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.get("/api/streams/camera/snapshot")
     def camera_snapshot():
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         if cam.thread is None or not cam.thread.is_alive():
@@ -435,7 +435,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/camera/set_resolution")
     def camera_set_resolution(req: CameraResolutionRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params: dict[str, Any] = {}
@@ -449,7 +449,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/camera/set_snapshot_resolution")
     def camera_set_snapshot_resolution(req: CameraSnapshotResolutionRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params: dict[str, Any] = {"mode": req.mode}
@@ -461,7 +461,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/camera/roi")
     def camera_set_roi(req: CameraROIRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_roi({"cmd": CMD_SET, "parameters": {"x": req.x, "y": req.y, "w": req.w, "h": req.h}})
@@ -469,7 +469,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/camera/roi/clear")
     def camera_clear_roi():
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
@@ -477,7 +477,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/strobe/enable")
     def strobe_enable(req: StrobeEnableRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if req.on else 0}})
@@ -485,7 +485,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/strobe/hold")
     def strobe_hold(req: StrobeEnableRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         cam.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if req.on else 0}})
@@ -493,7 +493,7 @@ def create_app() -> FastAPI:  # noqa: C901
 
     @app.post("/api/control/strobe/timing")
     def strobe_timing(req: StrobeTimingRequest):
-        cam: Camera | None = CONTROLLERS.get("camera")
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
         if cam is None:
             raise HTTPException(status_code=503, detail="Camera unavailable")
         params = {"period_ns": int(req.period_ns)}
