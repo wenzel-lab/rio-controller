@@ -63,7 +63,7 @@ Tests cover:
 - Edge cases (boundary values, empty lists)
 - Mock controllers for isolated testing
 
-**Requires:** `labthings-fastapi`, `fastapi`, `pydantic` (install via `requirements-api.txt`)
+**Requires:** `labthings-fastapi`, `fastapi`, `pydantic` (install via `requirements-api-full.txt`)
 
 ### `test_api_things.py`
 
@@ -81,7 +81,7 @@ Tests cover:
 - Edge cases (boundary values, empty lists)
 - Mock controllers for isolated testing
 
-**Requires:** `labthings-fastapi`, `fastapi`, `pydantic` (install via `requirements-api.txt`)
+**Requires:** `labthings-fastapi`, `fastapi`, `pydantic` (install via `requirements-api-full.txt`)
 
 ### `test_api_streams.py`
 

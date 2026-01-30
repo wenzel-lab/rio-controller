@@ -17,7 +17,7 @@ This folder contains the **network API layer** that exposes Rio hardware control
 1. **Install dependencies:**
    ```bash
    cd software
-   pip install -r requirements-api.txt
+   pip install -r requirements-api-full.txt
    ```
 
 2. **Run the API server:**
@@ -55,7 +55,10 @@ This folder contains the **network API layer** that exposes Rio hardware control
    ```bash
    cd ~/rio-controller
    python3 -m pip install --user -r requirements-api.txt
+   python3 -m pip install --user --no-deps --force-reinstall labthings-fastapi==0.0.6
    ```
+   Note: `labthings-fastapi` is installed with `--no-deps` to avoid pulling `numpy>=2`
+   which breaks the apt OpenCV build on 32-bit Pi.
 
 2. **Launch API server:**
    ```bash
@@ -88,7 +91,7 @@ This folder contains the **network API layer** that exposes Rio hardware control
    print(health)
    ```
 
-**For detailed Pi installation and Jupyter access guide, see:** `../../docs/api_pi_testing_guide.md`
+**For detailed Pi installation and troubleshooting, see:** `../../docs/pi_api_installation_guide.md`
 
 See `client/README.md` for the Python client library and example notebooks.
 
@@ -435,9 +438,9 @@ export RIO_SIMULATION=true
 pytest tests/test_api_streams.py -v
 ```
 
-Note: API tests require `requirements-api.txt` to be installed. Install with:
+Note: API tests require `requirements-api-full.txt` to be installed. Install with:
 ```bash
-pip install -r requirements-api.txt
+pip install -r requirements-api-full.txt
 ```
 
 ## OpenAPI/Swagger documentation
@@ -449,18 +452,15 @@ FastAPI automatically generates OpenAPI documentation. When the API server is ru
 
 ## Dependencies
 
-API-specific dependencies are in `requirements-api.txt`:
-- `fastapi[all]>=0.115.0` — Web framework (supports Pydantic 2.x)
-- `uvicorn[standard]>=0.30.0` — ASGI server (compatible with FastAPI 0.115+)
-- `labthings-fastapi>=0.0.6` — **LabThings/WoT framework** (requires Pydantic 2.x)
-- `pydantic>=2.10.0` — Data validation (Pydantic 2.x, required by LabThings)
-- `pyyaml>=6.0` — Config file loading
+API-specific dependencies are split:
+- `requirements-api.txt` — Pi-light dependencies (no LabThings; avoids numpy upgrades)
+- `requirements-api-full.txt` — Desktop/full dependencies (includes LabThings + extras)
 
 **Current status:** The API uses LabThings ThingServer to expose controllers as WoT-compliant Things. Each controller is wrapped in a Thing class that exposes properties and actions according to the Web of Things standard.
 
 Install with:
 ```bash
-pip install -r requirements-api.txt
+pip install -r requirements-api-full.txt
 ```
 
 ## Troubleshooting
@@ -473,7 +473,7 @@ pip install -r requirements-api.txt
 - Or use a different port: `uvicorn api.main:app --port 8001`
 
 **"Module not found"**:
-- Install dependencies: `pip install -r requirements-api.txt`
+- Install dependencies: `pip install -r requirements-api-full.txt`
 - Make sure you're running from `software/` directory
 - Check Python path: `python -c "import api.main"`
 

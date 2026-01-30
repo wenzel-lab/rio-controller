@@ -236,6 +236,23 @@ if [ -f "requirements-pi.txt" ]; then
             echo "         API server is optional and can be installed separately if needed."
             echo "         Verify compatibility: python3 -m pip check"
         }
+        echo "Installing labthings-fastapi without deps (keeps apt numpy)..."
+        python3 -m pip install --user --no-deps --force-reinstall labthings-fastapi==0.0.6 || {
+            echo "⚠ Warning: labthings-fastapi install failed."
+            echo "         Try: python3 -m pip install --user --no-deps labthings-fastapi==0.0.6"
+        }
+        python3 - <<'PYEOF'
+import sys
+try:
+    import numpy as np
+    major = int(np.__version__.split(".")[0])
+    if major >= 2:
+        print("⚠ Warning: numpy>=2 detected. Use apt numpy and remove pip numpy:")
+        print("   rm -rf ~/.local/lib/python3.9/site-packages/numpy*")
+        print("   sudo apt-get install -y python3-numpy python3-opencv")
+except Exception as exc:
+    print(f"Note: numpy check skipped ({exc})")
+PYEOF
     fi
 else
     echo "Warning: requirements file not found, installing manually..."
@@ -252,6 +269,8 @@ else
     # Do NOT install opencv-python-headless from pip (builds from source, takes hours)
     python3 -m pip install --user "numpy>=1.19.0,<2.0.0" "Pillow>=9.0.0"
     python3 -m pip install --user "PyYAML>=6.0"
+    python3 -m pip install --user "httpx>=0.28.0" "jsonschema>=4.18.0" "anyio>=4.0.0" "exceptiongroup>=1.0.0"
+    python3 -m pip install --user --no-deps "labthings-fastapi==0.0.6"
 fi
 
 echo ""

@@ -59,10 +59,12 @@ The repository includes **3 requirements files** for different deployment scenar
    - Uses `numpy<2.0.0` for 32-bit compatibility (numpy 2.0+ doesn't work on 32-bit)
    - Used by deployment bundle generation
 
-3. **`requirements-api.txt`** — API server dependencies (additive)
-   - Additional packages for the FastAPI-based network API
-   - Install after base requirements: `pip install -r requirements-api.txt`
+3. **`requirements-api.txt`** — API server dependencies (Pi-light)
+   - Additional packages for the FastAPI-based network API (no LabThings)
+   - On Pi: install after base requirements, then add LabThings with `--no-deps`
    - Used when running the API server (`software/api/main.py`)
+4. **`requirements-api-full.txt`** — API server dependencies (desktop/full)
+   - Includes LabThings + extras for Mac/PC development
 
 **Note**: Hardware packages (spidev, RPi.GPIO, picamera) and OpenCV should be installed via `apt` on Raspberry Pi for faster installation and better compatibility. The requirements file documents this in comments.
 
@@ -195,7 +197,7 @@ layer only; device controllers and drivers remain unchanged.
 - Install API extras (from `software/`):
 
 ```bash
-pip install -r requirements-api.txt
+pip install -r requirements-api-full.txt
 ```
 
 - Run (simulation example):
