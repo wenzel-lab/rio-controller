@@ -39,3 +39,28 @@ def apply_labthings_pydantic_patch() -> None:
 
     introspection.create_model = create_model_compat
     introspection._patched_model_config = True
+
+    try:
+        import labthings_fastapi.descriptors.action as action_desc
+    except Exception:
+        return
+
+    if getattr(action_desc, "_patched_arbitrary_types", False):
+        return
+
+    def create_model_with_arbitrary_types(
+        model_name: str,
+        *,
+        model_config: Optional[ConfigDict] = None,
+        __config__: Optional[ConfigDict] = None,
+        **field_definitions: Any,
+    ):
+        config = ConfigDict(arbitrary_types_allowed=True)
+        if model_config is not None:
+            config.update(model_config)
+        if "model_config" in inspect.signature(create_model).parameters:
+            return create_model(model_name, model_config=config, **field_definitions)
+        return create_model(model_name, __config__=config, **field_definitions)
+
+    action_desc.create_model = create_model_with_arbitrary_types
+    action_desc._patched_arbitrary_types = True
