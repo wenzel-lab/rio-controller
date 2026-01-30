@@ -23,11 +23,16 @@ ClientPropertyError: Any
 
 try:
     from labthings_fastapi.client import ThingClient as LTThingClient
-    from labthings_fastapi.exceptions import (
-        FailedToInvokeActionError,
-        ServerActionError,
-        ClientPropertyError,
-    )
+    try:
+        from labthings_fastapi.exceptions import (
+            FailedToInvokeActionError,
+            ServerActionError,
+            ClientPropertyError,
+        )
+    except ModuleNotFoundError:  # pragma: no cover - older labthings versions
+        FailedToInvokeActionError = RuntimeError
+        ServerActionError = RuntimeError
+        ClientPropertyError = RuntimeError
 
     HAS_LABTHINGS = True
 except ImportError:  # pragma: no cover - optional dependency

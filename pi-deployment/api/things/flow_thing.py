@@ -4,7 +4,12 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except ModuleNotFoundError:  # pragma: no cover - older labthings versions
+    class InvocationError(RuntimeError):
+        """Fallback invocation error for older labthings-fastapi versions."""
+
 
 from api.schemas import FlowState
 from config import CONTROL_MODE_UI_TO_FIRMWARE, CONTROL_MODE_FIRMWARE_TO_UI

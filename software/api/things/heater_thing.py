@@ -4,7 +4,11 @@ import logging
 from typing import TYPE_CHECKING, List
 
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except ModuleNotFoundError:  # pragma: no cover - older labthings versions
+    class InvocationError(RuntimeError):
+        """Fallback invocation error for older labthings-fastapi versions."""
 
 from api.schemas import HeaterState, HeaterStateItem
 

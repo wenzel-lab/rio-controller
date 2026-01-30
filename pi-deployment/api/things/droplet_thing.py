@@ -4,7 +4,11 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except ModuleNotFoundError:  # pragma: no cover - older labthings versions
+    class InvocationError(RuntimeError):
+        """Fallback invocation error for older labthings-fastapi versions."""
 
 if TYPE_CHECKING:
     from controllers.droplet_detector_controller import DropletDetectorController

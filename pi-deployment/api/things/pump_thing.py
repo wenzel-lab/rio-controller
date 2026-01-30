@@ -2,7 +2,11 @@
 
 import logging
 import labthings_fastapi as lt
-from labthings_fastapi.exceptions import InvocationError
+try:
+    from labthings_fastapi.exceptions import InvocationError
+except ModuleNotFoundError:  # pragma: no cover - older labthings versions
+    class InvocationError(RuntimeError):
+        """Fallback invocation error for older labthings-fastapi versions."""
 
 
 logger = logging.getLogger(__name__)
