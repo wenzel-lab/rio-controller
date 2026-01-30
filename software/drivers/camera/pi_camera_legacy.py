@@ -53,6 +53,8 @@ class PiCameraLegacy(BaseCamera):
         # when running python main.py directly (not through Werkzeug reloader)
         self.cam: Optional[PiCamera] = None
         try:
+            if PiCamera is None or not callable(PiCamera):
+                raise RuntimeError("PiCamera class unavailable (picamera import failed)")
             self.cam = PiCamera()
         except Exception as e:
             logger.error(f"Failed to initialize PiCamera: {e}")

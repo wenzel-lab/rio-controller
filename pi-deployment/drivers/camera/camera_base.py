@@ -295,6 +295,9 @@ def _create_pi_camera() -> BaseCamera:
 
         from .pi_camera_legacy import PiCameraLegacy
 
+        if PiCameraLegacy is None or not callable(PiCameraLegacy):
+            raise RuntimeError("PiCameraLegacy class unavailable (import failed)")
+
         logger.info("Using picamera (legacy) for Raspberry Pi camera support")
         return PiCameraLegacy()
     except ImportError:
