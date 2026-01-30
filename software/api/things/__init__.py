@@ -1,5 +1,9 @@
 """LabThings Thing classes for Rio controllers."""
 
+from api.labthings_compat import apply_labthings_pydantic_patch
+
+apply_labthings_pydantic_patch()
+
 from .flow_thing import FlowThing
 from .heater_thing import HeaterThing
 from .camera_thing import CameraThing
