@@ -1,7 +1,7 @@
 """Pydantic models for API responses (skeleton)."""
 
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 class HealthResponse(BaseModel):
@@ -12,7 +12,7 @@ class HealthResponse(BaseModel):
 class CapabilitiesResponse(BaseModel):
     modules: Dict[str, bool]
     simulation: bool
-    notes: Dict[str, Any] | None = None
+    notes: Optional[Dict[str, Any]] = None
 
 
 # Flow/pressure
@@ -80,11 +80,11 @@ class HeaterStateItem(BaseModel):
     stir_enabled: bool
     autotuning: bool
     status_text: str
-    heat_power_limit_pc: int | None = None
-    autotune_status_text: str | None = None
-    autotune_target_temp: float | None = None
-    stir_speed_target: int | None = None
-    stir_speed_text: str | None = None
+    heat_power_limit_pc: Optional[int] = None
+    autotune_status_text: Optional[str] = None
+    autotune_target_temp: Optional[float] = None
+    stir_speed_target: Optional[int] = None
+    stir_speed_text: Optional[str] = None
 
 
 class HeaterState(BaseModel):
@@ -96,13 +96,13 @@ class ChannelInfo(BaseModel):
     enabled: bool = True
     name: str = ""
     liquid_type: str = ""  # e.g., mineral_oil, fluorinated_novec, aqueous, custom
-    calibration_factor: float | None = None
+    calibration_factor: Optional[float] = None
 
 
 class ChannelConfig(BaseModel):
-    flow: Dict[str, ChannelInfo] | None = None
-    pressure: Dict[str, ChannelInfo] | None = None
-    heater: Dict[str, ChannelInfo] | None = None
+    flow: Optional[Dict[str, ChannelInfo]] = None
+    pressure: Optional[Dict[str, ChannelInfo]] = None
+    heater: Optional[Dict[str, ChannelInfo]] = None
 
 
 class ChannelConfigResponse(BaseModel):
@@ -112,28 +112,28 @@ class ChannelConfigResponse(BaseModel):
 # Capture control
 class CaptureStartRequest(BaseModel):
     topics: List[str]
-    channels: Dict[str, List[int]] | None = None
-    path: str | None = None
+    channels: Optional[Dict[str, List[int]]] = None
+    path: Optional[str] = None
 
 
 class CaptureStatusResponse(BaseModel):
     enabled: bool
-    path: str | None = None
+    path: Optional[str] = None
     topics: List[str] = []
-    channels: Dict[str, List[int]] | None = None
+    channels: Optional[Dict[str, List[int]]] = None
 
 
 # Camera / Strobe / ROI requests
 class CameraResolutionRequest(BaseModel):
-    preset: str | None = None  # matches config.CAMERA_RESOLUTION_PRESETS keys
-    width: int | None = None
-    height: int | None = None
+    preset: Optional[str] = None  # matches config.CAMERA_RESOLUTION_PRESETS keys
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 
 class CameraSnapshotResolutionRequest(BaseModel):
     mode: str  # display|full|custom
-    width: int | None = None
-    height: int | None = None
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 
 class CameraROIRequest(BaseModel):
@@ -150,12 +150,12 @@ class CameraSelectRequest(BaseModel):
 class CameraState(BaseModel):
     camera: str
     status: str
-    display_width: int | None = None
-    display_height: int | None = None
-    snapshot_resolution_mode: str | None = None
-    snapshot_width: int | None = None
-    snapshot_height: int | None = None
-    roi: dict | None = None
+    display_width: Optional[int] = None
+    display_height: Optional[int] = None
+    snapshot_resolution_mode: Optional[str] = None
+    snapshot_width: Optional[int] = None
+    snapshot_height: Optional[int] = None
+    roi: Optional[dict] = None
 
 
 class StrobeEnableRequest(BaseModel):
@@ -164,7 +164,7 @@ class StrobeEnableRequest(BaseModel):
 
 class StrobeTimingRequest(BaseModel):
     period_ns: int
-    wait_ns: int | None = None
+    wait_ns: Optional[int] = None
 
 
 class StrobeState(BaseModel):
@@ -224,12 +224,12 @@ class PumpSetEnableRequest(BaseModel):
 
 class PumpState(BaseModel):
     pump: str
-    flow: float | None = None
-    diameter: float | None = None
-    direction: int | None = None  # -1 withdraw, 1 infuse
-    state: bool | None = None  # True = running, False = stopped
-    unit: str | None = None
-    gearbox: str | None = None
-    microstep: str | None = None
-    threadrod: str | None = None
-    enabled: bool | None = None
+    flow: Optional[float] = None
+    diameter: Optional[float] = None
+    direction: Optional[int] = None  # -1 withdraw, 1 infuse
+    state: Optional[bool] = None  # True = running, False = stopped
+    unit: Optional[str] = None
+    gearbox: Optional[str] = None
+    microstep: Optional[str] = None
+    threadrod: Optional[str] = None
+    enabled: Optional[bool] = None
