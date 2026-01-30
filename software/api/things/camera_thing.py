@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import labthings_fastapi as lt
+from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
 except ModuleNotFoundError:  # pragma: no cover - older labthings versions
@@ -33,7 +34,7 @@ class JPEGBlob(Blob):
     media_type: str = "image/jpeg"
 
 
-class CameraThing(lt.Thing):
+class CameraThing(lt_thing.Thing):
     """Camera and strobe controller Thing.
 
     Exposes camera control (resolution, ROI, snapshot) and strobe control as WoT-compliant actions.

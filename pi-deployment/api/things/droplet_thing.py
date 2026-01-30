@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import labthings_fastapi as lt
+from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
 except ModuleNotFoundError:  # pragma: no cover - older labthings versions
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class DropletThing(lt.Thing):
+class DropletThing(lt_thing.Thing):
     """Droplet detection controller Thing.
 
     Exposes droplet detection control and statistics as WoT-compliant properties and actions.

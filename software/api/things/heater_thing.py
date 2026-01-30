@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, List
 
 import labthings_fastapi as lt
+from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
 except ModuleNotFoundError:  # pragma: no cover - older labthings versions
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HeaterThing(lt.Thing):
+class HeaterThing(lt_thing.Thing):
     """Heater controller Thing.
 
     Exposes heater control (temperature, PID, stirrer) as WoT-compliant properties and actions.

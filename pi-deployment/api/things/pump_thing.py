@@ -2,6 +2,7 @@
 
 import logging
 import labthings_fastapi as lt
+from labthings_fastapi import thing as lt_thing
 try:
     from labthings_fastapi.exceptions import InvocationError
 except ModuleNotFoundError:  # pragma: no cover - older labthings versions
@@ -12,7 +13,7 @@ except ModuleNotFoundError:  # pragma: no cover - older labthings versions
 logger = logging.getLogger(__name__)
 
 
-class PumpThing(lt.Thing):
+class PumpThing(lt_thing.Thing):
     """Syringe pump controller Thing."""
 
     title = "Syringe Pump Controller"
