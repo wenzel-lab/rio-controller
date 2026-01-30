@@ -4,6 +4,13 @@ Test script for droplet detection pipeline.
 Tests the detector with images from droplet_AInalysis repository.
 """
 
+import pytest
+
+pytest.skip(
+    "Manual droplet detection script; requires external datasets.",
+    allow_module_level=True,
+)
+
 import sys
 import os
 import logging

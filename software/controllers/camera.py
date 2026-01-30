@@ -652,9 +652,6 @@ class Camera:
         # Surface latest recording summary to UI/API
         self.cam_data["roi_record_last"] = result
         return result
-            import traceback
-
-            logger.debug(traceback.format_exc())
 
     def _feed_frame_to_droplet_detector(self) -> None:
         """
