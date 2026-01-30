@@ -167,6 +167,7 @@ Use this when validating ROI behavior on actual hardware.
   - Stream resolution should shrink to the ROI region.
   - Snapshot returns ROI-sized frame.
   - Droplet detection ROI should still align with the visible frame.
+- Use the **Record ROI** control to save a fixed number of ROI frames; confirm JPEGs saved to `snapshots/recordings/<timestamp>/`.
 
 ### Mako (Vimba)
 
@@ -199,6 +200,7 @@ These are manual checks to run before a release. They are **not** in CI.
 - API exposes Pi camera stream and snapshots.
 - ROI set via API works (software default; hardware ROI if supported).
 - Strobe enable/timing via API works where applicable.
+- ROI recording via API saves JPEGs to `snapshots/recordings/<timestamp>/`.
 
 ## What runs in CI/simulation vs hardware
 

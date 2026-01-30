@@ -49,3 +49,4 @@ pyserial>=3.5
 #   python3 -m pip install --user -r requirements-pi.txt
 # Or with sudo for system-wide installation:
 #   sudo python3 -m pip install -r requirements-pi.txt
+

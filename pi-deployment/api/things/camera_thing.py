@@ -1,61 +1,11 @@
 """Camera and strobe controller Thing for LabThings/WoT."""
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import labthings_fastapi as lt
-
-# Handle Thing import with fallback
-Thing = None
-try:
-    Thing = lt.Thing
-except AttributeError:
-    # Try alternate import path
-    try:
-        from labthings_fastapi.thing import Thing
-    except (ImportError, AttributeError):
-        # Fallback - create a simple base class
-        class Thing:
-            """Fallback Thing base class for when labthings_fastapi.Thing is unavailable."""
-            def __init__(self, thing_server_interface=None):
-                self.thing_server_interface = thing_server_interface
-
-# Handle decorators with fallback
-property_decorator = None
-action_decorator = None
-try:
-    property_decorator = lt.property
-    action_decorator = lt.action
-except AttributeError:
-    # Fallback decorators that do nothing
-    def property_decorator(func):
-        return func
-    
-    def action_decorator(func):
-        return func
-
-# Handle InvocationError import with fallback
-InvocationError = None
-try:
-    from labthings_fastapi.exceptions import InvocationError
-except (ImportError, AttributeError):
-    # Fallback if labthings_fastapi doesn't have exceptions module
-    InvocationError = Exception
-
-# Handle Blob import with fallback
-Blob = None
-try:
-    from labthings_fastapi.outputs.blob import Blob
-except (ImportError, AttributeError):
-    # Fallback if Blob is not available
-    class Blob:
-        """Fallback Blob class."""
-        media_type: str = "application/octet-stream"
-        
-        def __init__(self, data, media_type=None):
-            self.data = data
-            if media_type:
-                self.media_type = media_type
+from labthings_fastapi.exceptions import InvocationError
+from labthings_fastapi.outputs.blob import Blob
 
 from config import (
     CMD_SET_RESOLUTION,
@@ -79,7 +29,7 @@ class JPEGBlob(Blob):
     media_type: str = "image/jpeg"
 
 
-class CameraThing(Thing):
+class CameraThing(lt.Thing):
     """Camera and strobe controller Thing.
 
     Exposes camera control (resolution, ROI, snapshot) and strobe control as WoT-compliant actions.
@@ -97,7 +47,7 @@ class CameraThing(Thing):
         super().__init__(thing_server_interface)
         self._camera = camera
 
-    @action_decorator
+    @lt.action
     def snapshot(self) -> Blob:
         """Capture a single frame from the camera.
 
@@ -120,9 +70,9 @@ class CameraThing(Thing):
         # Create Blob using from_bytes class method (required for Pydantic 2.x)
         return JPEGBlob.from_bytes(frame)
 
-    @action_decorator
+    @lt.action
     def set_resolution(
-        self, preset: Optional[str] = None, width: Optional[int] = None, height: Optional[int] = None
+        self, preset: str | None = None, width: int | None = None, height: int | None = None
     ) -> dict:
         """Set camera resolution.
 
@@ -150,9 +100,9 @@ class CameraThing(Thing):
         self._camera.on_cam({"cmd": CMD_SET_RESOLUTION, "parameters": params})
         return {"ok": True}
 
-    @action_decorator
+    @lt.action
     def set_snapshot_resolution(
-        self, mode: str, width: Optional[int] = None, height: Optional[int] = None
+        self, mode: str, width: int | None = None, height: int | None = None
     ) -> dict:
         """Set snapshot resolution mode.
 
@@ -178,7 +128,7 @@ class CameraThing(Thing):
         self._camera.on_cam({"cmd": CMD_SET_SNAPSHOT_RESOLUTION, "parameters": params})
         return {"ok": True}
 
-    @action_decorator
+    @lt.action
     def set_roi(self, x: int, y: int, w: int, h: int) -> dict:
         """Set region of interest (ROI) for camera.
 
@@ -200,7 +150,7 @@ class CameraThing(Thing):
         self._camera.on_roi({"cmd": CMD_SET, "parameters": {"x": x, "y": y, "w": w, "h": h}})
         return {"ok": True}
 
-    @action_decorator
+    @lt.action
     def clear_roi(self) -> dict:
         """Clear region of interest (ROI).
 
@@ -216,7 +166,28 @@ class CameraThing(Thing):
         self._camera.on_roi({"cmd": CMD_CLEAR, "parameters": {}})
         return {"ok": True}
 
-    @action_decorator
+    @lt.action
+    def record_roi_frames(self, frames: int) -> dict:
+        """Record a fixed number of ROI frames as JPEGs.
+
+        Args:
+            frames: Number of ROI frames to save
+
+        Returns:
+            Dict with status, counts, and output folder
+
+        Raises:
+            InvocationError: If camera unavailable or recording failed
+        """
+        if self._camera is None:
+            raise InvocationError("Camera unavailable")
+
+        result = self._camera.record_roi_frames(int(frames))
+        if not result.get("ok"):
+            raise InvocationError(result.get("error") or "ROI recording failed")
+        return result
+
+    @lt.action
     def strobe_enable(self, on: bool) -> dict:
         """Enable or disable strobe.
 
@@ -235,7 +206,7 @@ class CameraThing(Thing):
         self._camera.on_strobe({"cmd": CMD_ENABLE, "parameters": {"on": 1 if on else 0}})
         return {"ok": True}
 
-    @action_decorator
+    @lt.action
     def strobe_hold(self, on: bool) -> dict:
         """Enable or disable strobe hold mode.
 
@@ -254,8 +225,8 @@ class CameraThing(Thing):
         self._camera.on_strobe({"cmd": CMD_HOLD, "parameters": {"on": 1 if on else 0}})
         return {"ok": True}
 
-    @action_decorator
-    def strobe_timing(self, period_ns: int, wait_ns: Optional[int] = None) -> dict:
+    @lt.action
+    def strobe_timing(self, period_ns: int, wait_ns: int | None = None) -> dict:
         """Set strobe timing parameters.
 
         Args:

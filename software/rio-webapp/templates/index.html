@@ -303,6 +303,17 @@
                                                             <span id="roi_info" class="badge bg-info w-100 d-block text-center" style="font-size: 0.9em; padding: 0.5rem; font-weight: 500;">No ROI selected</span>
                                                         </div>
                                                     </div>
+                                                    <div class="row g-3 mt-2 align-items-center">
+                                                        <div class="col-md-4">
+                                                            <div class="input-group">
+                                                                <input type="number" id="input_roi_record_frames" class="form-control" min="1" value="50" placeholder="Frames">
+                                                                <button id="btn_roi_record" onclick="cam_record_roi()" class="btn btn-outline-primary">Record ROI</button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-8">
+                                                            <small id="roi_record_status" class="text-muted d-block">Ready to record ROI frames.</small>
+                                                        </div>
+                                                    </div>
                                                     <div class="row g-3">
                                                         <div class="col-md-4">
                                                             <label class="form-label">Strobe Illumination</label>

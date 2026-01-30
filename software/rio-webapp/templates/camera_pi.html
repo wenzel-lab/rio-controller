@@ -43,6 +43,15 @@
     }
     $('#btn_cam_snapshot').html( "📸 SNAPSHOT" );
     $('#btn_cam_optimize').html( "Optimise" );
+    var roiStatus = document.getElementById('roi_record_status');
+    if (roiStatus && cam && cam.roi_record_last) {
+      if (cam.roi_record_last.ok) {
+        roiStatus.textContent = 'Saved ' + cam.roi_record_last.frames_saved + ' / ' +
+          cam.roi_record_last.frames_requested + ' to ' + cam.roi_record_last.folder;
+      } else {
+        roiStatus.textContent = 'ROI record failed: ' + (cam.roi_record_last.error || 'unknown error');
+      }
+    }
   }
   
   function cam_select() {
@@ -88,6 +97,23 @@
     }
     socket.emit( 'cam', { cmd: 'optimize', parameters: {} } );
   }
+  function cam_record_roi()
+  {
+    if (!socket || !socket.emit) {
+      console.error('socket is not available for cam_record_roi!');
+      return;
+    }
+    var frames = parseInt($('#input_roi_record_frames').val(), 10);
+    if (isNaN(frames) || frames <= 0) {
+      console.error('Invalid ROI frame count');
+      return;
+    }
+    socket.emit( 'cam', { cmd: 'record_roi_frames', parameters: { frames: frames } } );
+    var statusEl = document.getElementById('roi_record_status');
+    if (statusEl) {
+      statusEl.textContent = 'Recording...';
+    }
+  }
   function cam_snapshot()
   {
     if (!socket || !socket.emit) {
@@ -102,6 +128,7 @@
   window.strobe_hold = strobe_hold;
   window.strobe_period = strobe_period;
   window.cam_optimize = cam_optimize;
+  window.cam_record_roi = cam_record_roi;
   window.cam_snapshot = cam_snapshot;
 {% endmacro %}
 

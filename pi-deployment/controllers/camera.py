@@ -46,6 +46,7 @@ from config import (
     WS_EVENT_ROI,
     CMD_SNAPSHOT,
     CMD_OPTIMIZE,
+    CMD_RECORD_ROI_FRAMES,
     CMD_SET_RESOLUTION,
     CMD_SET_SNAPSHOT_RESOLUTION,
     CMD_HOLD,
@@ -577,6 +578,80 @@ class Camera:
             )
         except Exception as e:
             logger.error(f"Error saving snapshot: {e}")
+
+    def record_roi_frames(self, frames: int) -> Dict[str, Any]:
+        """
+        Record a fixed number of ROI frames and save them as JPEGs.
+
+        Args:
+            frames: Number of ROI frames to save
+
+        Returns:
+            Dict with status, counts, and output folder
+        """
+        result: Dict[str, Any] = {
+            "ok": False,
+            "frames_requested": frames,
+            "frames_saved": 0,
+            "folder": None,
+            "error": None,
+        }
+
+        if frames <= 0:
+            result["error"] = "frames must be > 0"
+            return result
+        if self.camera is None:
+            result["error"] = "camera unavailable"
+            return result
+        if self.roi is None:
+            result["error"] = "roi not set"
+            return result
+
+        # Ensure camera thread is running to provide fresh frames
+        if (self.thread is None or not self.thread.is_alive()) and not self.exit_event.is_set():
+            self.initialize()
+
+        try:
+            import os
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            folder = os.path.join(SNAPSHOT_FOLDER, "recordings", timestamp)
+            os.makedirs(folder, exist_ok=True)
+            result["folder"] = folder
+
+            roi_tuple = (
+                int(self.roi["x"]),
+                int(self.roi["y"]),
+                int(self.roi["width"]),
+                int(self.roi["height"]),
+            )
+
+            for index in range(frames):
+                try:
+                    roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
+                    if roi_frame is None:
+                        logger.warning("ROI frame unavailable (None)")
+                        continue
+                    img = Image.fromarray(roi_frame)
+                    frame_time = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    filename = f"roi_{index:04d}_{frame_time}.jpg"
+                    filepath = os.path.join(folder, filename)
+                    img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
+                    result["frames_saved"] += 1
+                except Exception as e:
+                    logger.warning(f"Failed to save ROI frame {index}: {e}")
+                    continue
+
+            result["ok"] = result["frames_saved"] > 0
+            if not result["ok"] and result["error"] is None:
+                result["error"] = "no frames saved"
+        except Exception as e:
+            logger.error(f"ROI recording failed: {e}")
+            result["error"] = str(e)
+
+        # Surface latest recording summary to UI/API
+        self.cam_data["roi_record_last"] = result
+        return result
             import traceback
 
             logger.debug(traceback.format_exc())
@@ -930,6 +1005,11 @@ class Camera:
             elif cmd == CMD_OPTIMIZE:
                 logger.info("FPS optimization requested")
                 self.optimize_fps()
+            elif cmd == CMD_RECORD_ROI_FRAMES:
+                params = data.get("parameters", {})
+                frames = int(params.get("frames", 0))
+                logger.info(f"ROI recording requested: {frames} frames")
+                self.record_roi_frames(frames)
             elif cmd == CMD_SET_RESOLUTION:
                 self._handle_set_resolution(data.get("parameters", {}))
             elif cmd == CMD_SET_SNAPSHOT_RESOLUTION:

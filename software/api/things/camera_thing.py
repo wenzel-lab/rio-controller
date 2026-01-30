@@ -167,6 +167,27 @@ class CameraThing(lt.Thing):
         return {"ok": True}
 
     @lt.action
+    def record_roi_frames(self, frames: int) -> dict:
+        """Record a fixed number of ROI frames as JPEGs.
+
+        Args:
+            frames: Number of ROI frames to save
+
+        Returns:
+            Dict with status, counts, and output folder
+
+        Raises:
+            InvocationError: If camera unavailable or recording failed
+        """
+        if self._camera is None:
+            raise InvocationError("Camera unavailable")
+
+        result = self._camera.record_roi_frames(int(frames))
+        if not result.get("ok"):
+            raise InvocationError(result.get("error") or "ROI recording failed")
+        return result
+
+    @lt.action
     def strobe_enable(self, on: bool) -> dict:
         """Enable or disable strobe.
 
