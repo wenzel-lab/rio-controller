@@ -12,6 +12,7 @@ Tests:
 """
 
 import sys
+import time
 
 from path_bootstrap import bootstrap_runtime
 
@@ -43,7 +44,12 @@ def test_frame_capture(camera: BaseCamera):
     """Test single frame capture"""
     print("\nTesting frame capture...")
     camera.start()
-    frame = camera.get_frame_array()
+    frame = None
+    for _ in range(50):
+        frame = camera.get_frame_array()
+        if frame is not None:
+            break
+        time.sleep(0.02)
     assert frame is not None
     print(f"✓ Frame captured: shape={frame.shape}, dtype={frame.dtype}")
     camera.stop()
@@ -55,7 +61,12 @@ def test_roi_capture(camera: BaseCamera):
     camera.start()
     # Test ROI: (x, y, width, height) = (100, 100, 200, 150)
     roi = (100, 100, 200, 150)
-    roi_frame = camera.get_frame_roi(roi)
+    roi_frame = None
+    for _ in range(50):
+        roi_frame = camera.get_frame_roi(roi)
+        if roi_frame is not None:
+            break
+        time.sleep(0.02)
     assert roi_frame is not None
     print(f"✓ ROI captured: shape={roi_frame.shape}, expected=(150, 200, 3)")
     camera.stop()
