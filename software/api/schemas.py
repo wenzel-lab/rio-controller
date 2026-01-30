@@ -1,7 +1,7 @@
 """Pydantic models for API responses (skeleton)."""
 
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 
 class HealthResponse(BaseModel):
@@ -172,8 +172,8 @@ class StrobeState(BaseModel):
     enable: int
     wait_ns: int
     period_ns: int
-    framerate: int | float
-    cam_read_time_us: int | float
+    framerate: Union[int, float]
+    cam_read_time_us: Union[int, float]
 
 
 # Pump (syringe pump)
