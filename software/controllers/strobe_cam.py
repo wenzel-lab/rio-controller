@@ -10,6 +10,7 @@ Classes:
 """
 
 import logging
+import os
 from typing import Optional, Tuple, Any, cast
 
 from drivers.strobe import PiStrobe
@@ -66,11 +67,14 @@ class PiStrobeCam:
         # Initialize camera using abstraction layer (will be created when camera type is selected)
         # Create default camera (rpi) for initialization
         try:
-            camera_instance = create_camera()
+            camera_type = os.getenv("RIO_CAMERA_TYPE") or "rpi"
+            camera_instance = create_camera(camera_type)
             self.camera: Optional[BaseCamera] = (
                 camera_instance if camera_instance is not None else None
             )
-            self._camera_type: Optional[str] = "rpi" if camera_instance is not None else None
+            self._camera_type: Optional[str] = camera_type if camera_instance is not None else None
+            if self._camera_type == "daheng":
+                self._user_controls_exposure = True
 
             # Configure camera with default settings
             if self.camera is not None:
@@ -104,6 +108,7 @@ class PiStrobeCam:
         self.strobe_wait_ns = 0
         self.strobe_period_ns = 0
         self.framerate_set = 0
+        self._user_controls_exposure = False
 
         logger.info("PiStrobeCam initialization complete")
 
@@ -138,17 +143,21 @@ class PiStrobeCam:
             if new_camera is not None:
                 self.camera = new_camera
                 self._camera_type = camera_type
+                self._user_controls_exposure = camera_type == "daheng"
             else:
                 self.camera = None
                 self._camera_type = None
 
-            # Configure camera with default settings
+            # Configure camera — Daheng starts at full sensor; others use config default
             if self.camera is not None:
                 try:
+                    w, h = CAMERA_DEFAULT_WIDTH, CAMERA_DEFAULT_HEIGHT
+                    if camera_type == "daheng" and hasattr(self.camera, "get_max_resolution"):
+                        w, h = self.camera.get_max_resolution()
                     self.camera.set_config(
                         {
-                            "Width": CAMERA_DEFAULT_WIDTH,
-                            "Height": CAMERA_DEFAULT_HEIGHT,
+                            "Width": w,
+                            "Height": h,
                             "FrameRate": CAMERA_DEFAULT_FPS,
                         }
                     )
@@ -200,7 +209,13 @@ class PiStrobeCam:
                 strobe_period_ns, pre_padding_ns, post_padding_ns
             )
 
-            # Update camera configuration first
+            # Daheng / manual exposure: ExposureTime via Galaxy SDK, not PIC-paced strobe sum
+            if self._user_controls_exposure or self._camera_type == "daheng":
+                if not self._set_strobe_timing(pre_padding_ns, strobe_period_ns):
+                    return False
+                return True
+
+            # Update camera configuration first (PIC-paced: Pi + Mako)
             if not self._update_camera_config(framerate, shutter_speed_us):
                 return False
 
@@ -321,7 +336,10 @@ class PiStrobeCam:
             logger.error("Camera is None, cannot update config")
             return False
         try:
-            self.camera.set_config({"FrameRate": framerate, "ShutterSpeed": shutter_speed_us})
+            config = {"FrameRate": framerate}
+            if self._camera_type != "daheng" and not self._user_controls_exposure:
+                config["ShutterSpeed"] = shutter_speed_us
+            self.camera.set_config(config)
             return True
         except Exception as e:
             logger.error(f"Error setting camera config: {e}")

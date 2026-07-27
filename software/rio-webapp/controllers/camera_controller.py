@@ -49,18 +49,25 @@ class CameraController:
         logger.debug("CameraController WebSocket handler registered successfully")
 
     def _stop_camera_thread(self) -> None:
-        """Stop the current camera thread if it's running."""
-        if not (
-            hasattr(self.camera, "thread") and self.camera.thread and self.camera.thread.is_alive()
-        ):
+        """Stop the capture thread when switching camera (same pattern as Camera._restart_camera_thread)."""
+        cam = self.camera
+        if not (hasattr(cam, "thread") and cam.thread and cam.thread.is_alive()):
             return
 
-        if hasattr(self.camera, "exit_event"):
-            self.camera.exit_event.set()
+        logger.debug("Stopping camera thread for camera switch")
+        if hasattr(cam, "exit_event"):
+            cam.exit_event.set()
         try:
-            self.camera.thread.join(timeout=2.0)
-        except Exception:
-            pass
+            cam.thread.join(timeout=3.0)
+            if cam.thread.is_alive():
+                logger.warning("Camera thread did not stop within timeout during switch")
+        except Exception as e:
+            logger.warning("Error waiting for camera thread during switch: %s", e)
+        cam.thread = None
+        cam.frame = None
+        # Must clear: exit_event is app-wide; leaving it set blocks initialize() -> white video
+        if hasattr(cam, "exit_event"):
+            cam.exit_event.clear()
 
     def _set_camera_type(self, camera_name: str) -> str:
         """
@@ -92,6 +99,8 @@ class CameraController:
         self.camera.cam_data["camera"] = camera_name
         if camera_name != "none" and self.camera.strobe_cam and self.camera.strobe_cam.camera:
             self.camera.camera = self.camera.strobe_cam.camera
+            if hasattr(self.camera, "_sync_default_stream_resolution"):
+                self.camera._sync_default_stream_resolution()
         else:
             self.camera.camera = None
 
@@ -119,7 +128,14 @@ class CameraController:
             # Update camera data and instance
             self._update_camera_instance(camera_name)
 
-            # Emit reload to trigger page refresh
+            # Start capture before reload so /video has frames (Daheng/Mako)
+            if camera_name != "none":
+                try:
+                    self.camera.initialize()
+                except Exception as e:
+                    logger.error("Failed to start camera after switch: %s", e)
+
+            # Emit reload to refresh UI (selection, ROI widgets)
             self.socketio.emit("reload")
         except (KeyError, AttributeError, TypeError) as e:
             logger.error(f"Error handling camera select: {e}")
