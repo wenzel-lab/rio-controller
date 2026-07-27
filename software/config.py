@@ -48,6 +48,7 @@ CAMERA_RESOLUTION_PRESETS = {
     "800x600": (800, 600),
     "1024x768": (1024, 768),
     "1280x960": (1280, 960),
+    "1440x1080": (1440, 1080),  # Daheng MER2 full sensor
     "1920x1080": (1920, 1080),
 }
 
@@ -233,6 +234,7 @@ CMD_SNAPSHOT = "snapshot"
 CMD_OPTIMIZE = "optimize"
 CMD_RECORD_ROI_FRAMES = "record_roi_frames"
 CMD_SET_CONFIG = "set_config"
+CMD_SET_EXPOSURE = "set_exposure"
 CMD_SET_RESOLUTION = "set_resolution"
 CMD_SET_SNAPSHOT_RESOLUTION = "set_snapshot_resolution"
 CMD_HOLD = "hold"

@@ -31,6 +31,10 @@
       // Update info displays
       $('#strobe_cam_time_us').html( strobe.cam_read_time_us || '0' );
       $('#strobe_framerate').html( strobe.framerate || '0' );
+      if (cam && cam.acq_fps != null) $('#cam_acq_fps').html( cam.acq_fps );
+      if (cam && cam.max_fps != null) $('#cam_max_fps').html( cam.max_fps );
+      if (cam && cam.measured_fps != null) $('#cam_measured_fps').html( cam.measured_fps );
+      if (cam && cam.exposure_us != null) $('#cam_exposure_us').html( cam.exposure_us );
     } else {
       // Default values if strobe data not loaded yet
       $('#btn_strobe_enable').html( 'DISABLED' );
@@ -201,10 +205,30 @@
         <td></td>
       </tr>
     <tr>
-      <td>Framerate</td>
+      <td>Framerate (strobe)</td>
       <td><p id='strobe_framerate'></p></td>
       <td></td>
       <td><button id='btn_cam_optimize', onclick="cam_optimize()", style="width: 100px"></button></td>
+    </tr>
+    <tr>
+      <td>Acq FPS</td>
+      <td><p id='cam_acq_fps'>—</p></td>
+      <td colspan="2"><small>CurrentAcquisitionFrameRate (SDK)</small></td>
+    </tr>
+    <tr>
+      <td>Max FPS</td>
+      <td><p id='cam_max_fps'>—</p></td>
+      <td colspan="2"></td>
+    </tr>
+    <tr>
+      <td>Measured FPS</td>
+      <td><p id='cam_measured_fps'>—</p></td>
+      <td colspan="2"><small>Stream throughput (~1s window)</small></td>
+    </tr>
+    <tr>
+      <td>Exposure (µs)</td>
+      <td><p id='cam_exposure_us'>—</p></td>
+      <td colspan="2"></td>
     </tr>
     <tr>
       <td>Snapshot</td>

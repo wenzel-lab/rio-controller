@@ -78,3 +78,9 @@ pi-deployment/DEPLOYMENT_INFO.txt
 
 /docs
 /software/client/notebooks/.ipynb_checkpoints
+# Local / generated (do not commit)
+.cursor/
+graphify-out/
+software/graphify-out/
+Galaxy_camera.tar.gz
+software/gxipy/
