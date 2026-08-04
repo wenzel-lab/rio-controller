@@ -338,6 +338,58 @@
             font-size: 0.85em;
             color: #6c757d;
         }
+        /* Daheng exposure log slider (Ocean Breeze) */
+        .exposure-slider-wrap {
+            margin-top: 0.5rem;
+        }
+        .exposure-slider-wrap .form-range {
+            width: 100%;
+            height: 1.25rem;
+            padding: 0;
+            accent-color: #2196F3;
+        }
+        .exposure-slider-wrap .form-range::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+        }
+        .exposure-slider-wrap .form-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            margin-top: -5px;
+            border-radius: 50%;
+            background: #2196F3;
+            border: 2px solid #1565C0;
+            cursor: pointer;
+        }
+        .exposure-slider-wrap .form-range::-moz-range-track {
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+        }
+        .exposure-slider-wrap .form-range::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #2196F3;
+            border: 2px solid #1565C0;
+            cursor: pointer;
+        }
+        .exposure-slider-ticks {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #6c757d;
+            margin-top: 0.15rem;
+            line-height: 1.2;
+        }
+        .exposure-live-label {
+            font-size: 0.8rem;
+            color: #1565C0;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -495,12 +547,24 @@
                                                     <small class="text-muted d-block">Exposure: <span id="cam_exposure_us">{% if cam.exposure_us %}{{ cam.exposure_us }}{% else %}—{% endif %}</span> µs</small>
                                                 </div>
                                                 <div class="control-section" id="daheng_exposure_feed" style="display: {% if cam.camera == 'daheng' %}block{% else %}none{% endif %};">
-                                                    <label class="form-label"><strong>Exposure</strong> (µs)</label>
+                                                    <label class="form-label mb-1">
+                                                        <strong>Exposure</strong>
+                                                        <span class="exposure-live-label" id="exposure_live_label">{% if cam.exposure_us %}{{ cam.exposure_us }} µs{% else %}—{% endif %}</span>
+                                                    </label>
                                                     <div class="input-group input-group-sm">
-                                                        <input type="number" id="input_exposure_us_feed" class="form-control" min="100" step="100" placeholder="e.g. 10000" value="{% if cam.exposure_us %}{{ cam.exposure_us }}{% endif %}">
+                                                        <input type="number" id="input_exposure_us_feed" class="form-control" min="100" step="1" placeholder="µs" value="{% if cam.exposure_us %}{{ cam.exposure_us }}{% endif %}" title="Exposure time in microseconds">
+                                                        <span class="input-group-text">µs</span>
                                                         <button type="button" class="btn btn-primary" onclick="cam_set_exposure()">Set</button>
                                                     </div>
-                                                    <small class="text-muted d-block mt-1">Range: <span id="exposure_range_label_feed">{% if cam.exposure_min_us and cam.exposure_max_us %}{{ cam.exposure_min_us }} – {{ cam.exposure_max_us }} µs{% else %}—{% endif %}</span></small>
+                                                    <div class="exposure-slider-wrap">
+                                                        <input type="range" id="slider_exposure_us_feed" class="form-range" min="0" max="1000" step="1" value="0" aria-label="Exposure (log scale)">
+                                                        <div class="exposure-slider-ticks">
+                                                            <span id="exposure_tick_min">—</span>
+                                                            <span id="exposure_tick_mid">log scale</span>
+                                                            <span id="exposure_tick_max">—</span>
+                                                        </div>
+                                                    </div>
+                                                    <small class="text-muted d-block mt-1">Range: <span id="exposure_range_label_feed">{% if cam.exposure_min_us and cam.exposure_max_us %}{{ cam.exposure_min_us }} – {{ cam.exposure_max_us }} µs{% else %}—{% endif %}</span> · drag or type</small>
                                                 </div>
                                             </aside>
                                         </div>
@@ -1244,8 +1308,15 @@
             });
         });
         
-        // Control functions
+        // Control functions — Daheng exposure (number + log slider)
         var exposureInputDirty = false;
+        var exposureSliderDragging = false;
+        var exposureMinUs = {% if cam.exposure_min_us %}{{ cam.exposure_min_us }}{% else %}100{% endif %};
+        var exposureMaxUs = {% if cam.exposure_max_us %}{{ cam.exposure_max_us }}{% else %}1000000{% endif %};
+        var exposureEmitTimer = null;
+        var EXPOSURE_SLIDER_STEPS = 1000;
+        var EXPOSURE_EMIT_MS = 120;
+
         function isDahengActive() {
             return ($('#select_camera').val() === 'daheng') || ($('#cam_type').text().trim() === 'daheng');
         }
@@ -1253,11 +1324,112 @@
             var show = isDahengActive();
             $('#daheng_exposure_feed').css('display', show ? 'block' : 'none');
         }
+        function formatExposureUs(us) {
+            us = Number(us);
+            if (!isFinite(us)) return '—';
+            if (us >= 1000) {
+                var ms = us / 1000;
+                return (ms >= 100 ? Math.round(ms) : (ms >= 10 ? ms.toFixed(1) : ms.toFixed(2))) + ' ms';
+            }
+            return Math.round(us) + ' µs';
+        }
+        function clampExposureUs(us) {
+            us = Number(us);
+            if (!isFinite(us) || us <= 0) return exposureMinUs;
+            return Math.max(exposureMinUs, Math.min(exposureMaxUs, us));
+        }
+        function exposureUsToSlider(us) {
+            us = clampExposureUs(us);
+            var lo = Math.max(1e-6, exposureMinUs);
+            var hi = Math.max(lo * 1.000001, exposureMaxUs);
+            var t = Math.log(us / lo) / Math.log(hi / lo);
+            return Math.round(Math.max(0, Math.min(1, t)) * EXPOSURE_SLIDER_STEPS);
+        }
+        function exposureSliderToUs(pos) {
+            var lo = Math.max(1e-6, exposureMinUs);
+            var hi = Math.max(lo * 1.000001, exposureMaxUs);
+            var t = Math.max(0, Math.min(EXPOSURE_SLIDER_STEPS, Number(pos))) / EXPOSURE_SLIDER_STEPS;
+            var us = lo * Math.pow(hi / lo, t);
+            return Math.round(clampExposureUs(us));
+        }
+        function updateExposureTicks() {
+            var mid = exposureSliderToUs(EXPOSURE_SLIDER_STEPS / 2);
+            $('#exposure_tick_min').text(formatExposureUs(exposureMinUs));
+            $('#exposure_tick_mid').text(formatExposureUs(mid));
+            $('#exposure_tick_max').text(formatExposureUs(exposureMaxUs));
+            var rng = Math.round(exposureMinUs) + ' – ' + Math.round(exposureMaxUs) + ' µs'
+                + ' (' + formatExposureUs(exposureMinUs) + ' – ' + formatExposureUs(exposureMaxUs) + ')';
+            $('#exposure_range_label_feed').text(rng);
+            $('#input_exposure_us_feed').attr('min', Math.round(exposureMinUs)).attr('max', Math.round(exposureMaxUs));
+        }
+        function setExposureControls(us, opts) {
+            opts = opts || {};
+            us = clampExposureUs(us);
+            if (!opts.skipInput) $('#input_exposure_us_feed').val(Math.round(us));
+            if (!opts.skipSlider) $('#slider_exposure_us_feed').val(exposureUsToSlider(us));
+            $('#exposure_live_label').text(formatExposureUs(us));
+            $('#cam_exposure_us').text(Math.round(us));
+        }
+        function emitExposureUs(us, immediate) {
+            us = Math.round(clampExposureUs(us));
+            var send = function() {
+                exposureEmitTimer = null;
+                socket.emit('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
+            };
+            if (immediate) {
+                if (exposureEmitTimer) { clearTimeout(exposureEmitTimer); exposureEmitTimer = null; }
+                send();
+                return;
+            }
+            if (exposureEmitTimer) clearTimeout(exposureEmitTimer);
+            exposureEmitTimer = setTimeout(send, EXPOSURE_EMIT_MS);
+        }
         $(function() {
             syncDahengExposureUI();
+            updateExposureTicks();
+            var initUs = parseInt($('#input_exposure_us_feed').val(), 10);
+            if (!isNaN(initUs) && initUs > 0) setExposureControls(initUs);
+
             $('#input_exposure_us_feed')
                 .on('focus', function() { exposureInputDirty = true; })
-                .on('blur', function() { exposureInputDirty = false; });
+                .on('blur', function() {
+                    exposureInputDirty = false;
+                    var us = parseInt($(this).val(), 10);
+                    if (!isNaN(us) && us > 0) setExposureControls(us);
+                })
+                .on('input', function() {
+                    var us = parseInt($(this).val(), 10);
+                    if (isNaN(us) || us <= 0) return;
+                    us = clampExposureUs(us);
+                    $('#slider_exposure_us_feed').val(exposureUsToSlider(us));
+                    $('#exposure_live_label').text(formatExposureUs(us));
+                })
+                .on('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        cam_set_exposure();
+                    }
+                });
+
+            $('#slider_exposure_us_feed')
+                .on('pointerdown mousedown touchstart', function() { exposureSliderDragging = true; })
+                .on('input', function() {
+                    exposureSliderDragging = true;
+                    var us = exposureSliderToUs($(this).val());
+                    $('#input_exposure_us_feed').val(us);
+                    $('#exposure_live_label').text(formatExposureUs(us));
+                    emitExposureUs(us, false);
+                })
+                .on('change', function() {
+                    var us = exposureSliderToUs($(this).val());
+                    setExposureControls(us);
+                    emitExposureUs(us, true);
+                    exposureSliderDragging = false;
+                })
+                .on('pointerup mouseup touchend', function() {
+                    // change may already have fired; ensure release clears drag lock
+                    setTimeout(function() { exposureSliderDragging = false; }, 50);
+                });
         });
 
         function cam_select() {
@@ -1273,7 +1445,9 @@
         function cam_set_exposure() {
             var us = parseInt($('#input_exposure_us_feed').val(), 10);
             if (isNaN(us) || us <= 0) return;
-            socket.emit('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
+            us = clampExposureUs(us);
+            setExposureControls(us);
+            emitExposureUs(us, true);
         }
 
         function cam_set_snapshot_resolution() {
@@ -1294,16 +1468,18 @@
             if (sbImg && sbImg.naturalWidth > 0) {
                 $('#sb_size').text(sbImg.naturalWidth + ' × ' + sbImg.naturalHeight);
             }
+            if (data.exposure_min_us != null && data.exposure_max_us != null) {
+                exposureMinUs = Number(data.exposure_min_us);
+                exposureMaxUs = Number(data.exposure_max_us);
+                updateExposureTicks();
+            }
             if (data.exposure_us != null) {
                 $('#cam_exposure_us').text(data.exposure_us);
-                if (!exposureInputDirty) {
-                    $('#input_exposure_us_feed').val(data.exposure_us);
+                if (!exposureInputDirty && !exposureSliderDragging) {
+                    setExposureControls(data.exposure_us);
+                } else {
+                    $('#exposure_live_label').text(formatExposureUs(data.exposure_us));
                 }
-            }
-            if (data.exposure_min_us != null && data.exposure_max_us != null) {
-                var rng = data.exposure_min_us + ' – ' + data.exposure_max_us + ' µs';
-                $('#input_exposure_us_feed').attr('min', data.exposure_min_us).attr('max', data.exposure_max_us);
-                $('#exposure_range_label_feed').text(rng);
             }
             if (data.camera) {
                 $('#cam_type').text(data.camera);
