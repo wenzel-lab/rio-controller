@@ -758,13 +758,15 @@ class Camera:
                 return
 
             # Camera setup using display resolution (stable stream; hardware ROI crops from this)
-            self.camera.set_config(
-                {
-                    "Width": self.display_resolution[0],
-                    "Height": self.display_resolution[1],
-                    "FrameRate": CAMERA_THREAD_FPS,
-                }
-            )
+            # Daheng: omit FrameRate so AcquisitionFrameRate stays at device max
+            # (CAMERA_THREAD_FPS=30 would permanently cap acq_fps after ROI shrink).
+            thread_cfg = {
+                "Width": self.display_resolution[0],
+                "Height": self.display_resolution[1],
+            }
+            if getattr(self.strobe_cam, "_camera_type", None) != CAMERA_TYPE_DAHENG:
+                thread_cfg["FrameRate"] = CAMERA_THREAD_FPS
+            self.camera.set_config(thread_cfg)
             logger.debug("Starting camera...")
             self.camera.start()
             logger.info("Camera started, generating frames...")

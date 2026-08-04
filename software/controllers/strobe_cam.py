@@ -80,13 +80,15 @@ class PiStrobeCam:
             if self.camera is not None:
                 # Check if camera is actually initialized (some implementations may fail silently)
                 try:
-                    self.camera.set_config(
-                        {
-                            "Width": CAMERA_DEFAULT_WIDTH,
-                            "Height": CAMERA_DEFAULT_HEIGHT,
-                            "FrameRate": CAMERA_DEFAULT_FPS,
-                        }
-                    )
+                    # Daheng: do not force CAMERA_DEFAULT_FPS (30) — it caps
+                    # AcquisitionFrameRate and blocks ROI-driven FPS climb.
+                    cfg = {
+                        "Width": CAMERA_DEFAULT_WIDTH,
+                        "Height": CAMERA_DEFAULT_HEIGHT,
+                    }
+                    if self._camera_type != "daheng":
+                        cfg["FrameRate"] = CAMERA_DEFAULT_FPS
+                    self.camera.set_config(cfg)
                 except RuntimeError as e:
                     if "not initialized" in str(e).lower():
                         logger.warning(
@@ -154,13 +156,10 @@ class PiStrobeCam:
                     w, h = CAMERA_DEFAULT_WIDTH, CAMERA_DEFAULT_HEIGHT
                     if camera_type == "daheng" and hasattr(self.camera, "get_max_resolution"):
                         w, h = self.camera.get_max_resolution()
-                    self.camera.set_config(
-                        {
-                            "Width": w,
-                            "Height": h,
-                            "FrameRate": CAMERA_DEFAULT_FPS,
-                        }
-                    )
+                    cfg = {"Width": w, "Height": h}
+                    if camera_type != "daheng":
+                        cfg["FrameRate"] = CAMERA_DEFAULT_FPS
+                    self.camera.set_config(cfg)
 
                     logger.info(f"Camera type set to: {camera_type}")
                     return True
