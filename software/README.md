@@ -14,6 +14,7 @@ Use these short READMEs to navigate the codebase. Detailed implementation lives 
 - Device controllers (business logic): [`controllers/README.md`](controllers/README.md)
 - Drivers (hardware adapters): [`drivers/README.md`](drivers/README.md)
   - Camera abstraction/backends: [`drivers/camera/README.md`](drivers/camera/README.md)
+    - Daheng MER2: gxipy default; optional native C++ Acq with `RIO_DAHENG_CPP=1` (documented in that camera README)
 - Web app (Flask + UI): [`rio-webapp/README.md`](rio-webapp/README.md)
   - Web controllers (WS/HTTP handlers): [`rio-webapp/controllers/README.md`](rio-webapp/controllers/README.md)
 - Droplet detection pipeline: [`droplet-detection/README.md`](droplet-detection/README.md)
@@ -141,6 +142,7 @@ The repository includes **3 requirements files** for different deployment scenar
    python main.py
    ```
    ROI modes: default is software ROI; set `RIO_ROI_MODE=hardware` to request hardware ROI when the active camera backend supports it (falls back to software if not).
+   Daheng on Ubuntu host: set `RIO_CAMERA_TYPE=daheng`; optional `RIO_DAHENG_CPP=1` for the native grabber (see [`drivers/camera/README.md`](drivers/camera/README.md)).
    Hybrid UI: set `RIO_REMOTE_MODULES=flow,heater,pump,camera` and `RIO_REMOTE_API_URL=http://raspberrypi.local:8000` to use API-backed modules.
 
 3. **Access the web interface**:
