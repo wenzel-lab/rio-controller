@@ -640,13 +640,34 @@ class Camera:
         if self.camera is None:
             result["error"] = "camera unavailable"
             return result
+
+        # Hardware ROI clears self.roi (stream already cropped). Record full stream frames.
         if self.roi is None:
-            result["error"] = "roi not set"
-            return result
+            if hasattr(self.camera, "get_stream_size"):
+                try:
+                    sw, sh = self.camera.get_stream_size()
+                    roi_tuple = (0, 0, int(sw), int(sh))
+                except Exception:
+                    result["error"] = "roi not set"
+                    return result
+            else:
+                result["error"] = "roi not set"
+                return result
+        else:
+            roi_tuple = (
+                int(self.roi["x"]),
+                int(self.roi["y"]),
+                int(self.roi["width"]),
+                int(self.roi["height"]),
+            )
 
         # Ensure camera thread is running to provide fresh frames
         if (self.thread is None or not self.thread.is_alive()) and not self.exit_event.is_set():
             self.initialize()
+
+        begin_latest = getattr(self.camera, "begin_latest_frame_capture", None)
+        end_latest = getattr(self.camera, "end_latest_frame_capture", None)
+        wait_frame = getattr(self.camera, "wait_frame_array", None)
 
         try:
             import os
@@ -656,16 +677,26 @@ class Camera:
             os.makedirs(folder, exist_ok=True)
             result["folder"] = folder
 
-            roi_tuple = (
-                int(self.roi["x"]),
-                int(self.roi["y"]),
-                int(self.roi["width"]),
-                int(self.roi["height"]),
-            )
+            if callable(begin_latest):
+                begin_latest()
 
+            last_seq = 0
             for index in range(frames):
                 try:
-                    roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
+                    if callable(wait_frame):
+                        frame_arr, last_seq = wait_frame(timeout_s=2.0, after_seq=last_seq)
+                        x, y, w, h = roi_tuple
+                        fh, fw = frame_arr.shape[:2]
+                        if abs(fw - w) > 4 or abs(fh - h) > 4:
+                            x = max(0, min(x, max(0, fw - 1)))
+                            y = max(0, min(y, max(0, fh - 1)))
+                            w = max(1, min(w, fw - x))
+                            h = max(1, min(h, fh - y))
+                            roi_frame = frame_arr[y : y + h, x : x + w]
+                        else:
+                            roi_frame = frame_arr
+                    else:
+                        roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
                     if roi_frame is None:
                         logger.warning("ROI frame unavailable (None)")
                         continue
@@ -685,6 +716,12 @@ class Camera:
         except Exception as e:
             logger.error(f"ROI recording failed: {e}")
             result["error"] = str(e)
+        finally:
+            if callable(end_latest):
+                try:
+                    end_latest()
+                except Exception:
+                    pass
 
         # Surface latest recording summary to UI/API
         self.cam_data["roi_record_last"] = result
@@ -914,7 +951,15 @@ class Camera:
             self.strobe_framerate = CAMERA_THREAD_FPS
             return
         try:
-            if hasattr(camera, "get_actual_framerate"):
+            # Align with Galaxy GxViewer status bar (GxViewer.cpp slotShowFrameRate):
+            #   Acq.FPS  = acquisition-thread measured FPS (GetImageAcqFps)
+            #   Disp.FPS = display/JPEG path measured FPS
+            #   SDK      = CurrentAcquisitionFrameRate (device-reported)
+            if hasattr(camera, "get_measured_framerate"):
+                acq = float(camera.get_measured_framerate())
+                self.cam_data["acq_fps"] = round(acq, 2)
+                self.strobe_framerate = max(1, int(round(acq))) if acq > 0 else CAMERA_THREAD_FPS
+            elif hasattr(camera, "get_actual_framerate"):
                 acq = float(camera.get_actual_framerate())
                 self.cam_data["acq_fps"] = round(acq, 2)
                 self.strobe_framerate = max(1, int(round(acq))) if acq > 0 else CAMERA_THREAD_FPS
@@ -924,10 +969,12 @@ class Camera:
                     self.strobe_framerate = int(config_value)
                 else:
                     self.strobe_framerate = CAMERA_THREAD_FPS
-            if hasattr(camera, "get_max_framerate"):
-                self.cam_data["max_fps"] = round(float(camera.get_max_framerate()), 2)
-            if hasattr(camera, "get_measured_framerate"):
+            if hasattr(camera, "get_display_framerate"):
+                self.cam_data["measured_fps"] = round(float(camera.get_display_framerate()), 2)
+            elif hasattr(camera, "get_measured_framerate"):
                 self.cam_data["measured_fps"] = round(float(camera.get_measured_framerate()), 2)
+            if hasattr(camera, "get_actual_framerate"):
+                self.cam_data["max_fps"] = round(float(camera.get_actual_framerate()), 2)
             if hasattr(camera, "get_frame_id"):
                 self.cam_data["frame_num"] = int(camera.get_frame_id())
             if hasattr(camera, "get_bandwidth_bps"):

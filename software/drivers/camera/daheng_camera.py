@@ -13,7 +13,7 @@ import time
 from collections import deque
 from contextlib import contextmanager
 from queue import Queue
-from threading import Event, Lock
+from threading import Condition, Event, Lock
 from typing import Any, Callable, Dict, Generator, Optional, Tuple
 
 import cv2
@@ -36,6 +36,11 @@ try:
 except ImportError:
     CAMERA_STREAMING_JPEG_QUALITY = 75
     CAMERA_DISPLAY_FPS = 10
+
+# Galaxy GxViewer.cpp SetAcquisitionBufferNum — small ROI / high FPS needs more buffers.
+_GALAXY_MAX_ACQ_MEMORY_BYTES = 8 * 1024 * 1024
+_GALAXY_MIN_ACQ_BUFFERS = 5
+_GALAXY_MAX_ACQ_BUFFERS = 450
 
 
 def _snap_to_increment(value: int, min_val: int, max_val: int, increment: int) -> int:
@@ -65,7 +70,8 @@ class DahengCamera(BaseCamera):
         self.cam_running_event: Event = Event()
         self.capture_flag: Event = Event()
         self.capture_queue: Queue[bytes] = Queue(1)
-        self._frame_times: deque[float] = deque(maxlen=240)
+        self._frame_times: deque[float] = deque(maxlen=4000)
+        self._frame_id_samples: deque[Tuple[float, int]] = deque(maxlen=4000)
         self._last_frame_id: int = 0
         self._roi_lock = Lock()
         self._pending_hardware_roi: Optional[Tuple[int, int, int, int]] = None
@@ -73,6 +79,14 @@ class DahengCamera(BaseCamera):
         self._pending_reset_resolution: Optional[Tuple[int, int]] = None
         self._pending_exposure_us: Optional[float] = None
         self._on_roi_applied: Optional[Callable[[bool, str], None]] = None
+        # Latest RGB frame from the capture thread (never call get_image from other threads).
+        self._latest_lock = Lock()
+        self._latest_cond = Condition(self._latest_lock)
+        self._latest_frame: Optional[np.ndarray] = None
+        self._latest_seq: int = 0
+        self._want_latest_raw = Event()
+        self._display_frame_times: deque[float] = deque(maxlen=4000)
+        self._acq_buffer_num: int = 0
 
         self._open_device()
 
@@ -99,8 +113,43 @@ class DahengCamera(BaseCamera):
         self._reset_full_sensor()
         # Prefer device max FPS (not Pi CAMERA_DEFAULT_FPS=30). ROI changes re-sync.
         # Exposure is restored inside sync — raising AFR alone clamps ExposureTime to ~100us (black).
+        # (Restored from c854eed — free-run Mode OFF caused live brightness flicker.)
         self._sync_acquisition_framerate_to_max()
         self._ensure_default_exposure()
+
+    def _configure_acquisition_buffers(self) -> None:
+        """Galaxy SetAcquisitionBufferNum: size the SDK queue from payload (must be stream-off)."""
+        if self._data_stream is None:
+            return
+        try:
+            payload = int(self._data_stream.get_payload_size())
+            if payload <= 0:
+                try:
+                    payload = int(self._device.PayloadSize.get())  # type: ignore[union-attr]
+                except Exception:
+                    payload = 0
+            if payload <= 0:
+                logger.warning("Daheng acq buffers: payload size is 0, skipping")
+                return
+            buf_num = _GALAXY_MAX_ACQ_MEMORY_BYTES // payload
+            buf_num = max(_GALAXY_MIN_ACQ_BUFFERS, min(_GALAXY_MAX_ACQ_BUFFERS, buf_num))
+            self._data_stream.set_acquisition_buffer_number(int(buf_num))
+            self._acq_buffer_num = int(buf_num)
+            # WARNING so it shows under default RIO_LOG_LEVEL (spike A verification).
+            logger.warning(
+                "Daheng acq buffers: %s (payload=%s B, Galaxy 8MiB pool)",
+                buf_num,
+                payload,
+            )
+        except Exception as exc:
+            logger.warning("Daheng set_acquisition_buffer_number failed: %s", exc)
+
+    def _stream_on(self) -> None:
+        """Configure Galaxy-sized buffer pool, then stream_on."""
+        if self._device is None:
+            return
+        self._configure_acquisition_buffers()
+        self._device.stream_on()
 
     def cancel_pending_roi(self) -> None:
         with self._roi_lock:
@@ -179,17 +228,21 @@ class DahengCamera(BaseCamera):
             finally:
                 if was_on:
                     try:
-                        self._device.stream_on()
+                        self._stream_on()
                     except Exception as exc:
                         logger.warning("stream_on after ROI reset failed: %s", exc)
         return ok
 
     def _ensure_default_exposure(self) -> None:
-        """ExposureAuto off + sane ExposureTime if device was left at an extreme."""
+        """ExposureAuto/GainAuto off + sane ExposureTime if device was left at an extreme."""
         if self._device is None:
             return
         try:
-            self._device.ExposureAuto.set(0)
+            self._device.ExposureAuto.set(0)  # GX_EXPOSURE_AUTO_OFF (ExposureGain.cpp)
+            try:
+                self._device.GainAuto.set(0)  # GX_GAIN_AUTO_OFF
+            except Exception:
+                pass
             current = float(self._device.ExposureTime.get())
             # AFR→max clamps ExposureTime to ~100us; treat <1ms as unusable for live view.
             if current > 500_000 or current < 1_000:
@@ -341,7 +394,7 @@ class DahengCamera(BaseCamera):
         finally:
             if was_on and self._device:
                 try:
-                    self._device.stream_on()
+                    self._stream_on()
                 except Exception as exc:
                     logger.warning("stream_on failed: %s", exc)
 
@@ -424,12 +477,81 @@ class DahengCamera(BaseCamera):
             finally:
                 if was_on:
                     try:
-                        self._device.stream_on()
+                        self._stream_on()
                     except Exception as exc:
                         logger.warning("stream_on after ROI failed: %s", exc)
 
     def _note_frame(self) -> None:
-        self._frame_times.append(time.monotonic())
+        now = time.monotonic()
+        self._frame_times.append(now)
+        self._frame_id_samples.append((now, int(self._last_frame_id)))
+
+    def _note_raw_frame(self, raw_image: Any) -> None:
+        try:
+            self._last_frame_id = int(raw_image.get_frame_id())
+        except Exception:
+            self._last_frame_id += 1
+        self._note_frame()
+
+    def _get_image(self, timeout_ms: int) -> Any:
+        """Single-frame grab; timeout_ms=0 drains without blocking (spike B)."""
+        assert self._data_stream is not None
+        try:
+            return self._data_stream.get_image(timeout=timeout_ms)
+        except TypeError:
+            if timeout_ms == 0:
+                return None
+            return self._data_stream.get_image()
+
+    def _store_latest_rgb(self, raw_image: Any) -> Optional[np.ndarray]:
+        rgb_image = raw_image.convert("RGB") if hasattr(raw_image, "convert") else raw_image
+        frame = rgb_image.get_numpy_array()
+        if frame is None:
+            return None
+        with self._latest_cond:
+            self._latest_frame = frame
+            self._latest_seq += 1
+            self._latest_cond.notify_all()
+        return frame
+
+    def _drain_acq_batch(self, *, need_raw: bool) -> Tuple[Optional[Any], int]:
+        """
+        Galaxy AcquisitionThread pattern (without GXDQAllBufs in gxipy):
+        block for one frame, then get_image(0) until empty; count every frame.
+        Only the last RawImage remains valid for convert (SDK may reuse buffers).
+        When need_raw, decode each frame before the next grab so recording keeps up.
+        Returns (last_raw_or_None, frames_counted).
+        """
+        try:
+            raw = self._get_image(1000)
+        except Exception:
+            return None, 0
+        if raw is None:
+            return None, 0
+
+        last = raw
+        counted = 0
+        # Runaway guard only — do NOT cap near buffer count (that left the SDK
+        # queue full, caused overwrite drops, and pinned Acq ~960).
+        max_drain = 100_000
+
+        while True:
+            self._note_raw_frame(last)
+            counted += 1
+            try:
+                nxt = self._get_image(0)
+            except Exception:
+                nxt = None
+            if nxt is None:
+                break
+            if need_raw:
+                # Convert before next grab may invalidate `last`.
+                self._store_latest_rgb(last)
+            last = nxt
+            if counted >= max_drain:
+                logger.warning("Daheng drain hit runaway cap (%s); check USB/host load", max_drain)
+                break
+        return last, counted
 
     def start(self) -> None:
         if self._device is None:
@@ -448,37 +570,51 @@ class DahengCamera(BaseCamera):
             raise RuntimeError("Camera not initialized")
 
         self.set_config(config or {})
-        self._device.stream_on()
+        self._stream_on()
         self.cam_running_event.set()
-        # Drain acquisition at full rate, but JPEG only at display FPS so high
-        # AFR (after ROI / short exposure) does not stall the UI pipeline.
+        # Spike B: batch-drain like Galaxy; JPEG only at display FPS.
         jpeg_interval = 1.0 / max(1.0, float(CAMERA_DISPLAY_FPS))
         last_jpeg_t = 0.0
+        last_batch_log_t = 0.0
+        max_batch_seen = 0
         try:
             while self.cam_running_event.is_set():
                 self.apply_pending_roi_if_any()
                 self.apply_pending_exposure_if_any()
                 if self.frame_callback:
                     self.frame_callback()
-                try:
-                    raw_image = self._data_stream.get_image(timeout=1000)
-                except TypeError:
-                    raw_image = self._data_stream.get_image()
-                except Exception:
+                need_raw = self._want_latest_raw.is_set() or self.capture_flag.is_set()
+                # Catch up fully before any JPEG work so encode cannot leave the
+                # acquisition queue saturated (root cause of Acq stuck ~960).
+                raw_image = None
+                batch_n = 0
+                while True:
+                    last, n = self._drain_acq_batch(need_raw=need_raw)
+                    if last is None or n <= 0:
+                        break
+                    raw_image = last
+                    batch_n += n
+                    if n <= 1:
+                        break
+                if raw_image is None or batch_n <= 0:
                     continue
-                if raw_image is None:
-                    continue
-                try:
-                    self._last_frame_id = int(raw_image.get_frame_id())
-                except Exception:
-                    self._last_frame_id += 1
-                self._note_frame()
+                if batch_n > max_batch_seen:
+                    max_batch_seen = batch_n
                 now = time.monotonic()
-                if now - last_jpeg_t < jpeg_interval and not self.capture_flag.is_set():
+                if now - last_batch_log_t >= 10.0:
+                    logger.warning(
+                        "Daheng spike B drain: last_catchup=%s max_catchup=%s acq_bufs=%s",
+                        batch_n,
+                        max_batch_seen,
+                        self._acq_buffer_num,
+                    )
+                    last_batch_log_t = now
+                if now - last_jpeg_t < jpeg_interval and not need_raw:
                     continue
-                rgb_image = raw_image.convert("RGB") if hasattr(raw_image, "convert") else raw_image
-                frame = rgb_image.get_numpy_array()
+                frame = self._store_latest_rgb(raw_image)
                 if frame is None:
+                    continue
+                if now - last_jpeg_t < jpeg_interval and not self.capture_flag.is_set():
                     continue
                 _, buffer = cv2.imencode(
                     ".jpg",
@@ -486,6 +622,7 @@ class DahengCamera(BaseCamera):
                     [cv2.IMWRITE_JPEG_QUALITY, CAMERA_STREAMING_JPEG_QUALITY],
                 )
                 last_jpeg_t = now
+                self._display_frame_times.append(now)
                 if self.capture_flag.is_set():
                     self.capture_queue.put(buffer)
                     self.capture_flag.clear()
@@ -493,10 +630,36 @@ class DahengCamera(BaseCamera):
         finally:
             self.stop()
 
+    def begin_latest_frame_capture(self) -> None:
+        """Ask capture thread to decode every frame into `_latest_frame`."""
+        self._want_latest_raw.set()
+
+    def end_latest_frame_capture(self) -> None:
+        self._want_latest_raw.clear()
+
+    def wait_frame_array(self, timeout_s: float = 2.0, after_seq: int = 0) -> Tuple[np.ndarray, int]:
+        """Wait for a newer frame from the capture thread (thread-safe)."""
+        deadline = time.monotonic() + max(0.05, float(timeout_s))
+        with self._latest_cond:
+            while self._latest_seq <= after_seq or self._latest_frame is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Timed out waiting for camera frame")
+                self._latest_cond.wait(timeout=remaining)
+            assert self._latest_frame is not None
+            return self._latest_frame.copy(), self._latest_seq
+
     def get_frame_array(self) -> np.ndarray:
+        """Return latest RGB frame from capture thread (does not call get_image)."""
+        if self.cam_running_event.is_set():
+            frame, _ = self.wait_frame_array(timeout_s=2.0, after_seq=0)
+            return frame
         if self._device is None or self._data_stream is None:
             raise RuntimeError("Camera not initialized")
-        raw_image = self._data_stream.get_image()
+        try:
+            raw_image = self._data_stream.get_image(timeout=1000)
+        except TypeError:
+            raw_image = self._data_stream.get_image()
         if raw_image is None:
             raise RuntimeError("No image returned from camera")
         rgb_image = raw_image.convert("RGB") if hasattr(raw_image, "convert") else raw_image
@@ -507,10 +670,14 @@ class DahengCamera(BaseCamera):
 
     def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> np.ndarray:
         frame = self.get_frame_array()
-        x, y, w, h = roi
+        x, y, w, h = [int(v) for v in roi]
         fh, fw = frame.shape[:2]
         if abs(fw - w) <= 4 and abs(fh - h) <= 4:
             return frame
+        x = max(0, min(x, max(0, fw - 1)))
+        y = max(0, min(y, max(0, fh - 1)))
+        w = max(1, min(w, fw - x))
+        h = max(1, min(h, fh - y))
         return frame[y : y + h, x : x + w]
 
     def set_config(self, configs: Dict) -> None:
@@ -563,7 +730,12 @@ class DahengCamera(BaseCamera):
         if self._device is None:
             return
         try:
+            # Galaxy ExposureGain.cpp on_ExposureTimeSpin_valueChanged: Auto Off then set float.
             self._device.ExposureAuto.set(0)
+            try:
+                self._device.GainAuto.set(0)
+            except Exception:
+                pass
             rng = self._device.ExposureTime.get_range()
             exposure_us = max(float(rng["min"]), min(float(rng["max"]), float(exposure_us)))
             self._device.ExposureTime.set(exposure_us)
@@ -747,6 +919,7 @@ class DahengCamera(BaseCamera):
         return self._apply_roi_genicam(roi)
 
     def get_max_framerate(self) -> float:
+        """GenICam AcquisitionFrameRate range max (GxViewer Frame Rate spinbox Max)."""
         if self._device is None:
             return float(self.config.get("FrameRate", 30))
         try:
@@ -755,16 +928,32 @@ class DahengCamera(BaseCamera):
             return self.get_actual_framerate()
 
     def get_measured_framerate(self) -> float:
-        if len(self._frame_times) < 2:
-            return 0.0
+        """Galaxy GxViewer 'Acq. FPS': frames successfully grabbed in the capture thread."""
         now = time.monotonic()
-        recent = [t for t in self._frame_times if t >= now - 1.0]
+        window = 1.0
+        id_recent = [(t, fid) for t, fid in self._frame_id_samples if t >= now - window]
+        if len(id_recent) >= 2:
+            dt = id_recent[-1][0] - id_recent[0][0]
+            d_id = id_recent[-1][1] - id_recent[0][1]
+            if dt > 0 and d_id > 0:
+                return d_id / dt
+        recent = [t for t in self._frame_times if t >= now - window]
+        if len(recent) < 2:
+            return 0.0
+        span = recent[-1] - recent[0]
+        return (len(recent) - 1) / span if span > 0 else 0.0
+
+    def get_display_framerate(self) -> float:
+        """Galaxy GxViewer 'Disp.FPS': JPEG frames pushed to the UI stream."""
+        now = time.monotonic()
+        recent = [t for t in self._display_frame_times if t >= now - 1.0]
         if len(recent) < 2:
             return 0.0
         span = recent[-1] - recent[0]
         return (len(recent) - 1) / span if span > 0 else 0.0
 
     def get_actual_framerate(self) -> float:
+        """GenICam CurrentAcquisitionFrameRate (device-reported)."""
         if self._device is None:
             return float(self.config.get("FrameRate", 30))
         try:
