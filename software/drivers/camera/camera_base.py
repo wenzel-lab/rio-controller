@@ -285,7 +285,20 @@ def _create_mako_camera() -> BaseCamera:
 
 
 def _create_daheng_camera() -> BaseCamera:
-    """Create Daheng camera instance."""
+    """Create Daheng camera instance (gxipy, or native grabber if RIO_DAHENG_CPP=1)."""
+    import os
+
+    use_cpp = os.getenv("RIO_DAHENG_CPP", "").strip().lower() in ("1", "true", "yes", "on")
+    if use_cpp:
+        try:
+            from .daheng_cpp_camera import DahengCppCamera
+
+            return DahengCppCamera()
+        except Exception as e:
+            raise RuntimeError(
+                f"RIO_DAHENG_CPP=1 but native grabber failed: {e}. "
+                "Build software/native/daheng_grabber (libdaheng_grabber.so)."
+            ) from e
     try:
         from .daheng_camera import DahengCamera
 
