@@ -1,0 +1,5 @@
+# Duplicado de software/ — no indexar dos veces
+pi-deployment/
+
+graphify-out/extract-*.log
+graphify-out/wait-and-export.log
