@@ -1311,9 +1311,11 @@
         // Control functions — Daheng exposure (number + log slider)
         var exposureInputDirty = false;
         var exposureSliderDragging = false;
+        var exposureProgrammatic = false;  // ignore synthetic input/change from .val()
         var exposureMinUs = {% if cam.exposure_min_us %}{{ cam.exposure_min_us }}{% else %}100{% endif %};
         var exposureMaxUs = {% if cam.exposure_max_us %}{{ cam.exposure_max_us }}{% else %}1000000{% endif %};
         var exposureEmitTimer = null;
+        var lastEmittedExposureUs = null;
         var EXPOSURE_SLIDER_STEPS = 1000;
         var EXPOSURE_EMIT_MS = 120;
 
@@ -1365,15 +1367,27 @@
         function setExposureControls(us, opts) {
             opts = opts || {};
             us = clampExposureUs(us);
-            if (!opts.skipInput) $('#input_exposure_us_feed').val(Math.round(us));
-            if (!opts.skipSlider) $('#slider_exposure_us_feed').val(exposureUsToSlider(us));
-            $('#exposure_live_label').text(formatExposureUs(us));
-            $('#cam_exposure_us').text(Math.round(us));
+            exposureProgrammatic = true;
+            try {
+                if (!opts.skipInput) $('#input_exposure_us_feed').val(Math.round(us));
+                if (!opts.skipSlider) $('#slider_exposure_us_feed').val(exposureUsToSlider(us));
+                $('#exposure_live_label').text(formatExposureUs(us));
+                $('#cam_exposure_us').text(Math.round(us));
+            } finally {
+                // defer clear so any sync input/change from .val() is ignored
+                setTimeout(function() { exposureProgrammatic = false; }, 0);
+            }
         }
         function emitExposureUs(us, immediate) {
+            if (exposureProgrammatic) return;
             us = Math.round(clampExposureUs(us));
+            // Deduplicate — breaks cam→UI→set_exposure feedback loops
+            if (lastEmittedExposureUs != null && Math.abs(us - lastEmittedExposureUs) < 2) {
+                return;
+            }
             var send = function() {
                 exposureEmitTimer = null;
+                lastEmittedExposureUs = us;
                 socket.emit('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
             };
             if (immediate) {
@@ -1414,6 +1428,7 @@
             $('#slider_exposure_us_feed')
                 .on('pointerdown mousedown touchstart', function() { exposureSliderDragging = true; })
                 .on('input', function() {
+                    if (exposureProgrammatic) return;
                     exposureSliderDragging = true;
                     var us = exposureSliderToUs($(this).val());
                     $('#input_exposure_us_feed').val(us);
@@ -1421,6 +1436,7 @@
                     emitExposureUs(us, false);
                 })
                 .on('change', function() {
+                    if (exposureProgrammatic) return;
                     var us = exposureSliderToUs($(this).val());
                     setExposureControls(us);
                     emitExposureUs(us, true);
@@ -1483,7 +1499,14 @@
             if (data.exposure_us != null) {
                 $('#cam_exposure_us').text(data.exposure_us);
                 if (!exposureInputDirty && !exposureSliderDragging) {
-                    setExposureControls(data.exposure_us);
+                    var cur = parseInt($('#input_exposure_us_feed').val(), 10);
+                    var next = Number(data.exposure_us);
+                    // Ignore tiny readback jitter — do not chase GenICam with set_exposure.
+                    if (!isFinite(cur) || Math.abs(next - cur) / Math.max(1, cur) > 0.08) {
+                        setExposureControls(next);
+                    } else {
+                        $('#exposure_live_label').text(formatExposureUs(next));
+                    }
                 } else {
                     $('#exposure_live_label').text(formatExposureUs(data.exposure_us));
                 }
