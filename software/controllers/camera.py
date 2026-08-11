@@ -1164,6 +1164,14 @@ class Camera:
     def _handle_set_exposure(self, params: Dict[str, Any]) -> None:
         """Set camera exposure in microseconds (Daheng: ExposureAuto off + ExposureTime)."""
         exposure_us = float(params.get("exposure_us", 0))
+        prev = self.cam_data.get("exposure_us")
+        # WARNING so UI→camera feedback is visible without raising log level.
+        logger.warning(
+            "set_exposure request: %s us (prev cam_data=%s, params=%s)",
+            exposure_us,
+            prev,
+            params,
+        )
         if exposure_us <= 0:
             logger.warning("Invalid exposure_us: %s", exposure_us)
             return
@@ -1179,7 +1187,7 @@ class Camera:
             else:
                 self.camera.set_config({"ShutterSpeed": int(exposure_us)})
             self.cam_data["exposure_us"] = int(exposure_us)
-            logger.info("Exposure set to %s us", int(exposure_us))
+            logger.warning("Exposure applied: %s -> %s us", prev, int(exposure_us))
         except Exception as e:
             logger.error("Failed to set exposure: %s", e)
 

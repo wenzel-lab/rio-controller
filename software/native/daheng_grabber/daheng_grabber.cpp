@@ -7,7 +7,9 @@
 #include "GxIAPI.h"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <thread>
@@ -90,13 +92,24 @@ int SyncAfrMaxLocked() {
     if (!g_device) {
         return -1;
     }
-    // Best-effort: some builds throw on unimplemented enum nodes.
+    // GxViewer FrameRateControl + acq_probe: Mode ON, setpoint = range max.
+    // Do NOT re-write ExposureTime afterward — probe sets exposure then AFR; GenICam
+    // may clamp exposure to the new frame period (Galaxy behavior).
     TryGx([&] { return GXSetEnumValue(g_device, "AcquisitionFrameRateMode", 1); });
     GX_FLOAT_VALUE afr{};
-    if (!TryGx([&] { return GXGetFloatValue(g_device, "AcquisitionFrameRate", &afr); })) {
-        return 0;
+    if (TryGx([&] { return GXGetFloatValue(g_device, "AcquisitionFrameRate", &afr); })) {
+        TryGx([&] { return GXSetFloatValue(g_device, "AcquisitionFrameRate", afr.dMax); });
     }
-    TryGx([&] { return GXSetFloatValue(g_device, "AcquisitionFrameRate", afr.dMax); });
+    return 0;
+}
+
+/** GxViewer ExposureGain: user selects ExposureAuto Off, then sets ExposureTime. */
+int LockManualExposureGainLocked() {
+    if (!g_device) {
+        return -1;
+    }
+    TryGx([&] { return GXSetEnumValue(g_device, "ExposureAuto", 0); });  // GX_EXPOSURE_AUTO_OFF
+    TryGx([&] { return GXSetEnumValue(g_device, "GainAuto", 0); });       // GX_GAIN_AUTO_OFF
     return 0;
 }
 
@@ -243,6 +256,35 @@ extern "C" int daheng_grabber_open(const char* serial_number) {
     GXSetIntValue(g_device, "Width", wmax.nCurValue);
     GXSetIntValue(g_device, "Height", hmax.nCurValue);
 
+    // GxViewer OpenDevice does not rewrite Exposure/AE; a fresh camera connect
+    // typically comes up from UserSet Default (power-on). That profile on this
+    // MER2 is AE Off, ExposureTime=10000 us, Gain=0 — which is why Galaxy looks
+    // stable. Rio left volatile 13552 us + Gain 24 → visible AC flicker.
+    // Load Default explicitly (same as GxViewer UserSetControl → UserSetLoad).
+    TryGx([&] { return GXSetEnumValue(g_device, "UserSetSelector", 0); });  // Default
+    TryGx([&] { return GXSetCommandValue(g_device, "UserSetLoad"); });
+
+    // Free-run for continuous /video (GxViewer StartAcquisition with Trigger Off).
+    TryGx([&] { return GXSetEnumValue(g_device, "DeviceLinkThroughputLimitMode", 0); });
+    TryGx([&] { return GXSetEnumValue(g_device, "TriggerMode", 0); });  // Off
+
+    // Optional explicit override only (never a hidden default).
+    if (const char* exp_env = std::getenv("RIO_DAHENG_EXPOSURE_US")) {
+        const double v = std::atof(exp_env);
+        if (v > 0.0) {
+            LockManualExposureGainLocked();
+            TryGx([&] { return GXSetFloatValue(g_device, "ExposureTime", v); });
+        }
+    }
+
+    // GxViewer FrameRateControl is user-driven; enable AFR max only if requested.
+    if (const char* afr = std::getenv("RIO_DAHENG_AFR_MAX")) {
+        if (afr[0] == '1' || afr[0] == 't' || afr[0] == 'T' || afr[0] == 'y' ||
+            afr[0] == 'Y') {
+            SyncAfrMaxLocked();
+        }
+    }
+
     if (ConfigureBuffersLocked() != 0) {
         GXCloseDevice(g_device);
         g_device = nullptr;
@@ -360,6 +402,7 @@ extern "C" int daheng_grabber_set_exposure_us(double exposure_us) {
     if (!g_device) {
         return -1;
     }
+    // GxViewer: ExposureAuto Off (combo), then ExposureTime spin → GXSetFloatValue only.
     TryGx([&] { return GXSetEnumValue(g_device, "ExposureAuto", 0); });
     if (!TryGx([&] { return GXSetFloatValue(g_device, "ExposureTime", exposure_us); })) {
         return -1;

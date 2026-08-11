@@ -26,6 +26,10 @@ except ImportError:
     CAMERA_STREAMING_JPEG_QUALITY = 75
     CAMERA_DISPLAY_FPS = 10
 
+# GxViewer paints acquisition frames much faster than Rio's default web Disp=10.
+# Use a higher UI rate on this host path only (does not change Acq drain).
+_CPP_DISPLAY_FPS = float(os.getenv("RIO_DAHENG_CPP_DISPLAY_FPS", "30"))
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +69,10 @@ class DahengCppCamera(BaseCamera):
         except Exception:
             self.config["ShutterSpeed"] = 10000
         logger.warning(
-            "DahengCppCamera active (RIO_DAHENG_CPP): native GXDQAllBufs grabber"
+            "DahengCppCamera active (RIO_DAHENG_CPP): GxViewer-style open "
+            "(UserSet Default load, TriggerMode off, GXDQAllBufs); "
+            "exposure=%s us",
+            self.config.get("ShutterSpeed"),
         )
 
     def set_roi_applied_callback(self, callback: Optional[Callable[[bool, str], None]]) -> None:
@@ -99,10 +106,11 @@ class DahengCppCamera(BaseCamera):
                 logger.warning("CPP set exposure failed: %s", exc)
 
     def set_exposure_us(self, exposure_us: float) -> None:
+        us = float(exposure_us)
         if self.cam_running_event.is_set():
-            self._pending_exposure_us = float(exposure_us)
+            self._pending_exposure_us = us
             return
-        self._grabber.set_exposure_us(float(exposure_us))
+        self._grabber.set_exposure_us(us)
         self.config["ShutterSpeed"] = int(self._grabber.get_exposure_us())
 
     def apply_pending_exposure_if_any(self) -> None:
@@ -270,7 +278,7 @@ class DahengCppCamera(BaseCamera):
         self.set_config(config or {})
         self._grabber.start()
         self.cam_running_event.set()
-        jpeg_interval = 1.0 / max(1.0, float(CAMERA_DISPLAY_FPS))
+        jpeg_interval = 1.0 / max(1.0, float(_CPP_DISPLAY_FPS))
         last_jpeg_t = 0.0
         try:
             while self.cam_running_event.is_set():
