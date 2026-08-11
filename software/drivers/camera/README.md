@@ -35,15 +35,31 @@ The primary consumer is `software/controllers/strobe_cam.py` (via `drivers.camer
   - often has stricter constraints and different feature/ROI capabilities than Pi camera backends
 
 - `daheng_camera.py`
-  - Daheng MER2 backend (gxipy / Galaxy SDK)
+  - Daheng MER2 backend via **Python gxipy** (Galaxy SDK)
   - requires vendor SDK + Python bindings on the host
   - optional env: `RIO_DAHENG_SN` (open by serial) or `RIO_DAHENG_INDEX` (0-based index)
+  - default path when `RIO_DAHENG_CPP` is unset / off
 
-## ROI in this layer
+- `daheng_cpp_camera.py` + `daheng_cpp_grabber.py` + `software/native/daheng_grabber/`
+  - optional **native C++** Acq path (`GXDQAllBufs`, GxViewer-style drain)
+  - enable with `RIO_DAHENG_CPP=1` (preferred on Ubuntu host + MER2 when high Acq.FPS matters)
+  - open loads Galaxy **UserSet Default** (stable live preview: AE Off, default exposure/gain from the device profile)
+  - build `libdaheng_grabber.so` with system/conda **g++** (not Zig) — see [`native/daheng_grabber/README.md`](../../native/daheng_grabber/README.md)
+  - UI Disp ~30 FPS is independent of Acq; more notes: [`docs/daheng-cpp-galaxy-notes.md`](../../docs/daheng-cpp-galaxy-notes.md)
+  - related branches (history): `feature/daheng-cpp-acq-grabber`, `feature/daheng-python-acq-ab`
 
-The interface supports **software ROI** via `get_frame_roi((x, y, w, h))`.
-Some backends also include “hardware ROI” helpers (sensor/stream crop), but *choosing* between software vs hardware ROI is an application policy decision (typically owned by higher layers).
-- Hardware ROI support: `pi_camera_legacy` (picamera) implements `set_roi_hardware`; `mako_camera` exposes it via Vimba; `daheng_camera` exposes it via gxipy. If a backend rejects hardware ROI, callers should fall back to software ROI.
+### Daheng host env (quick)
+
+```bash
+export GALAXY_ROOT="$HOME/Galaxy_camera"
+export LD_LIBRARY_PATH="$GALAXY_ROOT/lib/x86_64:$LD_LIBRARY_PATH"
+export RIO_CAMERA_TYPE=daheng
+export RIO_DAHENG_SN=<serial>          # optional
+export RIO_DAHENG_CPP=1                # native grabber; omit for gxipy-only
+# optional: RIO_DAHENG_EXPOSURE_US=1000  RIO_DAHENG_AFR_MAX=1
+```
+
+Hardware ROI support: `pi_camera_legacy` (picamera) implements `set_roi_hardware`; `mako_camera` exposes it via Vimba; `daheng_camera` / `daheng_cpp_camera` expose it via gxipy / native grabber. If a backend rejects hardware ROI, callers should fall back to software ROI.
 
 **ROI invariants (all backends):**
 - ROI coordinates are pixel-based and refer to the current stream frame.
@@ -66,5 +82,6 @@ This file was AI-generated and may contain errors. Please verify against the sou
 - Date: 2025-12-30
 - Model: GPT-5.2
 - Maintenance: If you change camera interfaces, selection rules, or ROI semantics, update this document.
+- Updated: 2026-08-11 — documented optional `RIO_DAHENG_CPP` native grabber vs gxipy.
 
 
