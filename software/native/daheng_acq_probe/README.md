@@ -60,5 +60,20 @@ make run
 
 Mean **Acq.FPS** within ~1–2 % of **SDK** (e.g. ≥1035 if SDK≈1053) over 15 s, without large incomplete-frame counts.
 
-If yes → worth a thin C++ grabber behind Python later (`RIO_DAHENG_CPP=1` on this branch).  
-If no → bottleneck is elsewhere (USB/host), not Python alone.
+## Rio integration (this branch only)
+
+```bash
+# Build shared lib (g++/conda — not Zig)
+cd software/native/daheng_grabber
+export MAMBA_ROOT_PREFIX=$HOME/.local/mamba
+$HOME/.local/micromamba/bin/micromamba run -n gxbuild make
+
+# Run Rio with native grabber (compare Acq in UI to python-ab branch)
+export RIO_DAHENG_CPP=1
+export RIO_CAMERA_TYPE=daheng RIO_DAHENG_SN=FDQ23120254 RIO_SIMULATION=true
+export GALAXY_ROOT=$HOME/Galaxy_camera
+export LD_LIBRARY_PATH=$GALAXY_ROOT/lib/x86_64:$PWD:$LD_LIBRARY_PATH
+cd ../.. && ../.venv-daheng/bin/python3 main.py
+```
+
+Without `RIO_DAHENG_CPP`, this branch still uses the Python A+B gxipy path (same as `feature/daheng-python-acq-ab`).
