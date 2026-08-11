@@ -543,7 +543,7 @@
                                                     <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success btn-sm w-100 mb-2">Optimise FPS</button>
                                                     <small class="text-muted d-block">Cam read: <span id="strobe_cam_time_us">—</span> µs</small>
                                                     <small class="text-muted d-block">Strobe FPS: <span id="strobe_framerate">—</span></small>
-                                                    <small class="text-muted d-block">Acq: <span id="cam_acq_fps">—</span> · Max: <span id="cam_max_fps">—</span> · Meas: <span id="cam_measured_fps">—</span></small>
+                                                    <small class="text-muted d-block">Acq.FPS: <span id="cam_acq_fps">—</span> · Disp.FPS: <span id="cam_measured_fps">—</span> · SDK: <span id="cam_max_fps">—</span></small>
                                                     <small class="text-muted d-block">Exposure: <span id="cam_exposure_us">{% if cam.exposure_us %}{{ cam.exposure_us }}{% else %}—{% endif %}</span> µs</small>
                                                 </div>
                                                 <div class="control-section" id="daheng_exposure_feed" style="display: {% if cam.camera == 'daheng' %}block{% else %}none{% endif %};">
@@ -1469,9 +1469,16 @@
                 $('#sb_size').text(sbImg.naturalWidth + ' × ' + sbImg.naturalHeight);
             }
             if (data.exposure_min_us != null && data.exposure_max_us != null) {
-                exposureMinUs = Number(data.exposure_min_us);
-                exposureMaxUs = Number(data.exposure_max_us);
-                updateExposureTicks();
+                var nmin = Number(data.exposure_min_us);
+                var nmax = Number(data.exposure_max_us);
+                // Ignore tiny GenICam range jitter (AFR coupling) that makes the slider pump.
+                var minChanged = !isFinite(exposureMinUs) || Math.abs(nmin - exposureMinUs) / Math.max(1, exposureMinUs) > 0.05;
+                var maxChanged = !isFinite(exposureMaxUs) || Math.abs(nmax - exposureMaxUs) / Math.max(1, exposureMaxUs) > 0.05;
+                if (minChanged || maxChanged) {
+                    exposureMinUs = nmin;
+                    exposureMaxUs = nmax;
+                    updateExposureTicks();
+                }
             }
             if (data.exposure_us != null) {
                 $('#cam_exposure_us').text(data.exposure_us);
