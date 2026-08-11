@@ -1,0 +1,4 @@
+# Built probe binary (build locally; do not commit)
+daheng_acq_probe
+*.o
+*.so
