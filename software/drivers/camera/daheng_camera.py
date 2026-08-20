@@ -84,6 +84,7 @@ class DahengCamera(BaseCamera):
         self._latest_cond = Condition(self._latest_lock)
         self._latest_frame: Optional[np.ndarray] = None
         self._latest_seq: int = 0
+        self._latest_frame_id: int = 0
         self._want_latest_raw = Event()
         self._display_frame_times: deque[float] = deque(maxlen=4000)
         self._acq_buffer_num: int = 0
@@ -508,9 +509,15 @@ class DahengCamera(BaseCamera):
         frame = rgb_image.get_numpy_array()
         if frame is None:
             return None
+        try:
+            frame_id = int(raw_image.get_frame_id())
+        except Exception:
+            frame_id = self._last_frame_id + 1
+        self._last_frame_id = frame_id
         with self._latest_cond:
             self._latest_frame = frame
             self._latest_seq += 1
+            self._latest_frame_id = frame_id
             self._latest_cond.notify_all()
         return frame
 
@@ -639,15 +646,38 @@ class DahengCamera(BaseCamera):
 
     def wait_frame_array(self, timeout_s: float = 2.0, after_seq: int = 0) -> Tuple[np.ndarray, int]:
         """Wait for a newer frame from the capture thread (thread-safe)."""
+        frame, seq, _fid, _mono = self.wait_record_frame(
+            timeout_s=timeout_s, after_seq=after_seq, after_frame_id=-1
+        )
+        return frame, seq
+
+    def wait_record_frame(
+        self,
+        timeout_s: float = 2.0,
+        after_seq: int = 0,
+        after_frame_id: int = -1,
+    ) -> Tuple[np.ndarray, int, int, bool]:
         deadline = time.monotonic() + max(0.05, float(timeout_s))
         with self._latest_cond:
-            while self._latest_seq <= after_seq or self._latest_frame is None:
+            while True:
+                if (
+                    self._latest_frame is not None
+                    and self._latest_seq > after_seq
+                    and self._latest_frame_id > after_frame_id
+                ):
+                    return (
+                        self._latest_frame.copy(),
+                        self._latest_seq,
+                        self._latest_frame_id,
+                        False,
+                    )
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("Timed out waiting for camera frame")
                 self._latest_cond.wait(timeout=remaining)
-            assert self._latest_frame is not None
-            return self._latest_frame.copy(), self._latest_seq
+
+    def record_queue_drops(self) -> int:
+        return 0
 
     def get_frame_array(self) -> np.ndarray:
         """Return latest RGB frame from capture thread (does not call get_image)."""
@@ -754,12 +784,12 @@ class DahengCamera(BaseCamera):
 
     def get_exposure_range(self) -> Dict[str, float]:
         if self._device is None:
-            return {"min": 100.0, "max": 1_000_000.0}
+            return {"min": 20.0, "max": 1_000_000.0}
         try:
             rng = self._device.ExposureTime.get_range()
             return {"min": float(rng["min"]), "max": float(rng["max"])}
         except Exception:
-            return {"min": 100.0, "max": 1_000_000.0}
+            return {"min": 20.0, "max": 1_000_000.0}
 
     def get_max_resolution(self) -> Tuple[int, int]:
         if self._device is None:

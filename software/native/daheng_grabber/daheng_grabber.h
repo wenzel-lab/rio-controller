@@ -32,6 +32,9 @@ int daheng_grabber_set_exposure_us(double exposure_us);
 
 int daheng_grabber_get_exposure_us(double* exposure_us);
 
+/** ExposureTime min/max in microseconds (from GenICam). */
+int daheng_grabber_get_exposure_range(double* min_us, double* max_us);
+
 /** AcquisitionFrameRateMode ON + set AFR to range max. */
 int daheng_grabber_sync_afr_max(void);
 
@@ -62,6 +65,21 @@ double daheng_grabber_get_acq_fps(void);
 double daheng_grabber_get_sdk_fps(void);
 
 uint64_t daheng_grabber_get_frame_id(void);
+
+/** Enable FIFO queue of every acquired frame (for Record ROI). */
+int daheng_grabber_set_record_mode(int enabled);
+
+/** Pop next queued frame (record mode). Returns 1 if popped, 0 if empty, -1 on error. */
+int daheng_grabber_pop_record_mono8(
+    uint8_t* out,
+    int32_t out_capacity,
+    int32_t* width,
+    int32_t* height,
+    uint64_t* frame_id,
+    uint64_t* seq);
+
+/** Frames dropped because record queue overflowed. */
+uint64_t daheng_grabber_get_record_queue_drops(void);
 
 #ifdef __cplusplus
 }

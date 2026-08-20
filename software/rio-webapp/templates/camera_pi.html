@@ -50,8 +50,23 @@
     var roiStatus = document.getElementById('roi_record_status');
     if (roiStatus && cam && cam.roi_record_last) {
       if (cam.roi_record_last.ok) {
-        roiStatus.textContent = 'Saved ' + cam.roi_record_last.frames_saved + ' / ' +
-          cam.roi_record_last.frames_requested + ' to ' + cam.roi_record_last.folder;
+        var r = cam.roi_record_last;
+        var msg = 'Saved ' + r.frames_saved + ' / ' + r.frames_requested + ' to ' + r.folder;
+        if (r.frame_id_first != null && r.frame_id_last != null) {
+          msg += ' · frame_id ' + r.frame_id_first + '–' + r.frame_id_last;
+        }
+        if (r.frames_dropped != null && r.frames_dropped > 0) {
+          msg += ' · dropped ' + r.frames_dropped;
+        } else if (r.frames_saved > 0) {
+          msg += ' · no gaps';
+        }
+        if (r.queue_overflow_drops != null && r.queue_overflow_drops > 0) {
+          msg += ' · queue overflow ' + r.queue_overflow_drops;
+        }
+        if (r.manifest) {
+          msg += ' · manifest.csv';
+        }
+        roiStatus.textContent = msg;
       } else {
         roiStatus.textContent = 'ROI record failed: ' + (cam.roi_record_last.error || 'unknown error');
       }

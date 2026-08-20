@@ -552,7 +552,7 @@
                                                         <span class="exposure-live-label" id="exposure_live_label">{% if cam.exposure_us %}{{ cam.exposure_us }} µs{% else %}—{% endif %}</span>
                                                     </label>
                                                     <div class="input-group input-group-sm">
-                                                        <input type="number" id="input_exposure_us_feed" class="form-control" min="100" step="1" placeholder="µs" value="{% if cam.exposure_us %}{{ cam.exposure_us }}{% endif %}" title="Exposure time in microseconds">
+                                                        <input type="number" id="input_exposure_us_feed" class="form-control" min="{% if cam.exposure_min_us %}{{ cam.exposure_min_us|int }}{% else %}20{% endif %}" step="1" placeholder="µs" value="{% if cam.exposure_us %}{{ cam.exposure_us }}{% endif %}" title="Exposure time in microseconds">
                                                         <span class="input-group-text">µs</span>
                                                         <button type="button" class="btn btn-primary" onclick="cam_set_exposure()">Set</button>
                                                     </div>
@@ -1312,7 +1312,7 @@
         var exposureInputDirty = false;
         var exposureSliderDragging = false;
         var exposureProgrammatic = false;  // ignore synthetic input/change from .val()
-        var exposureMinUs = {% if cam.exposure_min_us %}{{ cam.exposure_min_us }}{% else %}100{% endif %};
+        var exposureMinUs = {% if cam.exposure_min_us %}{{ cam.exposure_min_us }}{% else %}20{% endif %};
         var exposureMaxUs = {% if cam.exposure_max_us %}{{ cam.exposure_max_us }}{% else %}1000000{% endif %};
         var exposureEmitTimer = null;
         var lastEmittedExposureUs = null;
