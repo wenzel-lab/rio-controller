@@ -11,11 +11,20 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <vector>
 
 namespace {
+
+struct QueuedFrame {
+    std::vector<uint8_t> mono;
+    int32_t w = 0;
+    int32_t h = 0;
+    uint64_t fid = 0;
+    uint64_t seq = 0;
+};
 
 std::mutex g_api_mu;
 GX_DEV_HANDLE g_device = nullptr;
@@ -31,6 +40,12 @@ int32_t g_latest_w = 0;
 int32_t g_latest_h = 0;
 uint64_t g_latest_fid = 0;
 uint64_t g_latest_seq = 0;
+
+std::mutex g_queue_mu;
+std::deque<QueuedFrame> g_record_queue;
+std::atomic<bool> g_record_mode{false};
+uint64_t g_record_queue_dropped = 0;
+constexpr size_t kRecordQueueMax = 8192;
 
 std::mutex g_fps_mu;
 double g_acq_fps = 0.0;
@@ -129,6 +144,48 @@ void NoteFrames(uint32_t n) {
     }
 }
 
+void PublishFrame(PGX_FRAME_BUFFER fb) {
+    const int32_t w = fb->nWidth;
+    const int32_t h = fb->nHeight;
+    const int32_t nbytes = w * h;
+    if (nbytes <= 0 || fb->pImgBuf == nullptr) {
+        return;
+    }
+
+    uint64_t seq = 0;
+    {
+        std::lock_guard<std::mutex> flock(g_frame_mu);
+        if (static_cast<int32_t>(g_latest_mono.size()) < nbytes) {
+            g_latest_mono.resize(static_cast<size_t>(nbytes));
+        }
+        std::memcpy(g_latest_mono.data(), fb->pImgBuf, static_cast<size_t>(nbytes));
+        g_latest_w = w;
+        g_latest_h = h;
+        g_latest_fid = fb->nFrameID;
+        g_latest_seq += 1;
+        seq = g_latest_seq;
+    }
+
+    if (!g_record_mode.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    QueuedFrame qf;
+    qf.mono.resize(static_cast<size_t>(nbytes));
+    std::memcpy(qf.mono.data(), fb->pImgBuf, static_cast<size_t>(nbytes));
+    qf.w = w;
+    qf.h = h;
+    qf.fid = fb->nFrameID;
+    qf.seq = seq;
+
+    std::lock_guard<std::mutex> qlock(g_queue_mu);
+    if (g_record_queue.size() >= kRecordQueueMax) {
+        g_record_queue.pop_front();
+        ++g_record_queue_dropped;
+    }
+    g_record_queue.push_back(std::move(qf));
+}
+
 void AcqLoop() {
     std::vector<PGX_FRAME_BUFFER> frames;
     {
@@ -160,27 +217,20 @@ void AcqLoop() {
         if (st != GX_STATUS_SUCCESS || n == 0) {
             continue;
         }
-        if (frames[n - 1]->nStatus != GX_FRAME_STATUS_SUCCESS) {
-            GXQAllBufs(dev);
-            continue;
-        }
 
         NoteFrames(n);
 
-        PGX_FRAME_BUFFER last = frames[n - 1];
-        const int32_t w = last->nWidth;
-        const int32_t h = last->nHeight;
-        const int32_t nbytes = w * h;
-        if (nbytes > 0 && last->pImgBuf != nullptr) {
-            std::lock_guard<std::mutex> flock(g_frame_mu);
-            if (static_cast<int32_t>(g_latest_mono.size()) < nbytes) {
-                g_latest_mono.resize(static_cast<size_t>(nbytes));
+        bool any_ok = false;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (frames[i]->nStatus != GX_FRAME_STATUS_SUCCESS) {
+                continue;
             }
-            std::memcpy(g_latest_mono.data(), last->pImgBuf, static_cast<size_t>(nbytes));
-            g_latest_w = w;
-            g_latest_h = h;
-            g_latest_fid = last->nFrameID;
-            ++g_latest_seq;
+            PublishFrame(frames[i]);
+            any_ok = true;
+        }
+        if (!any_ok) {
+            GXQAllBufs(dev);
+            continue;
         }
 
         GXQAllBufs(dev);
@@ -423,6 +473,20 @@ extern "C" int daheng_grabber_get_exposure_us(double* exposure_us) {
     return 0;
 }
 
+extern "C" int daheng_grabber_get_exposure_range(double* min_us, double* max_us) {
+    std::lock_guard<std::mutex> lock(g_api_mu);
+    if (!g_device || !min_us || !max_us) {
+        return -1;
+    }
+    GX_FLOAT_VALUE exp{};
+    if (!Ok(GXGetFloatValue(g_device, "ExposureTime", &exp))) {
+        return -1;
+    }
+    *min_us = exp.dMin;
+    *max_us = exp.dMax;
+    return 0;
+}
+
 extern "C" int daheng_grabber_sync_afr_max(void) {
     std::lock_guard<std::mutex> lock(g_api_mu);
     return SyncAfrMaxLocked();
@@ -475,4 +539,48 @@ extern "C" double daheng_grabber_get_sdk_fps(void) {
 extern "C" uint64_t daheng_grabber_get_frame_id(void) {
     std::lock_guard<std::mutex> flock(g_frame_mu);
     return g_latest_fid;
+}
+
+extern "C" int daheng_grabber_set_record_mode(int enabled) {
+    const bool on = enabled != 0;
+    g_record_mode.store(on, std::memory_order_release);
+    if (on) {
+        std::lock_guard<std::mutex> qlock(g_queue_mu);
+        g_record_queue.clear();
+        g_record_queue_dropped = 0;
+    }
+    return 0;
+}
+
+extern "C" int daheng_grabber_pop_record_mono8(
+    uint8_t* out,
+    int32_t out_capacity,
+    int32_t* width,
+    int32_t* height,
+    uint64_t* frame_id,
+    uint64_t* seq) {
+    if (!out || !width || !height || !frame_id || !seq) {
+        return -1;
+    }
+    std::lock_guard<std::mutex> qlock(g_queue_mu);
+    if (g_record_queue.empty()) {
+        return 0;
+    }
+    QueuedFrame qf = std::move(g_record_queue.front());
+    g_record_queue.pop_front();
+    const int32_t nbytes = qf.w * qf.h;
+    if (nbytes <= 0 || nbytes > out_capacity) {
+        return -1;
+    }
+    std::memcpy(out, qf.mono.data(), static_cast<size_t>(nbytes));
+    *width = qf.w;
+    *height = qf.h;
+    *frame_id = qf.fid;
+    *seq = qf.seq;
+    return 1;
+}
+
+extern "C" uint64_t daheng_grabber_get_record_queue_drops(void) {
+    std::lock_guard<std::mutex> qlock(g_queue_mu);
+    return g_record_queue_dropped;
 }

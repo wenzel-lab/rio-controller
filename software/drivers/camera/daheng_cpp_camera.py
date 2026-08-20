@@ -59,6 +59,8 @@ class DahengCppCamera(BaseCamera):
         self._latest_seq: int = 0
         self._display_frame_times: deque[float] = deque(maxlen=4000)
         self._mono_seq: int = 0
+        self._want_latest_raw: Event = Event()
+        self._record_active: Event = Event()
 
         self._grabber.open(self._serial_number)
         w, h = self._grabber.stream_size()
@@ -240,6 +242,13 @@ class DahengCppCamera(BaseCamera):
         except Exception:
             return int(self.config.get("ShutterSpeed", 10000))
 
+    def get_exposure_range(self) -> Dict[str, float]:
+        try:
+            lo, hi = self._grabber.get_exposure_range()
+            return {"min": float(lo), "max": float(hi)}
+        except Exception:
+            return {"min": 20.0, "max": 1_000_000.0}
+
     def get_max_framerate(self) -> float:
         return self.get_actual_framerate()
 
@@ -250,24 +259,85 @@ class DahengCppCamera(BaseCamera):
         except Exception:
             return 0.0
 
-    def _store_rgb(self, mono: np.ndarray) -> np.ndarray:
+    def _store_rgb(self, mono: np.ndarray, seq: Optional[int] = None) -> np.ndarray:
         rgb = cv2.cvtColor(mono, cv2.COLOR_GRAY2RGB)
         with self._latest_cond:
             self._latest_frame = rgb
-            self._latest_seq += 1
+            if seq is not None:
+                self._latest_seq = int(seq)
+            else:
+                self._latest_seq += 1
             self._latest_cond.notify_all()
         return rgb
 
+    def begin_latest_frame_capture(self) -> None:
+        """Ensure acquisition is running; enable C++ record FIFO if available."""
+        self._want_latest_raw.set()
+        self._record_active.set()
+        self._grabber.set_record_mode(True)
+        if not self._grabber.is_running():
+            self._grabber.start()
+            self.cam_running_event.set()
+
+    def end_latest_frame_capture(self) -> None:
+        self._want_latest_raw.clear()
+        self._record_active.clear()
+        self._grabber.set_record_mode(False)
+
+    def wait_frame_array(self, timeout_s: float = 2.0, after_seq: int = 0) -> Tuple[np.ndarray, int]:
+        """Wait for a newer Mono8 frame from the C++ grabber (seq > after_seq)."""
+        mono, seq, _fid = self._wait_record_mono(timeout_s=timeout_s, after_seq=after_seq, after_frame_id=-1)
+        rgb = self._store_rgb(mono, seq=seq)
+        return rgb, int(seq)
+
+    def wait_record_frame(
+        self,
+        timeout_s: float = 2.0,
+        after_seq: int = 0,
+        after_frame_id: int = -1,
+    ) -> Tuple[np.ndarray, int, int, bool]:
+        """Return (frame, seq, frame_id, is_mono) for Record ROI."""
+        mono, seq, fid = self._wait_record_mono(
+            timeout_s=timeout_s, after_seq=after_seq, after_frame_id=after_frame_id
+        )
+        return mono, int(seq), int(fid), True
+
+    def record_queue_drops(self) -> int:
+        return int(self._grabber.record_queue_drops())
+
+    def _wait_record_mono(
+        self, timeout_s: float, after_seq: int, after_frame_id: int
+    ) -> Tuple[np.ndarray, int, int]:
+        deadline = time.monotonic() + max(0.05, float(timeout_s))
+        use_queue = self._record_active.is_set() and getattr(self._grabber, "_has_record_queue", False)
+        while True:
+            if use_queue:
+                got = self._grabber.pop_record_mono8()
+                if got is not None:
+                    mono, fid, seq = got
+                    self._mono_seq = int(seq)
+                    return mono, int(seq), int(fid)
+            else:
+                got = self._grabber.get_latest_mono8(int(after_seq))
+                if got is not None:
+                    mono, fid, seq = got
+                    if int(fid) > int(after_frame_id) or int(seq) > int(after_seq):
+                        self._mono_seq = int(seq)
+                        return mono, int(seq), int(fid)
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for camera frame")
+            time.sleep(0.00002 if use_queue else 0.00005)
+
     def get_frame_array(self) -> np.ndarray:
-        with self._latest_cond:
-            if self._latest_frame is not None:
-                return self._latest_frame.copy()
+        if self._grabber.is_running() or self.cam_running_event.is_set():
+            frame, _ = self.wait_frame_array(timeout_s=2.0, after_seq=self._mono_seq)
+            return frame
         got = self._grabber.get_latest_mono8(0)
         if got is None:
             raise TimeoutError("No frame from CPP grabber")
         mono, _, seq = got
-        self._mono_seq = seq
-        return self._store_rgb(mono)
+        self._mono_seq = int(seq)
+        return self._store_rgb(mono, seq=seq)
 
     def get_frame_roi(self, roi: Tuple[int, int, int, int]) -> np.ndarray:
         frame = self.get_frame_array()
@@ -282,6 +352,9 @@ class DahengCppCamera(BaseCamera):
         last_jpeg_t = 0.0
         try:
             while self.cam_running_event.is_set():
+                if self._record_active.is_set():
+                    time.sleep(0.002)
+                    continue
                 self.apply_pending_roi_if_any()
                 self.apply_pending_exposure_if_any()
                 if self.frame_callback:
@@ -293,10 +366,10 @@ class DahengCppCamera(BaseCamera):
                 mono, _fid, seq = got
                 self._mono_seq = seq
                 now = time.monotonic()
-                need = self.capture_flag.is_set()
+                need = self._want_latest_raw.is_set() or self.capture_flag.is_set()
                 if now - last_jpeg_t < jpeg_interval and not need:
                     continue
-                rgb = self._store_rgb(mono)
+                rgb = self._store_rgb(mono, seq=seq)
                 _, buffer = cv2.imencode(
                     ".jpg",
                     rgb,

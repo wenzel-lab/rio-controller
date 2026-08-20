@@ -630,6 +630,11 @@ class Camera:
             "ok": False,
             "frames_requested": frames,
             "frames_saved": 0,
+            "frames_dropped": 0,
+            "queue_overflow_drops": 0,
+            "frame_id_first": None,
+            "frame_id_last": None,
+            "manifest": None,
             "folder": None,
             "error": None,
         }
@@ -667,24 +672,65 @@ class Camera:
 
         begin_latest = getattr(self.camera, "begin_latest_frame_capture", None)
         end_latest = getattr(self.camera, "end_latest_frame_capture", None)
+        wait_record = getattr(self.camera, "wait_record_frame", None)
         wait_frame = getattr(self.camera, "wait_frame_array", None)
+        queue_drops_fn = getattr(self.camera, "record_queue_drops", None)
 
         try:
+            import csv
             import os
+
+            import cv2
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             folder = os.path.join(SNAPSHOT_FOLDER, "recordings", timestamp)
             os.makedirs(folder, exist_ok=True)
             result["folder"] = folder
+            manifest_path = os.path.join(folder, "manifest.csv")
 
             if callable(begin_latest):
                 begin_latest()
 
             last_seq = 0
-            for index in range(frames):
-                try:
-                    if callable(wait_frame):
-                        frame_arr, last_seq = wait_frame(timeout_s=2.0, after_seq=last_seq)
+            last_frame_id = -1
+            frames_dropped = 0
+
+            with open(manifest_path, "w", newline="", encoding="utf-8") as manifest_file:
+                writer = csv.writer(manifest_file)
+                writer.writerow(
+                    ["index", "filename", "seq", "frame_id", "gap_before", "saved_at_us"]
+                )
+
+                for index in range(frames):
+                    try:
+                        is_mono = False
+                        seq = 0
+                        frame_id = 0
+                        if callable(wait_record):
+                            frame_arr, seq, frame_id, is_mono = wait_record(
+                                timeout_s=2.0,
+                                after_seq=last_seq,
+                                after_frame_id=last_frame_id,
+                            )
+                        elif callable(wait_frame):
+                            frame_arr, seq = wait_frame(timeout_s=2.0, after_seq=last_seq)
+                            frame_id = int(getattr(self.camera, "get_frame_id", lambda: 0)())
+                        else:
+                            roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
+                            if roi_frame is None:
+                                logger.warning("ROI frame unavailable (None)")
+                                continue
+                            frame_arr = roi_frame
+                            seq = index + 1
+                            frame_id = seq
+
+                        gap_before = 0
+                        if last_frame_id >= 0 and frame_id > last_frame_id + 1:
+                            gap_before = int(frame_id - last_frame_id - 1)
+                            frames_dropped += gap_before
+                        last_seq = int(seq)
+                        last_frame_id = int(frame_id)
+
                         x, y, w, h = roi_tuple
                         fh, fw = frame_arr.shape[:2]
                         if abs(fw - w) > 4 or abs(fh - h) > 4:
@@ -695,20 +741,45 @@ class Camera:
                             roi_frame = frame_arr[y : y + h, x : x + w]
                         else:
                             roi_frame = frame_arr
-                    else:
-                        roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
-                    if roi_frame is None:
-                        logger.warning("ROI frame unavailable (None)")
+
+                        frame_time = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                        filename = f"roi_{index:04d}_fid{frame_id}_{frame_time}.jpg"
+                        filepath = os.path.join(folder, filename)
+                        if is_mono:
+                            ok, buf = cv2.imencode(
+                                ".jpg",
+                                roi_frame,
+                                [cv2.IMWRITE_JPEG_QUALITY, CAMERA_SNAPSHOT_JPEG_QUALITY],
+                            )
+                            if not ok:
+                                raise RuntimeError("cv2.imencode failed")
+                            with open(filepath, "wb") as out_f:
+                                out_f.write(buf.tobytes())
+                        else:
+                            img = Image.fromarray(roi_frame)
+                            img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
+
+                        writer.writerow(
+                            [index, filename, seq, frame_id, gap_before, frame_time]
+                        )
+                        result["frames_saved"] += 1
+                        _save_delay_us = int(os.getenv("RIO_RECORD_SAVE_DELAY_US", "0") or "0")
+                        if _save_delay_us > 0:
+                            time.sleep(_save_delay_us / 1_000_000.0)
+                    except Exception as e:
+                        logger.warning(f"Failed to save ROI frame {index}: {e}")
                         continue
-                    img = Image.fromarray(roi_frame)
-                    frame_time = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                    filename = f"roi_{index:04d}_{frame_time}.jpg"
-                    filepath = os.path.join(folder, filename)
-                    img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
-                    result["frames_saved"] += 1
-                except Exception as e:
-                    logger.warning(f"Failed to save ROI frame {index}: {e}")
-                    continue
+
+            result["manifest"] = manifest_path
+            result["frames_dropped"] = int(frames_dropped)
+            try:
+                with open(manifest_path, encoding="utf-8") as mf:
+                    rows = list(csv.DictReader(mf))
+                if rows:
+                    result["frame_id_first"] = int(rows[0]["frame_id"])
+                    result["frame_id_last"] = int(rows[-1]["frame_id"])
+            except Exception:
+                pass
 
             result["ok"] = result["frames_saved"] > 0
             if not result["ok"] and result["error"] is None:
@@ -720,6 +791,11 @@ class Camera:
             if callable(end_latest):
                 try:
                     end_latest()
+                except Exception:
+                    pass
+            if callable(queue_drops_fn):
+                try:
+                    result["queue_overflow_drops"] = int(queue_drops_fn())
                 except Exception:
                     pass
 
