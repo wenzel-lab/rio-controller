@@ -19,7 +19,7 @@
       $('#btn_strobe_enable').addClass( strobe.enable ? 'btn-primary' : 'btn-secondary' );
       
       // Toggle button for Hold (Continuous Light) - shows CURRENT state
-      $('#btn_strobe_hold').html( strobe.hold ? 'ON' : 'OFF' );
+      $('#btn_strobe_hold').html( strobe.hold ? 'Continuous: ON' : 'Continuous: OFF' );
       $('#btn_strobe_hold').removeClass('btn-secondary btn-success');
       $('#btn_strobe_hold').addClass( strobe.hold ? 'btn-success' : 'btn-secondary' );
       
@@ -39,7 +39,7 @@
       // Default values if strobe data not loaded yet
       $('#btn_strobe_enable').html( 'DISABLED' );
       $('#btn_strobe_enable').removeClass('btn-primary').addClass('btn-secondary');
-      $('#btn_strobe_hold').html( 'OFF' );
+      $('#btn_strobe_hold').html( 'Continuous: OFF' );
       $('#btn_strobe_hold').removeClass('btn-success').addClass('btn-secondary');
       $('#input_strobe_period_us').val( '0' );
       $('#strobe_cam_time_us').html( '0' );
@@ -82,10 +82,14 @@
       console.error('socket is not available or socket.emit is not a function!');
       return;
     }
-    var data = { cmd: 'enable', parameters: { 'on': strobe.enable ? 0 : 1 } };
+    // Optimistic UI flip so a desynced label cannot trap the user on DISABLED
+    // while the PIC is already enabled (or the reverse).
+    var next = strobe.enable ? 0 : 1;
+    strobe.enable = next;
+    cam_update();
+    var data = { cmd: 'enable', parameters: { 'on': next } };
     console.log('Emitting strobe event:', data);
     socket.emit( 'strobe', data );
-    console.log('strobe event emitted');
   }
   function strobe_hold() {
     console.log('strobe_hold() called, socket:', socket);
@@ -93,10 +97,12 @@
       console.error('socket is not available or socket.emit is not a function!');
       return;
     }
-    var data = { cmd: 'hold', parameters: { 'on': strobe.hold ? 0 : 1 } };
+    var next = strobe.hold ? 0 : 1;
+    strobe.hold = next;
+    cam_update();
+    var data = { cmd: 'hold', parameters: { 'on': next } };
     console.log('Emitting strobe event:', data);
     socket.emit( 'strobe', data );
-    console.log('strobe event emitted');
   }
   function strobe_wait() {
     socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': ( $('#input_strobe_wait_us').val() * 1000 ), 'period_ns': strobe.period_ns } } );
@@ -194,7 +200,7 @@
         <td><button id='btn_strobe_enable', onclick="strobe_enable()", style="width: 100px"></button></td>
       </tr>
       <tr>
-        <td>Hold</td>
+        <td>Continuous</td>
         <td><p id='strobe_hold'></p></td>
         <td></td>
         <td><button id='btn_strobe_hold', onclick="strobe_hold()", style="width: 100px"></button></td>
@@ -208,10 +214,13 @@
       </tr>
 -->
       <tr>
-        <td>Period (us)</td>
+        <td>Flash width (µs)</td>
         <td><p id='strobe_period_us'></p></td>
-        <td><input type="number" id="input_strobe_period_us" min="1" max="10000"></td>
+        <td><input type="number" id="input_strobe_period_us" min="1" max="16000" title="Flash pulse width (µs). Blink rate is paced ~50–60 Hz like the old Rio UI when Continuous is OFF."></td>
         <td><button id='btn_strobe_period_us', onclick="strobe_period()", style="width: 100px">Set</button></td>
+      </tr>
+      <tr>
+        <td colspan="4"><small>Frame sync needs PIC hardware-trigger firmware (see strobe_pic/FLASH_HARDWARE_TRIGGER.md). Continuous ON = steady light. ENABLED + Continuous OFF = one flash per Daheng frame after PIC is flashed.</small></td>
       </tr>
       <tr>
         <td>Cam Read Time (us)</td>

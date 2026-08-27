@@ -64,10 +64,12 @@ SNAPSHOT_RESOLUTION_CUSTOM = "custom"  # Use custom resolution
 # Strobe Configuration
 # Use BOARD numbering to stay consistent with other GPIO users (SPI handler pins use BOARD)
 # Pin 12 (board) == BCM 18
-STROBE_DEFAULT_PERIOD_NS = 20000  # 20 microseconds
-STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds
+STROBE_DEFAULT_PERIOD_NS = 100000  # 100 microseconds (legacy PiStrobeCam default; visible free-run)
+STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds (PIC timer max ≈ 16.32 ms)
+STROBE_PIC_MAX_TIME_NS = 16320000  # firmware MAX_TIME_NS for wait/duration
 STROBE_PRE_PADDING_NS = 32  # Pre-padding before strobe pulse
-STROBE_POST_PADDING_NS = 20000000  # Post-padding after strobe pulse
+STROBE_POST_PADDING_NS = 20000000  # Post-padding after strobe pulse (legacy fps calc)
+STROBE_VISIBLE_MAX_HZ = 60  # Match old PiCamera clamp — free-run blink rate cap
 STROBE_REPLY_PAUSE_S = 0.1  # SPI reply pause time
 
 # Flow Control Configuration
@@ -240,6 +242,7 @@ CMD_SET_SNAPSHOT_RESOLUTION = "set_snapshot_resolution"
 CMD_HOLD = "hold"
 CMD_ENABLE = "enable"
 CMD_TIMING = "timing"
+CMD_TRIGGER_MODE = "trigger_mode"
 CMD_SET = "set"
 CMD_GET = "get"
 CMD_CLEAR = "clear"

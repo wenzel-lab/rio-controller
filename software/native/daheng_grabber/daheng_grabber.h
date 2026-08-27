@@ -81,6 +81,14 @@ int daheng_grabber_pop_record_mono8(
 /** Frames dropped because record queue overflowed. */
 uint64_t daheng_grabber_get_record_queue_drops(void);
 
+/**
+ * Configure opto LineOut for strobe sync (ExposureActive).
+ * line_selector: GenICam LineSelector index (default 2 = Line2; override via
+ * env RIO_DAHENG_STROBE_LINE). enabled=0 restores LineSource Off.
+ * Returns 0 on success.
+ */
+int daheng_grabber_configure_strobe_line_out(int enabled, int line_selector);
+
 #ifdef __cplusplus
 }
 #endif

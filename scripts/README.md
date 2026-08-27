@@ -12,6 +12,7 @@ This folder contains operational scripts for building, deploying, and developing
 - **`dev/`** — Development setup scripts
   - `setup-simulation.sh` — Set up development environment (mamba/conda)
   - `run-simulation.sh` — Run application in simulation mode
+  - `run-hybrid-host.sh` — Run UI on Ubuntu/CoolerMaster with local Daheng + remote Pi strobe/flow/heater
 
 - **`pi/`** — Raspberry Pi operational scripts
   - `rio-mode` — Switch between UI-only and API-only systemd services
@@ -48,6 +49,15 @@ scripts\deploy\create-pi-deployment.bat
 ```bash
 ./scripts/dev/run-simulation.sh
 ```
+
+**Run hybrid host (local Daheng camera, strobe/flow/heater on the Pi):**
+```bash
+./scripts/dev/run-hybrid-host.sh
+./scripts/dev/run-hybrid-host.sh --pi 192.168.31.61 --port 5000
+./scripts/dev/run-hybrid-host.sh --bg   # background; log /tmp/rio_hybrid_host.log
+```
+Requires `.venv-daheng`, Galaxy SDK at `~/Galaxy_camera`, and the Pi FastAPI on `:8000`.
+Sets `RIO_NO_GEVENT_PATCH=true` (required — otherwise Socket.IO starves under Daheng capture).
 
 ## Script Details
 

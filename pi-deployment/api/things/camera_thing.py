@@ -27,6 +27,7 @@ from config import (
     CMD_ENABLE,
     CMD_HOLD,
     CMD_TIMING,
+    CMD_TRIGGER_MODE,
 )
 
 if TYPE_CHECKING:
@@ -264,3 +265,24 @@ class CameraThing(lt_thing.Thing):
 
         self._camera.on_strobe({"cmd": CMD_TIMING, "parameters": params})
         return {"ok": True}
+
+    @lt_action
+    def strobe_trigger_mode(self, hardware: bool) -> dict:
+        """Select hardware (camera LineOut→PIC) vs software free-run trigger.
+
+        Args:
+            hardware: True for hardware trigger mode
+
+        Returns:
+            {"ok": True, "hardware": bool}
+        """
+        if self._camera is None:
+            raise InvocationError("Camera unavailable")
+
+        self._camera.on_strobe(
+            {
+                "cmd": CMD_TRIGGER_MODE,
+                "parameters": {"hardware": 1 if hardware else 0},
+            }
+        )
+        return {"ok": True, "hardware": bool(hardware)}

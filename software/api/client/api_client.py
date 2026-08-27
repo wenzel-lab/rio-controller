@@ -336,6 +336,10 @@ class RioClient:
             data["wait_ns"] = wait_ns
         return self._post("/api/control/strobe/timing", data=data)
 
+    def set_strobe_trigger_mode(self, hardware: bool) -> Dict[str, Any]:
+        """Enable hardware trigger (camera→PIC) or software free-run mode."""
+        return self._post("/api/control/strobe/trigger_mode", data={"hardware": bool(hardware)})
+
     def get_strobe_state(self) -> Dict[str, Any]:
         """Get current strobe state."""
         return self._get("/api/control/strobe/state")
@@ -750,6 +754,17 @@ class RioThingClient:
         try:
             camera_thing = self._get_camera_thing()
             result = camera_thing.strobe_timing(period_ns=period_ns, wait_ns=wait_ns)
+            return self._coerce_result(result)
+        except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
+            self._handle_action_error(e)
+        except Exception as e:
+            raise RioAPIError(f"API call failed: {e}") from e
+
+    def set_strobe_trigger_mode(self, hardware: bool) -> Dict[str, Any]:
+        """Enable hardware trigger (camera→PIC) or software free-run mode."""
+        try:
+            camera_thing = self._get_camera_thing()
+            result = camera_thing.strobe_trigger_mode(hardware=bool(hardware))
             return self._coerce_result(result)
         except (FailedToInvokeActionError, ServerActionError, ClientPropertyError) as e:
             self._handle_action_error(e)

@@ -167,6 +167,12 @@ class StrobeTimingRequest(BaseModel):
     wait_ns: Optional[int] = None
 
 
+class StrobeTriggerModeRequest(BaseModel):
+    """hardware=True: camera LineOut triggers PIC flash (hybrid sync)."""
+
+    hardware: bool
+
+
 class StrobeState(BaseModel):
     hold: int
     enable: int
@@ -174,6 +180,7 @@ class StrobeState(BaseModel):
     period_ns: int
     framerate: Union[int, float]
     cam_read_time_us: Union[int, float]
+    trigger_mode: Optional[int] = None
 
 
 # Pump (syringe pump)

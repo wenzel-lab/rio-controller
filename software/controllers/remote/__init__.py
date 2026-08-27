@@ -9,5 +9,12 @@ from .flow_remote import RemoteFlow
 from .heater_remote import RemoteHeater
 from .camera_remote import RemoteCamera
 from .pump_remote import RemotePumpController
+from .strobe_remote import RemoteStrobe
 
-__all__ = ["RemoteFlow", "RemoteHeater", "RemoteCamera", "RemotePumpController"]
+__all__ = [
+    "RemoteFlow",
+    "RemoteHeater",
+    "RemoteCamera",
+    "RemotePumpController",
+    "RemoteStrobe",
+]

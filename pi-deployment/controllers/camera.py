@@ -26,11 +26,14 @@ from config import (
     CAMERA_FRAME_WAIT_SLEEP_S,
     STROBE_DEFAULT_PERIOD_NS,
     STROBE_MAX_PERIOD_NS,
+    STROBE_PIC_MAX_TIME_NS,
     STROBE_PRE_PADDING_NS,
     STROBE_POST_PADDING_NS,
+    STROBE_VISIBLE_MAX_HZ,
     STROBE_REPLY_PAUSE_S,
     CAMERA_TYPE_NONE,
     CAMERA_TYPE_RPI,
+    CAMERA_TYPE_DAHENG,
     SNAPSHOT_FOLDER,
     SNAPSHOT_FILENAME_PREFIX,
     SNAPSHOT_FILENAME_SUFFIX,
@@ -52,9 +55,11 @@ from config import (
     CMD_HOLD,
     CMD_ENABLE,
     CMD_TIMING,
+    CMD_TRIGGER_MODE,
     CMD_SET,
     CMD_GET,
     CMD_CLEAR,
+    CMD_SET_EXPOSURE,
     CAMERA_RESOLUTION_PRESETS,
     CAMERA_V2_MAX_WIDTH,
     CAMERA_V2_MAX_HEIGHT,
@@ -92,7 +97,11 @@ class Camera:
     """
 
     def __init__(
-        self, exit_event: threading.Event, socketio: Any, droplet_controller: Optional[Any] = None
+        self,
+        exit_event: threading.Event,
+        socketio: Any,
+        droplet_controller: Optional[Any] = None,
+        remote_strobe_client: Optional[Any] = None,
     ) -> None:
         """
         Initialize the Camera controller.
@@ -101,6 +110,7 @@ class Camera:
             exit_event: Threading event to signal application shutdown
             socketio: Flask-SocketIO instance for WebSocket communication
             droplet_controller: Optional DropletDetectorController instance for frame feeding
+            remote_strobe_client: Optional RioClient — if set, strobe SPI runs on remote API host
         """
         logger.debug("Initializing Camera controller")
         self.exit_event = exit_event
@@ -108,10 +118,20 @@ class Camera:
         self.thread: Optional[threading.Thread] = None
         self.frame: Optional[bytes] = None
         self.droplet_controller = droplet_controller  # Optional droplet detector controller
+        self._remote_strobe = remote_strobe_client is not None
 
         # Initialize strobe-camera integration
         logger.debug("Creating PiStrobeCam instance")
         self.strobe_cam = PiStrobeCam(PORT_STROBE, STROBE_REPLY_PAUSE_S)
+        # Hybrid: local camera (e.g. Daheng on CoolerMaster) + strobe SPI on Pi via API
+        if remote_strobe_client is not None:
+            from controllers.remote import RemoteStrobe
+
+            self.strobe_cam.strobe = RemoteStrobe(remote_strobe_client)
+            logger.warning(
+                "Hybrid mode: strobe commands forwarded to remote API (%s)",
+                getattr(remote_strobe_client, "base_url", "remote"),
+            )
         # Camera is already initialized with default (rpi) in PiStrobeCam.__init__
         self.camera = self.strobe_cam.camera
 
@@ -123,12 +143,18 @@ class Camera:
             "period_ns": STROBE_DEFAULT_PERIOD_NS,
             "framerate": 0,
             "cam_read_time_us": 0,
+            "trigger_mode": 0,
         }
         self.strobe_period_ns = int(self.strobe_data["period_ns"])
+        self.strobe_framerate = 0
         self.cam_read_time_us = 0
         self.optimize_fps_btn_enabled = False
+        self.user_controls_exposure = False
 
-        # Configure strobe
+        active_type = getattr(self.strobe_cam, "_camera_type", None) or CAMERA_TYPE_RPI
+        if active_type == CAMERA_TYPE_DAHENG:
+            self.user_controls_exposure = True
+            self.strobe_cam._user_controls_exposure = True
         # Note: strobe_cam and strobe are always initialized (PiStrobeCam.__init__ raises on failure)
         try:
             valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
@@ -140,17 +166,25 @@ class Camera:
             logger.error(f"Error initializing strobe: {e}")
             self.enabled = False
 
-        # Initialize camera data
-        self.cam_data: Dict[str, Any] = {"camera": CAMERA_TYPE_RPI, "status": ""}
+        self.cam_data: Dict[str, Any] = {"camera": active_type, "status": ""}
 
         # ROI storage: dictionary with keys 'x', 'y', 'width', 'height' or None
         self.roi: Optional[Dict[str, int]] = None
         # Active ROI mode (software by default; hardware if configured and supported)
         self.roi_mode_config = ROI_MODE
         self.roi_mode_active = ROI_MODE_SOFTWARE
+        if (
+            active_type == CAMERA_TYPE_DAHENG
+            and self.camera
+            and (
+                hasattr(self.camera, "schedule_roi_hardware")
+                or hasattr(self.camera, "set_roi_hardware")
+            )
+        ):
+            self.roi_mode_config = ROI_MODE_HARDWARE
+            self.roi_mode_active = ROI_MODE_HARDWARE
+            logger.info("Daheng camera: hardware ROI enabled for live stream crop")
 
-        # Resolution settings
-        self.display_resolution: Tuple[int, int] = (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
         self.snapshot_resolution_mode: str = (
             SNAPSHOT_RESOLUTION_DISPLAY  # "display", "full", or "custom"
         )
@@ -161,9 +195,9 @@ class Camera:
 
         self.display_fps: float = float(CAMERA_DISPLAY_FPS)
 
-        # Initialize cam_data with resolution info
-        self.cam_data["display_width"] = self.display_resolution[0]
-        self.cam_data["display_height"] = self.display_resolution[1]
+        # Stream size: full sensor for Daheng, 1024×768 default for Pi/Mako
+        self.display_resolution = (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
+        self._sync_default_stream_resolution()
         self.cam_data["snapshot_resolution_mode"] = self.snapshot_resolution_mode
         self.cam_data["display_fps"] = self.display_fps
 
@@ -177,6 +211,9 @@ class Camera:
 
         # Register WebSocket event handlers
         self._register_websocket_handlers()
+        self._pending_roi_clear = False
+        if self.camera and hasattr(self.camera, "set_roi_applied_callback"):
+            self.camera.set_roi_applied_callback(self._on_hardware_roi_applied)
 
         logger.debug("Camera initialization complete")
 
@@ -199,6 +236,26 @@ class Camera:
                 return self.display_resolution
         else:
             return self.display_resolution
+
+    def _default_stream_resolution(self) -> Tuple[int, int]:
+        """Live stream baseline: full sensor for Daheng, config default for others."""
+        if self.cam_data.get("camera") == CAMERA_TYPE_DAHENG and self.camera:
+            if hasattr(self.camera, "get_max_resolution"):
+                try:
+                    w, h = self.camera.get_max_resolution()
+                    if w > 0 and h > 0:
+                        return (int(w), int(h))
+                except Exception:
+                    pass
+        return (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
+
+    def _sync_default_stream_resolution(self) -> Tuple[int, int]:
+        """Update display_resolution + cam_data from camera capabilities."""
+        res = self._default_stream_resolution()
+        self.display_resolution = res
+        self.cam_data["display_width"] = res[0]
+        self.cam_data["display_height"] = res[1]
+        return res
 
     def _handle_set_resolution(self, params: Dict[str, Any]) -> None:
         """
@@ -593,6 +650,11 @@ class Camera:
             "ok": False,
             "frames_requested": frames,
             "frames_saved": 0,
+            "frames_dropped": 0,
+            "queue_overflow_drops": 0,
+            "frame_id_first": None,
+            "frame_id_last": None,
+            "manifest": None,
             "folder": None,
             "error": None,
         }
@@ -603,22 +665,20 @@ class Camera:
         if self.camera is None:
             result["error"] = "camera unavailable"
             return result
+
+        # Hardware ROI clears self.roi (stream already cropped). Record full stream frames.
         if self.roi is None:
-            result["error"] = "roi not set"
-            return result
-
-        # Ensure camera thread is running to provide fresh frames
-        if (self.thread is None or not self.thread.is_alive()) and not self.exit_event.is_set():
-            self.initialize()
-
-        try:
-            import os
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            folder = os.path.join(SNAPSHOT_FOLDER, "recordings", timestamp)
-            os.makedirs(folder, exist_ok=True)
-            result["folder"] = folder
-
+            if hasattr(self.camera, "get_stream_size"):
+                try:
+                    sw, sh = self.camera.get_stream_size()
+                    roi_tuple = (0, 0, int(sw), int(sh))
+                except Exception:
+                    result["error"] = "roi not set"
+                    return result
+            else:
+                result["error"] = "roi not set"
+                return result
+        else:
             roi_tuple = (
                 int(self.roi["x"]),
                 int(self.roi["y"]),
@@ -626,21 +686,120 @@ class Camera:
                 int(self.roi["height"]),
             )
 
-            for index in range(frames):
-                try:
-                    roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
-                    if roi_frame is None:
-                        logger.warning("ROI frame unavailable (None)")
+        # Ensure camera thread is running to provide fresh frames
+        if (self.thread is None or not self.thread.is_alive()) and not self.exit_event.is_set():
+            self.initialize()
+
+        begin_latest = getattr(self.camera, "begin_latest_frame_capture", None)
+        end_latest = getattr(self.camera, "end_latest_frame_capture", None)
+        wait_record = getattr(self.camera, "wait_record_frame", None)
+        wait_frame = getattr(self.camera, "wait_frame_array", None)
+        queue_drops_fn = getattr(self.camera, "record_queue_drops", None)
+
+        try:
+            import csv
+            import os
+
+            import cv2
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            folder = os.path.join(SNAPSHOT_FOLDER, "recordings", timestamp)
+            os.makedirs(folder, exist_ok=True)
+            result["folder"] = folder
+            manifest_path = os.path.join(folder, "manifest.csv")
+
+            if callable(begin_latest):
+                begin_latest()
+
+            last_seq = 0
+            last_frame_id = -1
+            frames_dropped = 0
+
+            with open(manifest_path, "w", newline="", encoding="utf-8") as manifest_file:
+                writer = csv.writer(manifest_file)
+                writer.writerow(
+                    ["index", "filename", "seq", "frame_id", "gap_before", "saved_at_us"]
+                )
+
+                for index in range(frames):
+                    try:
+                        is_mono = False
+                        seq = 0
+                        frame_id = 0
+                        if callable(wait_record):
+                            frame_arr, seq, frame_id, is_mono = wait_record(
+                                timeout_s=2.0,
+                                after_seq=last_seq,
+                                after_frame_id=last_frame_id,
+                            )
+                        elif callable(wait_frame):
+                            frame_arr, seq = wait_frame(timeout_s=2.0, after_seq=last_seq)
+                            frame_id = int(getattr(self.camera, "get_frame_id", lambda: 0)())
+                        else:
+                            roi_frame = self.strobe_cam.get_frame_roi(roi_tuple)
+                            if roi_frame is None:
+                                logger.warning("ROI frame unavailable (None)")
+                                continue
+                            frame_arr = roi_frame
+                            seq = index + 1
+                            frame_id = seq
+
+                        gap_before = 0
+                        if last_frame_id >= 0 and frame_id > last_frame_id + 1:
+                            gap_before = int(frame_id - last_frame_id - 1)
+                            frames_dropped += gap_before
+                        last_seq = int(seq)
+                        last_frame_id = int(frame_id)
+
+                        x, y, w, h = roi_tuple
+                        fh, fw = frame_arr.shape[:2]
+                        if abs(fw - w) > 4 or abs(fh - h) > 4:
+                            x = max(0, min(x, max(0, fw - 1)))
+                            y = max(0, min(y, max(0, fh - 1)))
+                            w = max(1, min(w, fw - x))
+                            h = max(1, min(h, fh - y))
+                            roi_frame = frame_arr[y : y + h, x : x + w]
+                        else:
+                            roi_frame = frame_arr
+
+                        frame_time = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                        filename = f"roi_{index:04d}_fid{frame_id}_{frame_time}.jpg"
+                        filepath = os.path.join(folder, filename)
+                        if is_mono:
+                            ok, buf = cv2.imencode(
+                                ".jpg",
+                                roi_frame,
+                                [cv2.IMWRITE_JPEG_QUALITY, CAMERA_SNAPSHOT_JPEG_QUALITY],
+                            )
+                            if not ok:
+                                raise RuntimeError("cv2.imencode failed")
+                            with open(filepath, "wb") as out_f:
+                                out_f.write(buf.tobytes())
+                        else:
+                            img = Image.fromarray(roi_frame)
+                            img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
+
+                        writer.writerow(
+                            [index, filename, seq, frame_id, gap_before, frame_time]
+                        )
+                        result["frames_saved"] += 1
+                        _save_delay_us = int(os.getenv("RIO_RECORD_SAVE_DELAY_US", "0") or "0")
+                        if _save_delay_us > 0:
+                            time.sleep(_save_delay_us / 1_000_000.0)
+                    except Exception as e:
+                        logger.warning(f"Failed to save ROI frame {index}: {e}")
                         continue
-                    img = Image.fromarray(roi_frame)
-                    frame_time = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                    filename = f"roi_{index:04d}_{frame_time}.jpg"
-                    filepath = os.path.join(folder, filename)
-                    img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
-                    result["frames_saved"] += 1
-                except Exception as e:
-                    logger.warning(f"Failed to save ROI frame {index}: {e}")
-                    continue
+
+            result["manifest"] = manifest_path
+            result["frames_dropped"] = int(frames_dropped)
+            try:
+                with open(manifest_path, encoding="utf-8") as mf:
+                    rows = list(csv.DictReader(mf))
+                if rows:
+                    result["frame_id_first"] = int(rows[0]["frame_id"])
+                    result["frame_id_last"] = int(rows[-1]["frame_id"])
+            except Exception:
+                pass
 
             result["ok"] = result["frames_saved"] > 0
             if not result["ok"] and result["error"] is None:
@@ -648,6 +807,17 @@ class Camera:
         except Exception as e:
             logger.error(f"ROI recording failed: {e}")
             result["error"] = str(e)
+        finally:
+            if callable(end_latest):
+                try:
+                    end_latest()
+                except Exception:
+                    pass
+            if callable(queue_drops_fn):
+                try:
+                    result["queue_overflow_drops"] = int(queue_drops_fn())
+                except Exception:
+                    pass
 
         # Surface latest recording summary to UI/API
         self.cam_data["roi_record_last"] = result
@@ -720,15 +890,16 @@ class Camera:
                 logger.debug("Camera thread exiting early (exit event already set)")
                 return
 
-            # Camera setup using new abstraction
-            # Set display resolution
-            self.camera.set_config(
-                {
-                    "Width": self.display_resolution[0],
-                    "Height": self.display_resolution[1],
-                    "FrameRate": CAMERA_THREAD_FPS,
-                }
-            )
+            # Camera setup using display resolution (stable stream; hardware ROI crops from this)
+            # Daheng: omit FrameRate so AcquisitionFrameRate stays at device max
+            # (CAMERA_THREAD_FPS=30 would permanently cap acq_fps after ROI shrink).
+            thread_cfg = {
+                "Width": self.display_resolution[0],
+                "Height": self.display_resolution[1],
+            }
+            if getattr(self.strobe_cam, "_camera_type", None) != CAMERA_TYPE_DAHENG:
+                thread_cfg["FrameRate"] = CAMERA_THREAD_FPS
+            self.camera.set_config(thread_cfg)
             logger.debug("Starting camera...")
             self.camera.start()
             logger.info("Camera started, generating frames...")
@@ -869,12 +1040,59 @@ class Camera:
 
         logger.info(f"FPS optimization complete: read_time={cam_read_time_us}us")
 
+    def _refresh_camera_telemetry(self) -> None:
+        """Read acquisition FPS, max FPS, measured FPS, exposure from camera hardware."""
+        camera = self.strobe_cam.camera if self.strobe_cam else None
+        if camera is None:
+            self.strobe_framerate = CAMERA_THREAD_FPS
+            return
+        try:
+            # Align with Galaxy GxViewer status bar (GxViewer.cpp slotShowFrameRate):
+            #   Acq.FPS  = acquisition-thread measured FPS (GetImageAcqFps)
+            #   Disp.FPS = display/JPEG path measured FPS
+            #   SDK      = CurrentAcquisitionFrameRate (device-reported)
+            if hasattr(camera, "get_measured_framerate"):
+                acq = float(camera.get_measured_framerate())
+                self.cam_data["acq_fps"] = round(acq, 2)
+                self.strobe_framerate = max(1, int(round(acq))) if acq > 0 else CAMERA_THREAD_FPS
+            elif hasattr(camera, "get_actual_framerate"):
+                acq = float(camera.get_actual_framerate())
+                self.cam_data["acq_fps"] = round(acq, 2)
+                self.strobe_framerate = max(1, int(round(acq))) if acq > 0 else CAMERA_THREAD_FPS
+            else:
+                config_value = camera.config.get("FrameRate", CAMERA_THREAD_FPS)
+                if isinstance(config_value, (int, float)):
+                    self.strobe_framerate = int(config_value)
+                else:
+                    self.strobe_framerate = CAMERA_THREAD_FPS
+            if hasattr(camera, "get_display_framerate"):
+                self.cam_data["measured_fps"] = round(float(camera.get_display_framerate()), 2)
+            elif hasattr(camera, "get_measured_framerate"):
+                self.cam_data["measured_fps"] = round(float(camera.get_measured_framerate()), 2)
+            if hasattr(camera, "get_actual_framerate"):
+                self.cam_data["max_fps"] = round(float(camera.get_actual_framerate()), 2)
+            if hasattr(camera, "get_frame_id"):
+                self.cam_data["frame_num"] = int(camera.get_frame_id())
+            if hasattr(camera, "get_bandwidth_bps"):
+                self.cam_data["bandwidth_mbps"] = round(float(camera.get_bandwidth_bps()) / 1e6, 2)
+            pending_exposure = getattr(camera, "_pending_exposure_us", None)
+            if pending_exposure is not None:
+                self.cam_data["exposure_us"] = int(pending_exposure)
+            elif hasattr(camera, "get_actual_shutter_speed"):
+                self.cam_data["exposure_us"] = int(camera.get_actual_shutter_speed())
+            if hasattr(camera, "get_exposure_range"):
+                er = camera.get_exposure_range()
+                self.cam_data["exposure_min_us"] = er.get("min")
+                self.cam_data["exposure_max_us"] = er.get("max")
+        except (AttributeError, KeyError, ValueError, TypeError) as e:
+            logger.warning(f"Error reading camera telemetry: {e}")
+            self.strobe_framerate = CAMERA_THREAD_FPS
+
     def update(self) -> None:
         """
         Update camera read time and framerate from hardware.
 
-        Reads the current camera read time from the strobe controller and
-        updates the framerate from the camera configuration.
+        Reads strobe read time and camera acquisition rate (not just config).
         """
         try:
             valid, cam_read_time_us = self.strobe_cam.strobe.get_cam_read_time()
@@ -883,19 +1101,7 @@ class Camera:
         except Exception as e:
             logger.error(f"Error updating camera read time: {e}")
 
-        # Get framerate from camera config (new abstraction)
-        try:
-            if self.strobe_cam.camera is None:
-                self.strobe_framerate = CAMERA_THREAD_FPS
-                return
-            config_value = self.strobe_cam.camera.config.get("FrameRate", CAMERA_THREAD_FPS)
-            if isinstance(config_value, (int, float)):
-                self.strobe_framerate = int(config_value)
-            else:
-                self.strobe_framerate = CAMERA_THREAD_FPS
-        except (AttributeError, KeyError, ValueError) as e:
-            logger.warning(f"Error getting framerate from camera config: {e}")
-            self.strobe_framerate = CAMERA_THREAD_FPS
+        self._refresh_camera_telemetry()
 
     def update_strobe_data(self) -> None:
         """
@@ -908,14 +1114,171 @@ class Camera:
         if self.exit_event.is_set():
             return
 
-        # Don't update if camera thread is not running (prevents error spam)
-        if self.thread is None or not self.thread.is_alive():
+        thread_alive = self.thread is not None and self.thread.is_alive()
+        strobe_only = (
+            self.camera is None
+            or self.cam_data.get("camera") == CAMERA_TYPE_NONE
+            or getattr(self.strobe_cam, "_camera_type", None) in (None, CAMERA_TYPE_NONE)
+        )
+        # Camera thread normally drives telemetry; strobe-only (Pi API, camera=none)
+        # still needs period/enable/hold refresh for remote hybrid clients.
+        if not thread_alive and not strobe_only:
             return
 
-        self.update()
+        if thread_alive:
+            self.update()
+        else:
+            try:
+                valid, cam_read_time_us = self.strobe_cam.strobe.get_cam_read_time()
+                if valid:
+                    self.cam_read_time_us = cam_read_time_us
+            except Exception as e:
+                logger.debug("Strobe-only cam_read_time refresh failed: %s", e)
+
         self.strobe_data["cam_read_time_us"] = self.cam_read_time_us
         self.strobe_data["period_ns"] = self.strobe_period_ns
-        self.strobe_data["framerate"] = self.strobe_framerate
+        # Hybrid free-run: show blink Hz from wait+flash (legacy UI), not Daheng Acq.FPS
+        if (
+            self._remote_strobe
+            and not self.strobe_data.get("trigger_mode")
+            and int(self.strobe_data.get("wait_ns") or 0) > 1000
+        ):
+            cycle = int(self.strobe_data.get("wait_ns") or 0) + int(self.strobe_period_ns or 0)
+            self.strobe_data["framerate"] = round(1_000_000_000 / cycle, 1) if cycle > 0 else 0
+        else:
+            self.strobe_data["framerate"] = self.strobe_framerate
+        if self._remote_strobe and hasattr(self.strobe_cam.strobe, "get_state"):
+            try:
+                remote_state = self.strobe_cam.strobe.get_state()
+                # Hybrid: keep local Daheng acq FPS / read-time; Pi strobe-only
+                # reports 0 for those and must not wipe useful host telemetry.
+                for key in ("enable", "hold", "wait_ns", "period_ns", "trigger_mode"):
+                    if key in remote_state and remote_state[key] is not None:
+                        self.strobe_data[key] = remote_state[key]
+                if remote_state.get("period_ns"):
+                    self.strobe_period_ns = int(remote_state["period_ns"])
+                remote_read = remote_state.get("cam_read_time_us")
+                if remote_read:
+                    self.strobe_data["cam_read_time_us"] = int(remote_read)
+                    self.cam_read_time_us = int(remote_read)
+                remote_fps = remote_state.get("framerate")
+                if remote_fps:
+                    self.strobe_data["framerate"] = int(remote_fps)
+            except Exception as exc:
+                logger.debug("Remote strobe state refresh failed: %s", exc)
+
+    def _hybrid_paced_wait_ns(self, flash_ns: int) -> int:
+        """
+        Legacy free-run pacing (old PiStrobeCam): fill wait so flash+wait ≈ 1/fps.
+
+        That yields a ~50–60 Hz blink visible to the eye. Without this, wait stays
+        ~32 ns and the LED free-runs at kHz (looks continuous or off).
+        """
+        flash_ns = max(1, int(flash_ns))
+        total_us = max(
+            1,
+            int((flash_ns + STROBE_PRE_PADDING_NS + STROBE_POST_PADDING_NS) / 1000),
+        )
+        fps = int(1_000_000 / total_us)
+        if fps > STROBE_VISIBLE_MAX_HZ:
+            fps = STROBE_VISIBLE_MAX_HZ
+        if fps < 1:
+            fps = 1
+        # If Daheng is slower than the legacy cap, pace to measured acq rate
+        acq = int(getattr(self, "strobe_framerate", 0) or 0)
+        if 1 <= acq < fps:
+            fps = acq
+        frame_ns = int(1_000_000_000 / fps)
+        wait_ns = frame_ns - flash_ns
+        if wait_ns < STROBE_PRE_PADDING_NS:
+            wait_ns = STROBE_PRE_PADDING_NS
+        if wait_ns > STROBE_PIC_MAX_TIME_NS:
+            wait_ns = STROBE_PIC_MAX_TIME_NS
+        return int(wait_ns)
+
+    def _apply_hybrid_free_run_timing(self, flash_ns: Optional[int] = None) -> bool:
+        """Set SPI wait+flash for visible free-run (hybrid Daheng + remote strobe)."""
+        flash = int(flash_ns if flash_ns is not None else self.strobe_period_ns)
+        flash = max(1, min(flash, STROBE_MAX_PERIOD_NS))
+        wait = self._hybrid_paced_wait_ns(flash)
+        self.strobe_period_ns = flash
+        valid = self.strobe_cam.set_timing(wait, flash, STROBE_POST_PADDING_NS)
+        if valid:
+            hw_period = getattr(self.strobe_cam, "strobe_period_ns", None)
+            hw_wait = getattr(self.strobe_cam, "strobe_wait_ns", None)
+            if hw_period:
+                self.strobe_period_ns = int(hw_period)
+            if hw_wait is not None:
+                self.strobe_data["wait_ns"] = int(hw_wait)
+            self.strobe_data["period_ns"] = self.strobe_period_ns
+            cycle_ns = int(self.strobe_data.get("wait_ns", wait) or wait) + self.strobe_period_ns
+            hz = (1_000_000_000 / cycle_ns) if cycle_ns > 0 else 0
+            self.strobe_data["framerate"] = round(hz, 1)
+            logger.warning(
+                "Hybrid free-run strobe: flash=%sns wait=%sns (~%.1f Hz)",
+                self.strobe_period_ns,
+                self.strobe_data.get("wait_ns"),
+                hz,
+            )
+        else:
+            logger.warning("Hybrid free-run strobe timing failed")
+        return bool(valid)
+
+    def _prepare_hybrid_strobe_sync(self) -> None:
+        """Enable Daheng LineOut; try HW trigger; else legacy free-run pacing."""
+        if not self._remote_strobe:
+            return
+        cam = self.camera
+        if cam is not None and hasattr(cam, "configure_strobe_line_out"):
+            try:
+                ok = bool(cam.configure_strobe_line_out(True))
+                if ok:
+                    logger.warning("Daheng strobe LineOut (ExposureActive) enabled")
+                else:
+                    logger.warning("Daheng configure_strobe_line_out(True) returned False")
+            except Exception as exc:
+                logger.warning("Daheng configure_strobe_line_out failed: %s", exc)
+
+        hw_ok = False
+        strobe = self.strobe_cam.strobe
+        if hasattr(strobe, "set_trigger_mode"):
+            hw_ok = bool(strobe.set_trigger_mode(True))
+            if hw_ok:
+                self.strobe_data["trigger_mode"] = 1
+                logger.warning("Remote strobe hardware trigger mode ON")
+            else:
+                self.strobe_data["trigger_mode"] = 0
+                logger.warning(
+                    "PIC HW trigger unavailable — using legacy free-run pacing "
+                    "(~50–60 Hz visible blink; flash firmware for frame-accurate sync)"
+                )
+
+        # Always apply paced timing so Continuous-OFF blinks like the old Rio UI
+        if not hw_ok:
+            self._apply_hybrid_free_run_timing(self.strobe_period_ns)
+        else:
+            # HW trigger: short wait = pre-padding only; rate comes from camera LineOut
+            self.strobe_cam.set_timing(
+                STROBE_PRE_PADDING_NS, self.strobe_period_ns, STROBE_POST_PADDING_NS
+            )
+
+    def _teardown_hybrid_strobe_sync(self) -> None:
+        """Disable hybrid LineOut / hardware trigger when strobe is turned off."""
+        if not self._remote_strobe:
+            return
+        strobe = self.strobe_cam.strobe
+        if hasattr(strobe, "set_trigger_mode"):
+            try:
+                strobe.set_trigger_mode(False)
+                self.strobe_data["trigger_mode"] = 0
+            except Exception as exc:
+                logger.debug("set_trigger_mode(False) failed: %s", exc)
+        cam = self.camera
+        if cam is not None and hasattr(cam, "configure_strobe_line_out"):
+            try:
+                cam.configure_strobe_line_out(False)
+            except Exception as exc:
+                logger.debug("configure_strobe_line_out(False) failed: %s", exc)
 
     def on_strobe(self, data: Dict[str, Any]) -> None:
         """
@@ -945,9 +1308,42 @@ class Camera:
                     logger.warning(
                         f"Failed to set strobe hold to {hold_on} - check hardware connection"
                     )
+                # Leaving continuous mode: restore paced free-run so blink is visible
+                if (
+                    self._remote_strobe
+                    and hold_on == 0
+                    and self.strobe_data.get("enable")
+                    and not self.strobe_data.get("trigger_mode")
+                ):
+                    self._apply_hybrid_free_run_timing(self.strobe_period_ns)
+
+            elif cmd == CMD_TRIGGER_MODE:
+                hardware = params.get("hardware", params.get("on", 0)) != 0
+                strobe = self.strobe_cam.strobe
+                if not hasattr(strobe, "set_trigger_mode"):
+                    logger.warning("Strobe driver has no set_trigger_mode")
+                    valid = False
+                else:
+                    valid = bool(strobe.set_trigger_mode(hardware))
+                if valid:
+                    self.strobe_data["trigger_mode"] = 1 if hardware else 0
+                    logger.info(
+                        "Strobe trigger_mode set to %s",
+                        "hardware" if hardware else "software",
+                    )
+                else:
+                    logger.warning(
+                        "Failed to set strobe trigger_mode=%s — PIC may need "
+                        "hardware-trigger firmware (packet type 5)",
+                        hardware,
+                    )
 
             elif cmd == CMD_ENABLE:
                 enabled = params.get("on", 0) != 0
+                if enabled:
+                    self._prepare_hybrid_strobe_sync()
+                else:
+                    self._teardown_hybrid_strobe_sync()
                 valid = self.strobe_cam.strobe.set_enable(enabled)
                 # Always update strobe_data to match user intent (matches old implementation)
                 # This ensures UI reflects what user tried to set, even if hardware call failed
@@ -961,15 +1357,30 @@ class Camera:
 
             elif cmd == CMD_TIMING:
                 period_ns = int(params.get("period_ns", self.strobe_period_ns))
-                wait_ns = int(params.get("wait_ns", STROBE_PRE_PADDING_NS))
+                period_ns = max(1, min(period_ns, STROBE_MAX_PERIOD_NS))
                 self.strobe_period_ns = period_ns
-                # Set timing with both wait and period
-                # Note: Don't automatically enable strobe here - let user control it explicitly
-                valid = self.strobe_cam.set_timing(wait_ns, period_ns, STROBE_POST_PADDING_NS)
-                if not valid:
-                    logger.warning("Failed to set strobe timing")
+                # Hybrid (Daheng on host, strobe on Pi): pace wait like legacy PiStrobeCam
+                # so Continuous-OFF blinks at ~50–60 Hz (visible). Plain wait=32ns is not.
+                if self._remote_strobe and not self.strobe_data.get("trigger_mode"):
+                    valid = self._apply_hybrid_free_run_timing(period_ns)
                 else:
-                    logger.debug(f"Strobe timing set: period={period_ns}ns, wait={wait_ns}ns")
+                    wait_ns = int(params.get("wait_ns", STROBE_PRE_PADDING_NS))
+                    valid = self.strobe_cam.set_timing(
+                        wait_ns, period_ns, STROBE_POST_PADDING_NS
+                    )
+                    if not valid:
+                        logger.warning("Failed to set strobe timing")
+                    else:
+                        hw_period = getattr(self.strobe_cam, "strobe_period_ns", None)
+                        hw_wait = getattr(self.strobe_cam, "strobe_wait_ns", None)
+                        if hw_period:
+                            self.strobe_period_ns = int(hw_period)
+                        if hw_wait is not None:
+                            self.strobe_data["wait_ns"] = int(hw_wait)
+                        self.strobe_data["period_ns"] = self.strobe_period_ns
+                        logger.debug(
+                            f"Strobe timing set: period={self.strobe_period_ns}ns, wait={self.strobe_data.get('wait_ns')}ns"
+                        )
             else:
                 logger.warning(f"Unknown strobe command: {cmd}")
 
@@ -1011,6 +1422,8 @@ class Camera:
                 self._handle_set_resolution(data.get("parameters", {}))
             elif cmd == CMD_SET_SNAPSHOT_RESOLUTION:
                 self._handle_set_snapshot_resolution(data.get("parameters", {}))
+            elif cmd == CMD_SET_EXPOSURE:
+                self._handle_set_exposure(data.get("parameters", {}))
             else:
                 logger.warning(f"Unknown camera command: {cmd}")
 
@@ -1048,8 +1461,39 @@ class Camera:
             logger.error(f"Error processing ROI command: {e}")
             logger.debug(f"Command data: {data}")
 
+
+    def _handle_set_exposure(self, params: Dict[str, Any]) -> None:
+        """Set camera exposure in microseconds (Daheng: ExposureAuto off + ExposureTime)."""
+        exposure_us = float(params.get("exposure_us", 0))
+        prev = self.cam_data.get("exposure_us")
+        # WARNING so UI→camera feedback is visible without raising log level.
+        logger.warning(
+            "set_exposure request: %s us (prev cam_data=%s, params=%s)",
+            exposure_us,
+            prev,
+            params,
+        )
+        if exposure_us <= 0:
+            logger.warning("Invalid exposure_us: %s", exposure_us)
+            return
+        if self.camera is None:
+            logger.warning("No camera instance for exposure change")
+            return
+        try:
+            self.user_controls_exposure = True
+            if self.strobe_cam:
+                self.strobe_cam._user_controls_exposure = True
+            if hasattr(self.camera, "set_exposure_us"):
+                self.camera.set_exposure_us(exposure_us)
+            else:
+                self.camera.set_config({"ShutterSpeed": int(exposure_us)})
+            self.cam_data["exposure_us"] = int(exposure_us)
+            logger.warning("Exposure applied: %s -> %s us", prev, int(exposure_us))
+        except Exception as e:
+            logger.error("Failed to set exposure: %s", e)
+
     def _handle_roi_set(self, data: Dict[str, Any]) -> None:
-        """Handle ROI set command with validation and hardware ROI for Mako."""
+        """Handle ROI set — software preview while editing; hardware apply via Apply ROI."""
         params = data.get("parameters", {})
         roi_tuple = (
             int(params.get("x", 0)),
@@ -1057,59 +1501,176 @@ class Camera:
             int(params.get("width", 0)),
             int(params.get("height", 0)),
         )
+        apply_hardware = bool(params.get("apply_hardware", False))
+        # absolute=True: coords are full-sensor (OffsetX/OffsetY/W/H), not view-relative.
+        # Only sent by the ROI editor together with apply_hardware; software ROI
+        # consumers (droplet detection, get_frame_roi) stay view-relative.
+        absolute = bool(params.get("absolute", False)) and apply_hardware
 
-        # Validate and snap ROI if camera supports constraint validation
-        if self.camera and hasattr(self.camera, "validate_and_snap_roi"):
-            try:
-                roi_tuple = self.camera.validate_and_snap_roi(roi_tuple)
-                logger.debug("ROI validated and snapped to camera constraints")
-            except Exception as e:
-                logger.warning(f"ROI validation failed, using raw values: {e}")
+        if absolute:
+            # Absolute coords must not leak into view-relative self.roi consumers;
+            # hardware apply clears self.roi on completion anyway.
+            self.roi = None
+        else:
+            self.roi = {
+                "x": roi_tuple[0],
+                "y": roi_tuple[1],
+                "width": roi_tuple[2],
+                "height": roi_tuple[3],
+            }
 
-        self.roi = {
-            "x": roi_tuple[0],
-            "y": roi_tuple[1],
-            "width": roi_tuple[2],
-            "height": roi_tuple[3],
-        }
-
-        # Decide ROI mode
         active_mode = ROI_MODE_SOFTWARE
-        if self.roi_mode_config == ROI_MODE_HARDWARE and self.camera:
-            if hasattr(self.camera, "set_roi_hardware"):
+        new_stream_size: Optional[Tuple[int, int]] = None
+        hardware_applied = False
+        roi_scheduled = False
+        snapped_roi_dict: Optional[Dict[str, int]] = None
+        snapped_tuple = roi_tuple
+
+        if apply_hardware and self.camera:
+            try:
+                if absolute and hasattr(self.camera, "validate_and_snap_roi"):
+                    snapped_tuple = self.camera.validate_and_snap_roi(roi_tuple)
+                elif hasattr(self.camera, "snap_view_roi"):
+                    snapped_tuple = self.camera.snap_view_roi(roi_tuple)
+                snapped_roi_dict = {
+                    "x": snapped_tuple[0],
+                    "y": snapped_tuple[1],
+                    "width": snapped_tuple[2],
+                    "height": snapped_tuple[3],
+                }
+            except Exception:
+                pass
+
+        if apply_hardware and self.roi_mode_config == ROI_MODE_HARDWARE and self.camera:
+            if hasattr(self.camera, "schedule_roi_hardware"):
                 try:
-                    success = bool(self.camera.set_roi_hardware(roi_tuple))
-                    if success:
-                        active_mode = ROI_MODE_HARDWARE
+                    if absolute:
+                        self.camera.schedule_roi_hardware(snapped_tuple, absolute=True)
                     else:
-                        logger.warning(
-                            "Hardware ROI requested but camera backend did not accept ROI; "
-                            "falling back to software ROI."
-                        )
+                        self.camera.schedule_roi_hardware(snapped_tuple)
+                    active_mode = ROI_MODE_HARDWARE
+                    roi_scheduled = True
+                    new_stream_size = (snapped_tuple[2], snapped_tuple[3])
                 except Exception as e:
-                    logger.warning(
-                        f"Hardware ROI requested but failed ({e}); falling back to software ROI."
+                    logger.warning(f"Hardware ROI schedule failed ({e})")
+            elif hasattr(self.camera, "set_roi_hardware"):
+                try:
+                    applied_ok = (
+                        bool(self.camera.set_roi_hardware(snapped_tuple, absolute=True))
+                        if absolute
+                        else bool(self.camera.set_roi_hardware(snapped_tuple))
                     )
-            else:
-                # Log once per session to avoid log spam in simulation/backends without support
-                if not getattr(self, "_roi_hardware_unsupported_logged", False):
-                    logger.warning(
-                        "Hardware ROI requested but camera backend does not support set_roi_hardware; "
-                        "falling back to software ROI."
-                    )
-                    self._roi_hardware_unsupported_logged = True
+                    if applied_ok:
+                        active_mode = ROI_MODE_HARDWARE
+                        hardware_applied = True
+                        if hasattr(self.camera, "get_stream_size"):
+                            new_stream_size = self.camera.get_stream_size()
+                        else:
+                            new_stream_size = (snapped_tuple[2], snapped_tuple[3])
+                    else:
+                        logger.warning("Hardware ROI rejected; using software ROI")
+                except Exception as e:
+                    logger.warning(f"Hardware ROI failed ({e}); using software ROI")
+            elif not getattr(self, "_roi_hardware_unsupported_logged", False):
+                logger.warning("Hardware ROI not supported by backend")
+                self._roi_hardware_unsupported_logged = True
+
+        if hardware_applied and new_stream_size:
+            self.display_resolution = new_stream_size
+            self.cam_data["display_width"] = new_stream_size[0]
+            self.cam_data["display_height"] = new_stream_size[1]
+            self.roi = None
 
         self.roi_mode_active = active_mode
 
-        logger.info(
-            f"ROI set: ({self.roi['x']}, {self.roi['y']}) "
-            f"{self.roi['width']}×{self.roi['height']}"
-        )
-        if self.socketio:
-            self.socketio.emit(
-                WS_EVENT_ROI,
-                {"roi": self.roi, "mode": self.roi_mode_active},
-            )
+        if apply_hardware and hardware_applied:
+            self.update()
+
+        if self.socketio and apply_hardware:
+            payload: Dict[str, Any] = {
+                "roi": self.roi if not (roi_scheduled or hardware_applied) else None,
+                "mode": self.roi_mode_active,
+                "hardware_applied": hardware_applied,
+                "roi_scheduled": roi_scheduled,
+            }
+            if snapped_roi_dict is not None:
+                payload["snapped_roi"] = snapped_roi_dict
+            # Future crop size — only send after hardware_applied, not on roi_scheduled preview.
+            if new_stream_size and hardware_applied:
+                payload["stream_width"] = new_stream_size[0]
+                payload["stream_height"] = new_stream_size[1]
+            if self.camera and hasattr(self.camera, "get_roi_constraints"):
+                try:
+                    payload["constraints"] = self.camera.get_roi_constraints()
+                except Exception:
+                    pass
+            if self.camera and hasattr(self.camera, "is_multi_roi_enabled"):
+                try:
+                    payload["multi_roi_enabled"] = bool(self.camera.is_multi_roi_enabled())
+                except Exception:
+                    pass
+            self.socketio.emit(WS_EVENT_ROI, payload)
+            if hardware_applied:
+                self.socketio.emit(WS_EVENT_CAM, self.cam_data)
+
+    def _on_hardware_roi_applied(self, ok: bool, kind: str) -> None:
+        """Capture-thread callback after deferred ROI apply or reset."""
+        if not self.socketio:
+            return
+        if not ok:
+            self.socketio.emit(WS_EVENT_ROI, {"roi_apply_failed": True})
+            return
+
+        sw, sh = self.display_resolution
+        if self.camera and hasattr(self.camera, "get_stream_size"):
+            try:
+                sw, sh = self.camera.get_stream_size()
+            except Exception:
+                pass
+        self.display_resolution = (int(sw), int(sh))
+        self.cam_data["display_width"] = int(sw)
+        self.cam_data["display_height"] = int(sh)
+        self.roi = None
+
+        if kind == "reset" and self._pending_roi_clear:
+            self._pending_roi_clear = False
+            self.roi_mode_active = ROI_MODE_SOFTWARE
+            payload: Dict[str, Any] = {
+                "roi": None,
+                "mode": self.roi_mode_active,
+                "cleared": True,
+                "stream_width": int(sw),
+                "stream_height": int(sh),
+            }
+        else:
+            self.roi_mode_active = ROI_MODE_HARDWARE
+            payload = {
+                "roi": None,
+                "mode": self.roi_mode_active,
+                "hardware_applied": True,
+                "stream_width": int(sw),
+                "stream_height": int(sh),
+            }
+            if self.camera and hasattr(self.camera, "get_sensor_roi"):
+                try:
+                    ox, oy, aw, ah = self.camera.get_sensor_roi()
+                    payload["sensor_roi"] = {
+                        "offset_x": int(ox),
+                        "offset_y": int(oy),
+                        "width": int(aw),
+                        "height": int(ah),
+                    }
+                except Exception:
+                    pass
+
+        if self.camera and hasattr(self.camera, "get_roi_constraints"):
+            try:
+                payload["constraints"] = self.camera.get_roi_constraints()
+            except Exception:
+                pass
+        self.socketio.emit(WS_EVENT_ROI, payload)
+        self.socketio.emit(WS_EVENT_CAM, self.cam_data)
+        self.update()
 
     def _handle_roi_get(self) -> None:
         """Handle ROI get command."""
@@ -1125,29 +1686,70 @@ class Camera:
                     logger.debug(f"Could not get ROI constraints: {e}")
 
             response = {"roi": roi_data, "mode": self.roi_mode_active}
+            if self.camera and hasattr(self.camera, "get_stream_size"):
+                try:
+                    sw, sh = self.camera.get_stream_size()
+                    response["stream_width"] = sw
+                    response["stream_height"] = sh
+                except Exception as e:
+                    logger.debug(f"Could not get stream size: {e}")
             if constraints:
                 response["constraints"] = constraints
+            if self.camera and hasattr(self.camera, "is_multi_roi_enabled"):
+                try:
+                    response["multi_roi_enabled"] = bool(self.camera.is_multi_roi_enabled())
+                except Exception:
+                    pass
 
             self.socketio.emit(WS_EVENT_ROI, response)
 
     def _handle_roi_clear(self) -> None:
-        """Handle ROI clear command. Software ROI only (hardware ROI disabled for stability)."""
-        if self.roi is not None:
-            logger.info("ROI cleared")
+        """Clear ROI and restore default stream size (Galaxy: reset Width/Height/Offset)."""
+        logger.info("ROI cleared")
 
         self.roi = None
         self.roi_mode_active = ROI_MODE_SOFTWARE
-        if self.camera and hasattr(self.camera, "set_roi_hardware"):
+        restore_w, restore_h = self._sync_default_stream_resolution()
+
+        roi_reset_scheduled = False
+        if self.camera and hasattr(self.camera, "schedule_roi_reset"):
             try:
-                max_width, max_height = 0, 0
-                if hasattr(self.camera, "get_max_resolution"):
-                    max_width, max_height = self.camera.get_max_resolution()
-                if max_width and max_height:
-                    self.camera.set_roi_hardware((0, 0, max_width, max_height))
-            except Exception:
-                pass
-        if self.socketio:
-            self.socketio.emit(WS_EVENT_ROI, {"roi": None, "mode": self.roi_mode_active})
+                self.camera.schedule_roi_reset(restore_w, restore_h)
+                roi_reset_scheduled = True
+                self._pending_roi_clear = True
+            except Exception as e:
+                logger.warning("Failed to schedule camera ROI reset: %s", e)
+        elif self.camera and hasattr(self.camera, "reset_to_resolution"):
+            try:
+                self.camera.reset_to_resolution(restore_w, restore_h)
+            except Exception as e:
+                logger.warning("Failed to reset camera ROI: %s", e)
+        elif self.camera and hasattr(self.camera, "_reset_full_sensor"):
+            try:
+                self.camera._reset_full_sensor()
+            except Exception as e:
+                logger.warning("Failed to reset camera ROI: %s", e)
+
+        if self.socketio and not roi_reset_scheduled:
+            payload: Dict[str, Any] = {
+                "roi": None,
+                "mode": self.roi_mode_active,
+                "cleared": True,
+                "stream_width": restore_w,
+                "stream_height": restore_h,
+            }
+            if self.camera and hasattr(self.camera, "get_roi_constraints"):
+                try:
+                    payload["constraints"] = self.camera.get_roi_constraints()
+                except Exception:
+                    pass
+            if self.camera and hasattr(self.camera, "is_multi_roi_enabled"):
+                try:
+                    payload["multi_roi_enabled"] = bool(self.camera.is_multi_roi_enabled())
+                except Exception:
+                    pass
+            self.socketio.emit(WS_EVENT_ROI, payload)
+            self.socketio.emit(WS_EVENT_CAM, self.cam_data)
 
     def get_calibration(self) -> Dict[str, float]:
         """

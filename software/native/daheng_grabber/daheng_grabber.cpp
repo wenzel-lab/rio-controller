@@ -584,3 +584,56 @@ extern "C" uint64_t daheng_grabber_get_record_queue_drops(void) {
     std::lock_guard<std::mutex> qlock(g_queue_mu);
     return g_record_queue_dropped;
 }
+
+static int configure_strobe_line_out_on_line(int enabled, int line) {
+    // GX_ENUM_LINE_MODE_OUTPUT=1, GX_ENUM_LINE_SOURCE_EXPOSURE_ACTIVE=5, OFF=0
+    if (!TryGx([&] { return GXSetEnumValue(g_device, "LineSelector", line); })) {
+        return -2;
+    }
+    if (enabled) {
+        if (!TryGx([&] { return GXSetEnumValue(g_device, "LineMode", 1); })) {
+            return -3;
+        }
+        if (!TryGx([&] { return GXSetEnumValue(g_device, "LineSource", 5); })) {
+            return -4;
+        }
+    } else {
+        TryGx([&] { return GXSetEnumValue(g_device, "LineSource", 0); });
+    }
+    return 0;
+}
+
+extern "C" int daheng_grabber_configure_strobe_line_out(int enabled, int line_selector) {
+    std::lock_guard<std::mutex> lock(g_api_mu);
+    if (!g_device) {
+        return -1;
+    }
+    int line = line_selector;
+    if (line < 0) {
+        line = 2;  // MER2 opto Line2 is a common strobe/out pin
+        if (const char* env = std::getenv("RIO_DAHENG_STROBE_LINE")) {
+            const int v = std::atoi(env);
+            if (v >= 0) {
+                line = v;
+            }
+        }
+    }
+    const int rc = configure_strobe_line_out_on_line(enabled, line);
+    // Prefer env/explicit line; if it cannot be OUTPUT+ExposureActive, try Line2 then Line3.
+    if (rc == 0 || line_selector >= 0) {
+        return rc;
+    }
+    if (line != 2) {
+        const int rc2 = configure_strobe_line_out_on_line(enabled, 2);
+        if (rc2 == 0) {
+            return 0;
+        }
+    }
+    if (line != 3) {
+        const int rc3 = configure_strobe_line_out_on_line(enabled, 3);
+        if (rc3 == 0) {
+            return 0;
+        }
+    }
+    return rc;
+}
