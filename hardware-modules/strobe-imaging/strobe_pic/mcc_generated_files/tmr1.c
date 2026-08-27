@@ -64,8 +64,11 @@ void TMR1_Initialize(void)
 {
     //Set the Timer to the options selected in the GUI
 
-    //T1GE enabled; T1GTM disabled; T1GPOL low; T1GGO done; T1GSPM enabled; 
-    T1GCON = 0x90;
+    // T1GE enabled; T1GPOL high; T1GSPM disabled (continuous gating).
+    // TMR1 is not used to trigger the strobe (see main.c). Because the gate is
+    // RC5, TMR1 accumulates only while the trigger line is high, which makes it a
+    // direct measurement of the camera readout gap between exposures.
+    T1GCON = 0xC0;
 
     //GSS T1G_pin; 
     T1GATE = 0x00;
