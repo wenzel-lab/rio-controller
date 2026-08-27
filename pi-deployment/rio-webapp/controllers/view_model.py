@@ -184,6 +184,16 @@ class ViewModel:
                 data["display_height"] = camera.cam_data["display_height"]
             if "snapshot_resolution_mode" in camera.cam_data:
                 data["snapshot_resolution_mode"] = camera.cam_data["snapshot_resolution_mode"]
+            for key in ("acq_fps", "max_fps", "measured_fps", "frame_num", "bandwidth_mbps", "exposure_us", "exposure_min_us", "exposure_max_us"):
+                if key in camera.cam_data:
+                    data[key] = camera.cam_data[key]
+            if camera.camera and hasattr(camera.camera, "get_exposure_range"):
+                try:
+                    er = camera.camera.get_exposure_range()
+                    data["exposure_min_us"] = er.get("min")
+                    data["exposure_max_us"] = er.get("max")
+                except Exception:
+                    pass
             return data
         except Exception as e:
             logger.error(f"Error formatting camera data: {e}")

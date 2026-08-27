@@ -26,8 +26,10 @@ from config import (
     CAMERA_FRAME_WAIT_SLEEP_S,
     STROBE_DEFAULT_PERIOD_NS,
     STROBE_MAX_PERIOD_NS,
+    STROBE_PIC_MAX_TIME_NS,
     STROBE_PRE_PADDING_NS,
     STROBE_POST_PADDING_NS,
+    STROBE_VISIBLE_MAX_HZ,
     STROBE_REPLY_PAUSE_S,
     CAMERA_TYPE_NONE,
     CAMERA_TYPE_RPI,
@@ -53,6 +55,7 @@ from config import (
     CMD_HOLD,
     CMD_ENABLE,
     CMD_TIMING,
+    CMD_TRIGGER_MODE,
     CMD_SET,
     CMD_GET,
     CMD_CLEAR,
@@ -94,7 +97,11 @@ class Camera:
     """
 
     def __init__(
-        self, exit_event: threading.Event, socketio: Any, droplet_controller: Optional[Any] = None
+        self,
+        exit_event: threading.Event,
+        socketio: Any,
+        droplet_controller: Optional[Any] = None,
+        remote_strobe_client: Optional[Any] = None,
     ) -> None:
         """
         Initialize the Camera controller.
@@ -103,6 +110,7 @@ class Camera:
             exit_event: Threading event to signal application shutdown
             socketio: Flask-SocketIO instance for WebSocket communication
             droplet_controller: Optional DropletDetectorController instance for frame feeding
+            remote_strobe_client: Optional RioClient — if set, strobe SPI runs on remote API host
         """
         logger.debug("Initializing Camera controller")
         self.exit_event = exit_event
@@ -110,10 +118,20 @@ class Camera:
         self.thread: Optional[threading.Thread] = None
         self.frame: Optional[bytes] = None
         self.droplet_controller = droplet_controller  # Optional droplet detector controller
+        self._remote_strobe = remote_strobe_client is not None
 
         # Initialize strobe-camera integration
         logger.debug("Creating PiStrobeCam instance")
         self.strobe_cam = PiStrobeCam(PORT_STROBE, STROBE_REPLY_PAUSE_S)
+        # Hybrid: local camera (e.g. Daheng on CoolerMaster) + strobe SPI on Pi via API
+        if remote_strobe_client is not None:
+            from controllers.remote import RemoteStrobe
+
+            self.strobe_cam.strobe = RemoteStrobe(remote_strobe_client)
+            logger.warning(
+                "Hybrid mode: strobe commands forwarded to remote API (%s)",
+                getattr(remote_strobe_client, "base_url", "remote"),
+            )
         # Camera is already initialized with default (rpi) in PiStrobeCam.__init__
         self.camera = self.strobe_cam.camera
 
@@ -125,8 +143,10 @@ class Camera:
             "period_ns": STROBE_DEFAULT_PERIOD_NS,
             "framerate": 0,
             "cam_read_time_us": 0,
+            "trigger_mode": 0,
         }
         self.strobe_period_ns = int(self.strobe_data["period_ns"])
+        self.strobe_framerate = 0
         self.cam_read_time_us = 0
         self.optimize_fps_btn_enabled = False
         self.user_controls_exposure = False
@@ -153,17 +173,7 @@ class Camera:
         # Active ROI mode (software by default; hardware if configured and supported)
         self.roi_mode_config = ROI_MODE
         self.roi_mode_active = ROI_MODE_SOFTWARE
-        if (
-            active_type == CAMERA_TYPE_DAHENG
-            and self.camera
-            and (
-                hasattr(self.camera, "schedule_roi_hardware")
-                or hasattr(self.camera, "set_roi_hardware")
-            )
-        ):
-            self.roi_mode_config = ROI_MODE_HARDWARE
-            self.roi_mode_active = ROI_MODE_HARDWARE
-            logger.info("Daheng camera: hardware ROI enabled for live stream crop")
+        self.bind_camera_backend(self.camera)
 
         self.snapshot_resolution_mode: str = (
             SNAPSHOT_RESOLUTION_DISPLAY  # "display", "full", or "custom"
@@ -192,10 +202,34 @@ class Camera:
         # Register WebSocket event handlers
         self._register_websocket_handlers()
         self._pending_roi_clear = False
-        if self.camera and hasattr(self.camera, "set_roi_applied_callback"):
-            self.camera.set_roi_applied_callback(self._on_hardware_roi_applied)
 
         logger.debug("Camera initialization complete")
+
+    def bind_camera_backend(self, camera: Any) -> None:
+        """Point the controller at a camera backend and re-derive its ROI capabilities.
+
+        Runtime camera switches must go through here. Hybrid hosts have no camera during
+        __init__ (it is created when the UI selects one), so capabilities latched at
+        construction time would pin software ROI and leave the applied-ROI callback
+        unregistered for the whole process lifetime.
+        """
+        self.camera = camera
+        active_type = getattr(self.strobe_cam, "_camera_type", None) or CAMERA_TYPE_RPI
+        supports_hardware_roi = camera is not None and (
+            hasattr(camera, "schedule_roi_hardware") or hasattr(camera, "set_roi_hardware")
+        )
+
+        if active_type == CAMERA_TYPE_DAHENG and supports_hardware_roi:
+            if self.roi_mode_config != ROI_MODE_HARDWARE:
+                logger.info("Daheng camera: hardware ROI enabled for live stream crop")
+            self.roi_mode_config = ROI_MODE_HARDWARE
+            self.roi_mode_active = ROI_MODE_HARDWARE
+        else:
+            self.roi_mode_config = ROI_MODE
+            self.roi_mode_active = ROI_MODE_SOFTWARE
+
+        if camera is not None and hasattr(camera, "set_roi_applied_callback"):
+            camera.set_roi_applied_callback(self._on_hardware_roi_applied)
 
     def _get_snapshot_resolution(self) -> Tuple[int, int]:
         """
@@ -1094,14 +1128,185 @@ class Camera:
         if self.exit_event.is_set():
             return
 
-        # Don't update if camera thread is not running (prevents error spam)
-        if self.thread is None or not self.thread.is_alive():
+        thread_alive = self.thread is not None and self.thread.is_alive()
+        strobe_only = (
+            self.camera is None
+            or self.cam_data.get("camera") == CAMERA_TYPE_NONE
+            or getattr(self.strobe_cam, "_camera_type", None) in (None, CAMERA_TYPE_NONE)
+        )
+        # Camera thread normally drives telemetry; strobe-only (Pi API, camera=none)
+        # still needs period/enable/hold refresh for remote hybrid clients.
+        if not thread_alive and not strobe_only:
             return
 
-        self.update()
+        if thread_alive:
+            self.update()
+        else:
+            try:
+                valid, cam_read_time_us = self.strobe_cam.strobe.get_cam_read_time()
+                if valid:
+                    self.cam_read_time_us = cam_read_time_us
+            except Exception as e:
+                logger.debug("Strobe-only cam_read_time refresh failed: %s", e)
+
         self.strobe_data["cam_read_time_us"] = self.cam_read_time_us
         self.strobe_data["period_ns"] = self.strobe_period_ns
-        self.strobe_data["framerate"] = self.strobe_framerate
+        # Hybrid free-run: show blink Hz from wait+flash (legacy UI), not Daheng Acq.FPS
+        if (
+            self._remote_strobe
+            and not self.strobe_data.get("trigger_mode")
+            and int(self.strobe_data.get("wait_ns") or 0) > 1000
+        ):
+            cycle = int(self.strobe_data.get("wait_ns") or 0) + int(self.strobe_period_ns or 0)
+            self.strobe_data["framerate"] = round(1_000_000_000 / cycle, 1) if cycle > 0 else 0
+        else:
+            self.strobe_data["framerate"] = self.strobe_framerate
+        if self._remote_strobe and hasattr(self.strobe_cam.strobe, "get_state"):
+            try:
+                remote_state = self.strobe_cam.strobe.get_state()
+                # Hybrid: keep local Daheng acq FPS / read-time; Pi strobe-only
+                # reports 0 for those and must not wipe useful host telemetry.
+                for key in ("enable", "hold", "wait_ns", "period_ns", "trigger_mode"):
+                    if key in remote_state and remote_state[key] is not None:
+                        self.strobe_data[key] = remote_state[key]
+                if remote_state.get("period_ns"):
+                    self.strobe_period_ns = int(remote_state["period_ns"])
+                remote_read = remote_state.get("cam_read_time_us")
+                if remote_read:
+                    self.strobe_data["cam_read_time_us"] = int(remote_read)
+                    self.cam_read_time_us = int(remote_read)
+                remote_fps = remote_state.get("framerate")
+                if remote_fps:
+                    self.strobe_data["framerate"] = int(remote_fps)
+            except Exception as exc:
+                logger.debug("Remote strobe state refresh failed: %s", exc)
+
+    def _hybrid_paced_wait_ns(self, flash_ns: int) -> int:
+        """
+        Legacy free-run pacing (old PiStrobeCam): fill wait so flash+wait ≈ 1/fps.
+
+        That yields a ~50–60 Hz blink visible to the eye. Without this, wait stays
+        ~32 ns and the LED free-runs at kHz (looks continuous or off).
+        """
+        flash_ns = max(1, int(flash_ns))
+        total_us = max(
+            1,
+            int((flash_ns + STROBE_PRE_PADDING_NS + STROBE_POST_PADDING_NS) / 1000),
+        )
+        fps = int(1_000_000 / total_us)
+        if fps > STROBE_VISIBLE_MAX_HZ:
+            fps = STROBE_VISIBLE_MAX_HZ
+        if fps < 1:
+            fps = 1
+        # If Daheng is slower than the legacy cap, pace to measured acq rate
+        acq = int(getattr(self, "strobe_framerate", 0) or 0)
+        if 1 <= acq < fps:
+            fps = acq
+        frame_ns = int(1_000_000_000 / fps)
+        wait_ns = frame_ns - flash_ns
+        if wait_ns < STROBE_PRE_PADDING_NS:
+            wait_ns = STROBE_PRE_PADDING_NS
+        if wait_ns > STROBE_PIC_MAX_TIME_NS:
+            wait_ns = STROBE_PIC_MAX_TIME_NS
+        return int(wait_ns)
+
+    def _apply_hybrid_free_run_timing(self, flash_ns: Optional[int] = None) -> bool:
+        """Set SPI wait+flash for visible free-run (hybrid Daheng + remote strobe)."""
+        flash = int(flash_ns if flash_ns is not None else self.strobe_period_ns)
+        flash = max(1, min(flash, STROBE_MAX_PERIOD_NS))
+        wait = self._hybrid_paced_wait_ns(flash)
+        self.strobe_period_ns = flash
+        valid = self.strobe_cam.set_timing(wait, flash, STROBE_POST_PADDING_NS)
+        if valid:
+            hw_period = getattr(self.strobe_cam, "strobe_period_ns", None)
+            hw_wait = getattr(self.strobe_cam, "strobe_wait_ns", None)
+            if hw_period:
+                self.strobe_period_ns = int(hw_period)
+            if hw_wait is not None:
+                self.strobe_data["wait_ns"] = int(hw_wait)
+            self.strobe_data["period_ns"] = self.strobe_period_ns
+            cycle_ns = int(self.strobe_data.get("wait_ns", wait) or wait) + self.strobe_period_ns
+            hz = (1_000_000_000 / cycle_ns) if cycle_ns > 0 else 0
+            self.strobe_data["framerate"] = round(hz, 1)
+            logger.warning(
+                "Hybrid free-run strobe: flash=%sns wait=%sns (~%.1f Hz)",
+                self.strobe_period_ns,
+                self.strobe_data.get("wait_ns"),
+                hz,
+            )
+        else:
+            logger.warning("Hybrid free-run strobe timing failed")
+        return bool(valid)
+
+    def _prepare_hybrid_strobe_sync(self) -> None:
+        """Enable Daheng LineOut; try HW trigger; else legacy free-run pacing.
+
+        Hardware trigger needs a live camera driving ExposureActive. With camera
+        set to 'none' (or no LineOut), prefer paced free-run so Enable still
+        produces a visible blink instead of a silent HW wait for RC5 edges.
+        """
+        if not self._remote_strobe:
+            return
+        cam = self.camera
+        line_out_ok = False
+        if cam is not None and hasattr(cam, "configure_strobe_line_out"):
+            try:
+                line_out_ok = bool(cam.configure_strobe_line_out(True))
+                if line_out_ok:
+                    logger.warning("Daheng strobe LineOut (ExposureActive) enabled")
+                else:
+                    logger.warning("Daheng configure_strobe_line_out(True) returned False")
+            except Exception as exc:
+                logger.warning("Daheng configure_strobe_line_out failed: %s", exc)
+
+        want_hw = cam is not None and line_out_ok
+        hw_ok = False
+        strobe = self.strobe_cam.strobe
+        if want_hw and hasattr(strobe, "set_trigger_mode"):
+            hw_ok = bool(strobe.set_trigger_mode(True))
+            if hw_ok:
+                self.strobe_data["trigger_mode"] = 1
+                logger.warning("Remote strobe hardware trigger mode ON")
+            else:
+                self.strobe_data["trigger_mode"] = 0
+                logger.warning(
+                    "PIC HW trigger unavailable — using legacy free-run pacing "
+                    "(~50–60 Hz visible blink; flash firmware for frame-accurate sync)"
+                )
+        elif hasattr(strobe, "set_trigger_mode"):
+            # No camera / no LineOut: force software free-run
+            if strobe.set_trigger_mode(False):
+                self.strobe_data["trigger_mode"] = 0
+            logger.warning(
+                "No camera LineOut for HW sync — using free-run pacing (~50–60 Hz)"
+            )
+
+        # Always apply paced timing so Continuous-OFF blinks like the old Rio UI
+        if not hw_ok:
+            self._apply_hybrid_free_run_timing(self.strobe_period_ns)
+        else:
+            # HW trigger: short wait = pre-padding only; rate comes from camera LineOut
+            self.strobe_cam.set_timing(
+                STROBE_PRE_PADDING_NS, self.strobe_period_ns, STROBE_POST_PADDING_NS
+            )
+
+    def _teardown_hybrid_strobe_sync(self) -> None:
+        """Disable hybrid LineOut / hardware trigger when strobe is turned off."""
+        if not self._remote_strobe:
+            return
+        strobe = self.strobe_cam.strobe
+        if hasattr(strobe, "set_trigger_mode"):
+            try:
+                strobe.set_trigger_mode(False)
+                self.strobe_data["trigger_mode"] = 0
+            except Exception as exc:
+                logger.debug("set_trigger_mode(False) failed: %s", exc)
+        cam = self.camera
+        if cam is not None and hasattr(cam, "configure_strobe_line_out"):
+            try:
+                cam.configure_strobe_line_out(False)
+            except Exception as exc:
+                logger.debug("configure_strobe_line_out(False) failed: %s", exc)
 
     def on_strobe(self, data: Dict[str, Any]) -> None:
         """
@@ -1131,9 +1336,42 @@ class Camera:
                     logger.warning(
                         f"Failed to set strobe hold to {hold_on} - check hardware connection"
                     )
+                # Leaving continuous mode: restore paced free-run so blink is visible
+                if (
+                    self._remote_strobe
+                    and hold_on == 0
+                    and self.strobe_data.get("enable")
+                    and not self.strobe_data.get("trigger_mode")
+                ):
+                    self._apply_hybrid_free_run_timing(self.strobe_period_ns)
+
+            elif cmd == CMD_TRIGGER_MODE:
+                hardware = params.get("hardware", params.get("on", 0)) != 0
+                strobe = self.strobe_cam.strobe
+                if not hasattr(strobe, "set_trigger_mode"):
+                    logger.warning("Strobe driver has no set_trigger_mode")
+                    valid = False
+                else:
+                    valid = bool(strobe.set_trigger_mode(hardware))
+                if valid:
+                    self.strobe_data["trigger_mode"] = 1 if hardware else 0
+                    logger.info(
+                        "Strobe trigger_mode set to %s",
+                        "hardware" if hardware else "software",
+                    )
+                else:
+                    logger.warning(
+                        "Failed to set strobe trigger_mode=%s — PIC may need "
+                        "hardware-trigger firmware (packet type 5)",
+                        hardware,
+                    )
 
             elif cmd == CMD_ENABLE:
                 enabled = params.get("on", 0) != 0
+                if enabled:
+                    self._prepare_hybrid_strobe_sync()
+                else:
+                    self._teardown_hybrid_strobe_sync()
                 valid = self.strobe_cam.strobe.set_enable(enabled)
                 # Always update strobe_data to match user intent (matches old implementation)
                 # This ensures UI reflects what user tried to set, even if hardware call failed
@@ -1147,15 +1385,30 @@ class Camera:
 
             elif cmd == CMD_TIMING:
                 period_ns = int(params.get("period_ns", self.strobe_period_ns))
-                wait_ns = int(params.get("wait_ns", STROBE_PRE_PADDING_NS))
+                period_ns = max(1, min(period_ns, STROBE_MAX_PERIOD_NS))
                 self.strobe_period_ns = period_ns
-                # Set timing with both wait and period
-                # Note: Don't automatically enable strobe here - let user control it explicitly
-                valid = self.strobe_cam.set_timing(wait_ns, period_ns, STROBE_POST_PADDING_NS)
-                if not valid:
-                    logger.warning("Failed to set strobe timing")
+                # Hybrid (Daheng on host, strobe on Pi): pace wait like legacy PiStrobeCam
+                # so Continuous-OFF blinks at ~50–60 Hz (visible). Plain wait=32ns is not.
+                if self._remote_strobe and not self.strobe_data.get("trigger_mode"):
+                    valid = self._apply_hybrid_free_run_timing(period_ns)
                 else:
-                    logger.debug(f"Strobe timing set: period={period_ns}ns, wait={wait_ns}ns")
+                    wait_ns = int(params.get("wait_ns", STROBE_PRE_PADDING_NS))
+                    valid = self.strobe_cam.set_timing(
+                        wait_ns, period_ns, STROBE_POST_PADDING_NS
+                    )
+                    if not valid:
+                        logger.warning("Failed to set strobe timing")
+                    else:
+                        hw_period = getattr(self.strobe_cam, "strobe_period_ns", None)
+                        hw_wait = getattr(self.strobe_cam, "strobe_wait_ns", None)
+                        if hw_period:
+                            self.strobe_period_ns = int(hw_period)
+                        if hw_wait is not None:
+                            self.strobe_data["wait_ns"] = int(hw_wait)
+                        self.strobe_data["period_ns"] = self.strobe_period_ns
+                        logger.debug(
+                            f"Strobe timing set: period={self.strobe_period_ns}ns, wait={self.strobe_data.get('wait_ns')}ns"
+                        )
             else:
                 logger.warning(f"Unknown strobe command: {cmd}")
 

@@ -459,11 +459,11 @@
                                         <h5 class="card-title mb-2">
                                             <i class="bi bi-camera-video"></i> Camera Feed
                                         </h5>
-                                        {% if cam.camera in ['rpi', 'mako', 'daheng'] %}
-                                            {% import 'camera_pi.html' as cam_html %}
-                                        {% else %}
-                                            {% import 'camera_none.html' as cam_html %}
-                                        {% endif %}
+                                        {# Strobe/ROI JS lives in camera_pi.html. Always load it —
+                                           camera_none.html is an empty stub and would leave the
+                                           Enable/Hold buttons as dead onclick handlers when
+                                           camera is "none" (or after a page reload in that state). #}
+                                        {% import 'camera_pi.html' as cam_html %}
 
                                         <div class="camera-workspace">
                                             <div class="camera-viewport">

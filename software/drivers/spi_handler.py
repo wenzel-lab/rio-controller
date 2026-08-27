@@ -5,6 +5,11 @@ from threading import Lock
 # Check if we're in simulation mode
 SIMULATION_MODE = os.getenv("RIO_SIMULATION", "false").lower() == "true"
 
+# Hybrid hosts (local Daheng camera, strobe reached over the Pi's HTTP API) have no
+# SPI bus at all. They set RIO_SKIP_SPI and never call spi_init(), so a missing
+# spidev/RPi.GPIO must not abort the import.
+SKIP_SPI = os.getenv("RIO_SKIP_SPI", "").strip().lower() in ("1", "true", "yes", "on")
+
 if SIMULATION_MODE:
     # Use simulated SPI and GPIO
     try:
@@ -28,10 +33,18 @@ else:
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.warning(
-            f"Hardware libraries not available ({e}). Enable simulation mode with RIO_SIMULATION=true"
-        )
-        raise
+        if SKIP_SPI:
+            spidev = None  # type: ignore[assignment]
+            GPIO = None  # type: ignore[assignment,no-redef]
+            logger.warning(
+                f"Hardware libraries not available ({e}); continuing without SPI "
+                "because RIO_SKIP_SPI is set."
+            )
+        else:
+            logger.warning(
+                f"Hardware libraries not available ({e}). Enable simulation mode with RIO_SIMULATION=true"
+            )
+            raise
 
 PORT_NONE = 0
 PORT_HEATER1 = 31
@@ -79,6 +92,12 @@ def spi_init(bus, mode, speed_hz):
         logger = logging.getLogger(__name__)
         logger.info("Using simulated SPI/GPIO (simulation mode)")
     else:
+        if spidev is None or GPIO is None:
+            raise RuntimeError(
+                "spi_init() called but spidev/RPi.GPIO are unavailable. This host was "
+                "started with RIO_SKIP_SPI, so every SPI-backed module must be remote."
+            )
+
         # Use real hardware
         spi = spidev.SpiDev()
         spi.open(bus, 0)

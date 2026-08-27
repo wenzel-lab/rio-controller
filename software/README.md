@@ -144,6 +144,7 @@ The repository includes **3 requirements files** for different deployment scenar
    ROI modes: default is software ROI; set `RIO_ROI_MODE=hardware` to request hardware ROI when the active camera backend supports it (falls back to software if not).
    Daheng on Ubuntu host: set `RIO_CAMERA_TYPE=daheng`; optional `RIO_DAHENG_CPP=1` for the native grabber (see [`drivers/camera/README.md`](drivers/camera/README.md)).
    Hybrid UI: set `RIO_REMOTE_MODULES=flow,heater,pump,camera` and `RIO_REMOTE_API_URL=http://raspberrypi.local:8000` to use API-backed modules.
+   CoolerMaster + Daheng + Pi strobe: use [`../scripts/dev/run-hybrid-host.sh`](../scripts/dev/run-hybrid-host.sh) (`RIO_NO_GEVENT_PATCH`, `RIO_SKIP_SPI`, remote `strobe,flow,heater`).
 
 3. **Access the web interface**:
    - Open your browser to `http://localhost:5000` (or your specified port)

@@ -31,6 +31,10 @@
       // Update info displays
       $('#strobe_cam_time_us').html( strobe.cam_read_time_us || '0' );
       $('#strobe_framerate').html( strobe.framerate || '0' );
+      if (cam && cam.acq_fps != null) $('#cam_acq_fps').html( cam.acq_fps );
+      if (cam && cam.max_fps != null) $('#cam_max_fps').html( cam.max_fps );
+      if (cam && cam.measured_fps != null) $('#cam_measured_fps').html( cam.measured_fps );
+      if (cam && cam.exposure_us != null) $('#cam_exposure_us').html( cam.exposure_us );
     } else {
       // Default values if strobe data not loaded yet
       $('#btn_strobe_enable').html( 'DISABLED' );
@@ -46,8 +50,23 @@
     var roiStatus = document.getElementById('roi_record_status');
     if (roiStatus && cam && cam.roi_record_last) {
       if (cam.roi_record_last.ok) {
-        roiStatus.textContent = 'Saved ' + cam.roi_record_last.frames_saved + ' / ' +
-          cam.roi_record_last.frames_requested + ' to ' + cam.roi_record_last.folder;
+        var r = cam.roi_record_last;
+        var msg = 'Saved ' + r.frames_saved + ' / ' + r.frames_requested + ' to ' + r.folder;
+        if (r.frame_id_first != null && r.frame_id_last != null) {
+          msg += ' · frame_id ' + r.frame_id_first + '–' + r.frame_id_last;
+        }
+        if (r.frames_dropped != null && r.frames_dropped > 0) {
+          msg += ' · dropped ' + r.frames_dropped;
+        } else if (r.frames_saved > 0) {
+          msg += ' · no gaps';
+        }
+        if (r.queue_overflow_drops != null && r.queue_overflow_drops > 0) {
+          msg += ' · queue overflow ' + r.queue_overflow_drops;
+        }
+        if (r.manifest) {
+          msg += ' · manifest.csv';
+        }
+        roiStatus.textContent = msg;
       } else {
         roiStatus.textContent = 'ROI record failed: ' + (cam.roi_record_last.error || 'unknown error');
       }
@@ -175,7 +194,7 @@
         <td><button id='btn_strobe_enable', onclick="strobe_enable()", style="width: 100px"></button></td>
       </tr>
       <tr>
-        <td>Hold</td>
+        <td>Continuous</td>
         <td><p id='strobe_hold'></p></td>
         <td></td>
         <td><button id='btn_strobe_hold', onclick="strobe_hold()", style="width: 100px"></button></td>
@@ -189,10 +208,13 @@
       </tr>
 -->
       <tr>
-        <td>Period (us)</td>
+        <td>Flash width (µs)</td>
         <td><p id='strobe_period_us'></p></td>
-        <td><input type="number" id="input_strobe_period_us" min="1" max="10000"></td>
+        <td><input type="number" id="input_strobe_period_us" min="1" max="16000" title="Flash pulse width (µs). Blink rate is paced ~50–60 Hz like the old Rio UI when Continuous is OFF."></td>
         <td><button id='btn_strobe_period_us', onclick="strobe_period()", style="width: 100px">Set</button></td>
+      </tr>
+      <tr>
+        <td colspan="4"><small>Frame sync needs PIC hardware-trigger firmware (see strobe_pic/FLASH_HARDWARE_TRIGGER.md). Continuous ON = steady light. ENABLED + Continuous OFF = one flash per Daheng frame after PIC is flashed.</small></td>
       </tr>
       <tr>
         <td>Cam Read Time (us)</td>
@@ -201,10 +223,30 @@
         <td></td>
       </tr>
     <tr>
-      <td>Framerate</td>
+      <td>Framerate (strobe)</td>
       <td><p id='strobe_framerate'></p></td>
       <td></td>
       <td><button id='btn_cam_optimize', onclick="cam_optimize()", style="width: 100px"></button></td>
+    </tr>
+    <tr>
+      <td>Acq FPS</td>
+      <td><p id='cam_acq_fps'>—</p></td>
+      <td colspan="2"><small>CurrentAcquisitionFrameRate (SDK)</small></td>
+    </tr>
+    <tr>
+      <td>Max FPS</td>
+      <td><p id='cam_max_fps'>—</p></td>
+      <td colspan="2"></td>
+    </tr>
+    <tr>
+      <td>Measured FPS</td>
+      <td><p id='cam_measured_fps'>—</p></td>
+      <td colspan="2"><small>Stream throughput (~1s window)</small></td>
+    </tr>
+    <tr>
+      <td>Exposure (µs)</td>
+      <td><p id='cam_exposure_us'>—</p></td>
+      <td colspan="2"></td>
     </tr>
     <tr>
       <td>Snapshot</td>

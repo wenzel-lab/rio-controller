@@ -134,16 +134,179 @@
         small, .text-muted {
             font-weight: 500; /* Make small text more readable */
         }
+        .main-content > h1 {
+            font-size: 1.45rem;
+            margin-bottom: 0.75rem !important;
+        }
+        /* Camera workspace: viewport (ROI + live feed) | controls sidebar */
+        .camera-workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) min(340px, 30vw);
+            gap: 1rem;
+            align-items: stretch;
+        }
+        @media (max-width: 1199px) {
+            .camera-workspace {
+                grid-template-columns: 1fr;
+            }
+        }
+        .camera-viewport {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: visible;
+        }
+        .roi-view-row {
+            display: flex;
+            align-items: stretch;
+            gap: 6px;
+            height: calc(100vh - 11rem);
+            min-height: 260px;
+            max-height: calc(100vh - 11rem);
+            min-width: 0;
+            overflow: visible;
+        }
+        .roi-y-slider-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: stretch;
+            width: auto;
+            min-width: 112px;
+            max-width: 112px;
+            flex-shrink: 0;
+            overflow: visible;
+            height: 100%;
+            position: relative;
+            z-index: 2;
+        }
+        .roi-y-bar-row {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 8px;
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .roi-y-slider-rail {
+            flex: 0 0 20px;
+            width: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: visible;
+        }
+        .roi-y-track-wrap {
+            position: relative;
+            width: 20px;
+            min-height: 50px;
+        }
+        .roi-y-values-col {
+            flex: 0 0 84px;
+            width: 84px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: stretch;
+            box-sizing: border-box;
+            background: #fff;
+        }
+        .roi-y-values-col input.form-control-sm {
+            width: 84px;
+            min-width: 84px;
+            font-size: 0.875rem;
+            text-align: center;
+            padding: 0.25rem 0.35rem;
+            background: #fff;
+            border: 1px solid #ced4da;
+            flex-shrink: 0;
+        }
+        .roi-y-values-col .roi-y-to-label {
+            font-size: 0.75rem;
+            color: #6c757d;
+            text-align: center;
+            line-height: 1.2;
+            user-select: none;
+            flex-shrink: 0;
+        }
+        .camera-column {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
+            align-items: stretch;
+        }
         .camera-container {
             position: relative;
-            display: block;
-            width: 100%;
-            max-width: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
         }
         #camera_image {
             display: block;
             width: 100%;
-            height: auto;
+            height: 100%;
+            object-fit: contain;
+        }
+        /* Galaxy Viewer style status bar below the camera image */
+        .camera-status-bar {
+            flex-shrink: 0;
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            padding: 2px 8px;
+            margin-top: 2px;
+            font-family: monospace;
+            font-size: 12px;
+            background: #222;
+            color: #ccc;
+            border-radius: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .camera-status-bar span { flex-shrink: 0; }
+        .roi-x-slider-container {
+            flex-shrink: 0;
+            margin-top: 8px;
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .roi-x-slider-inner {
+            position: relative;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        .roi-container-wrapper {
+            width: 100%;
+        }
+        .camera-controls-panel {
+            max-height: calc(100vh - 11rem);
+            overflow-y: auto;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        .camera-controls-panel .form-label {
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+        }
+        .camera-controls-panel .control-section {
+            padding-bottom: 0.75rem;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        .camera-controls-panel .control-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
         }
         #roi_canvas {
             position: absolute;
@@ -152,36 +315,80 @@
             pointer-events: auto;
             cursor: crosshair;
         }
-        /* ROI slider styling - vertical Y slider on left */
-        .roi-y-slider-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 300px; /* Minimum height for initial render */
-            height: auto; /* Allow height to adjust */
-        }
-        /* Custom vertical slider styling - Chrome compatibility */
+        /* ROI slider styling */
         #roi_y_range_slider {
-            min-height: 100px !important; /* Minimum height - important for Chrome */
+            min-height: 100px !important;
             width: 20px !important;
             margin: 0 auto;
             display: block;
-            position: relative; /* Ensure positioning context */
-            box-sizing: border-box; /* Include padding/border in height */
+            position: relative;
+            box-sizing: border-box;
+            flex-shrink: 0;
         }
-        /* Ensure slider is visible and has proper dimensions in Chrome */
         #roi_y_range_slider:empty {
-            min-height: 300px; /* Fallback if empty */
+            min-height: 200px;
         }
-        /* X-axis slider - matches image width */
         #roi_x_range_slider {
-            width: 100% !important; /* Will be updated dynamically to match image width */
             height: 20px !important;
+            max-width: 100%;
+            box-sizing: border-box;
+            flex-shrink: 0;
         }
         .debug-info {
             font-size: 0.85em;
             color: #6c757d;
+        }
+        /* Daheng exposure log slider (Ocean Breeze) */
+        .exposure-slider-wrap {
+            margin-top: 0.5rem;
+        }
+        .exposure-slider-wrap .form-range {
+            width: 100%;
+            height: 1.25rem;
+            padding: 0;
+            accent-color: #2196F3;
+        }
+        .exposure-slider-wrap .form-range::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+        }
+        .exposure-slider-wrap .form-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            margin-top: -5px;
+            border-radius: 50%;
+            background: #2196F3;
+            border: 2px solid #1565C0;
+            cursor: pointer;
+        }
+        .exposure-slider-wrap .form-range::-moz-range-track {
+            height: 6px;
+            border-radius: 3px;
+            background: #e0e0e0;
+        }
+        .exposure-slider-wrap .form-range::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #2196F3;
+            border: 2px solid #1565C0;
+            cursor: pointer;
+        }
+        .exposure-slider-ticks {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #6c757d;
+            margin-top: 0.15rem;
+            line-height: 1.2;
+        }
+        .exposure-live-label {
+            font-size: 0.8rem;
+            color: #1565C0;
+            font-weight: 600;
         }
     </style>
 </head>
@@ -249,7 +456,7 @@
                             <div class="col-md-12">
                                 <div class="card">
                                     <div class="card-body">
-                                        <h5 class="card-title">
+                                        <h5 class="card-title mb-2">
                                             <i class="bi bi-camera-video"></i> Camera Feed
                                         </h5>
                                         {% if cam.camera in ['rpi', 'mako', 'daheng'] %}
@@ -257,91 +464,109 @@
                                         {% else %}
                                             {% import 'camera_none.html' as cam_html %}
                                         {% endif %}
-                                        
-                                        <div class="roi-container-wrapper" style="position: relative; display: inline-block; margin-bottom: 15px; width: 100%;">
-                                            <div class="d-flex align-items-start justify-content-center">
-                                                <!-- Left side: Y-axis slider (vertical) -->
-                                                <div class="roi-y-slider-container" style="width: 50px; margin-right: 10px; padding-top: 20px; flex-shrink: 0;">
-                                                    <div id="roi_y_range_slider"></div>
-                                                    <div class="input-group input-group-sm mt-2" style="flex-direction: column;">
-                                                        <input type="number" id="roi_y_min" class="form-control form-control-sm mb-1" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" style="width: 100%;">
-                                                        <input type="number" id="roi_y_max" class="form-control form-control-sm" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0" style="width: 100%;">
-                                                    </div>
-                                                </div>
-                                                
-                                                <!-- Center: Image with ROI overlay -->
-                                                <div class="camera-container" style="flex: 1; max-width: 100%;">
-                                                    <img id="camera_image" src="{{ url_for('video') }}" alt="Camera feed" class="img-fluid">
-                                                    <!-- ROI preview canvas (read-only visual overlay) -->
-                                                </div>
-                                            </div>
-                                            
-                                            <!-- Bottom: X-axis slider (horizontal) -->
-                                            <div class="roi-x-slider-container" style="margin-top: 10px; padding-left: 60px;">
-                                                <div id="roi_x_range_slider" style="margin: 0;"></div>
-                                                <div class="input-group input-group-sm mt-2" style="justify-content: center;">
-                                                    <input type="number" id="roi_x_min" class="form-control form-control-sm" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" style="width: 80px;">
-                                                    <span class="input-group-text" style="padding: 0.25rem 0.5rem;">to</span>
-                                                    <input type="number" id="roi_x_max" class="form-control form-control-sm" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" style="width: 80px;">
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="mt-3">
-                                            <div class="card">
-                                                <div class="card-body">
-                                                    <div class="row g-3 align-items-center">
-                                                        <div class="col-md-4 mb-2">
-                                                            <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary w-100" style="height: 38px; font-weight: bold;">📸 SNAPSHOT</button>
-                                                        </div>
-                                                        <div class="col-md-4 mb-2">
-                                                            <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary w-100" style="height: 38px;">
-                                                                <span style="font-size: 1.1em;">✕</span> Clear ROI
-                                                            </button>
-                                                        </div>
-                                                        <div class="col-md-4 mb-2">
-                                                            <span id="roi_info" class="badge bg-info w-100 d-block text-center" style="font-size: 0.9em; padding: 0.5rem; font-weight: 500;">No ROI selected</span>
-                                                        </div>
-                                                    </div>
-                                                    <div class="row g-3 mt-2 align-items-center">
-                                                        <div class="col-md-4">
-                                                            <div class="input-group">
-                                                                <input type="number" id="input_roi_record_frames" class="form-control" min="1" value="50" placeholder="Frames">
-                                                                <button id="btn_roi_record" onclick="cam_record_roi()" class="btn btn-outline-primary">Record ROI</button>
+
+                                        <div class="camera-workspace">
+                                            <div class="camera-viewport">
+                                                <div class="roi-container-wrapper">
+                                                    <div class="roi-view-row">
+                                                        <div class="camera-column">
+                                                            <div class="camera-container">
+                                                                <img id="camera_image" src="{{ url_for('video') }}" alt="Camera feed">
+                                                            </div>
+                                                            <div id="camera_status_bar" class="camera-status-bar">
+                                                                <span id="sb_cursor">(--, --)</span>
+                                                                <span id="sb_pixel">Mono: --</span>
+                                                                <span id="sb_size">-- × --</span>
+                                                                <span>Frame Num: <span id="sb_frame_num">--</span></span>
+                                                                <span>Acq FPS: <span id="sb_acq_fps">--</span></span>
+                                                                <span>Bandwidth: <span id="sb_bandwidth">--</span> Mbps</span>
+                                                            </div>
+                                                            <div class="roi-x-slider-container">
+                                                                <div id="roi_x_slider_inner" class="roi-x-slider-inner">
+                                                                    <div id="roi_x_range_slider"></div>
+                                                                </div>
+                                                                <div class="input-group input-group-sm mt-2" style="justify-content: center;">
+                                                                    <input type="number" id="roi_x_min" class="form-control form-control-sm" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" style="width: 80px;">
+                                                                    <span class="input-group-text" style="padding: 0.25rem 0.5rem;">to</span>
+                                                                    <input type="number" id="roi_x_max" class="form-control form-control-sm" min="0" max="{% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %}" value="0" style="width: 80px;">
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                        <div class="col-md-8">
-                                                            <small id="roi_record_status" class="text-muted d-block">Ready to record ROI frames.</small>
-                                                        </div>
-                                                    </div>
-                                                    <div class="row g-3">
-                                                        <div class="col-md-4">
-                                                            <label class="form-label">Strobe Illumination</label>
-                                                            <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-secondary w-100" style="height: 38px; font-weight: bold;">DISABLED</button>
-                                                        </div>
-                                                        <div class="col-md-4">
-                                                            <label class="form-label">Strobe Duration (μs)</label>
-                                                            <div class="input-group">
-                                                                <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000" placeholder="Period">
-                                                                <button id="btn_strobe_period_us" onclick="strobe_period()" class="btn btn-outline-primary">Set</button>
+                                                        <div class="roi-y-slider-container">
+                                                            <div class="roi-y-bar-row">
+                                                                <div class="roi-y-slider-rail">
+                                                                    <div class="roi-y-track-wrap">
+                                                                        <div id="roi_y_range_slider"></div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="roi-y-values-col">
+                                                                    <input type="number" id="roi_y_min" class="form-control form-control-sm" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
+                                                                    <span class="roi-y-to-label">to</span>
+                                                                    <input type="number" id="roi_y_max" class="form-control form-control-sm" min="0" max="{% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %}" value="0">
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                        <div class="col-md-4">
-                                                            <label class="form-label">Continuous Light</label>
-                                                            <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary w-100" style="height: 38px; font-weight: bold;">OFF</button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="row g-3 mt-2">
-                                                        <div class="col-md-6">
-                                                            <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success w-100" style="height: 38px;">Optimise</button>
-                                                        </div>
-                                                        <div class="col-md-6">
-                                                            <small class="text-muted d-block">Cam Read: <span id="strobe_cam_time_us"></span> μs</small>
-                                                            <small class="text-muted d-block">FPS: <span id="strobe_framerate"></span></small>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            <aside class="camera-controls-panel">
+                                                <div class="control-section">
+                                                    <div class="d-grid gap-2">
+                                                        <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary" style="font-weight: bold;">📸 Snapshot</button>
+                                                        <button id="btn_roi_apply" onclick="applyROI()" class="btn btn-success">Apply ROI</button>
+                                                        <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary">✕ Clear ROI</button>
+                                                        <span id="roi_info" class="badge bg-info text-center" style="font-size: 0.85em; padding: 0.45rem;">No ROI selected</span>
+                                                        <small id="roi_warning" class="text-warning d-none w-100 mt-1"></small>
+                                                    </div>
+                                                </div>
+                                                <div class="control-section">
+                                                    <label class="form-label">Record ROI</label>
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="number" id="input_roi_record_frames" class="form-control" min="1" value="50" placeholder="Frames">
+                                                        <button id="btn_roi_record" onclick="cam_record_roi()" class="btn btn-outline-primary">Record</button>
+                                                    </div>
+                                                    <small id="roi_record_status" class="text-muted d-block mt-1">Ready to record ROI frames.</small>
+                                                </div>
+                                                <div class="control-section">
+                                                    <label class="form-label">Strobe</label>
+                                                    <div class="d-grid gap-2">
+                                                        <button id="btn_strobe_enable" onclick="strobe_enable()" class="btn btn-secondary btn-sm" style="font-weight: bold;">DISABLED</button>
+                                                        <div class="input-group input-group-sm">
+                                                            <input type="number" id="input_strobe_period_us" class="form-control" min="1" max="10000" placeholder="Period µs">
+                                                            <button id="btn_strobe_period_us" onclick="strobe_period()" class="btn btn-outline-primary">Set</button>
+                                                        </div>
+                                                        <button id="btn_strobe_hold" onclick="strobe_hold()" class="btn btn-secondary btn-sm" style="font-weight: bold;">Continuous: OFF</button>
+                                                    </div>
+                                                </div>
+                                                <div class="control-section">
+                                                    <button id="btn_cam_optimize" onclick="cam_optimize()" class="btn btn-success btn-sm w-100 mb-2">Optimise FPS</button>
+                                                    <small class="text-muted d-block">Cam read: <span id="strobe_cam_time_us">—</span> µs</small>
+                                                    <small class="text-muted d-block">Strobe FPS: <span id="strobe_framerate">—</span></small>
+                                                    <small class="text-muted d-block">Acq.FPS: <span id="cam_acq_fps">—</span> · Disp.FPS: <span id="cam_measured_fps">—</span> · SDK: <span id="cam_max_fps">—</span></small>
+                                                    <small class="text-muted d-block">Exposure: <span id="cam_exposure_us">{% if cam.exposure_us %}{{ cam.exposure_us }}{% else %}—{% endif %}</span> µs</small>
+                                                </div>
+                                                <div class="control-section" id="daheng_exposure_feed" style="display: {% if cam.camera == 'daheng' %}block{% else %}none{% endif %};">
+                                                    <label class="form-label mb-1">
+                                                        <strong>Exposure</strong>
+                                                        <span class="exposure-live-label" id="exposure_live_label">{% if cam.exposure_us %}{{ cam.exposure_us }} µs{% else %}—{% endif %}</span>
+                                                    </label>
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="number" id="input_exposure_us_feed" class="form-control" min="{% if cam.exposure_min_us %}{{ cam.exposure_min_us|int }}{% else %}20{% endif %}" step="1" placeholder="µs" value="{% if cam.exposure_us %}{{ cam.exposure_us }}{% endif %}" title="Exposure time in microseconds">
+                                                        <span class="input-group-text">µs</span>
+                                                        <button type="button" class="btn btn-primary" onclick="cam_set_exposure()">Set</button>
+                                                    </div>
+                                                    <div class="exposure-slider-wrap">
+                                                        <input type="range" id="slider_exposure_us_feed" class="form-range" min="0" max="1000" step="1" value="0" aria-label="Exposure (log scale)">
+                                                        <div class="exposure-slider-ticks">
+                                                            <span id="exposure_tick_min">—</span>
+                                                            <span id="exposure_tick_mid">log scale</span>
+                                                            <span id="exposure_tick_max">—</span>
+                                                        </div>
+                                                    </div>
+                                                    <small class="text-muted d-block mt-1">Range: <span id="exposure_range_label_feed">{% if cam.exposure_min_us and cam.exposure_max_us %}{{ cam.exposure_min_us }} – {{ cam.exposure_max_us }} µs{% else %}—{% endif %}</span> · drag or type</small>
+                                                </div>
+                                            </aside>
                                         </div>
                                     </div>
                                 </div>
@@ -377,6 +602,7 @@
                                                 <option value="800x600"{% if cam.display_width == 800 and cam.display_height == 600 %} selected{%endif%}>800 × 600</option>
                                                 <option value="1024x768"{% if cam.display_width == 1024 and cam.display_height == 768 %} selected{%endif%}>1024 × 768 (Default)</option>
                                                 <option value="1280x960"{% if cam.display_width == 1280 and cam.display_height == 960 %} selected{%endif%}>1280 × 960</option>
+                                                <option value="1440x1080"{% if cam.display_width == 1440 and cam.display_height == 1080 %} selected{%endif%}>1440 × 1080 (Daheng MER2 Full)</option>
                                                 <option value="1920x1080"{% if cam.display_width == 1920 and cam.display_height == 1080 %} selected{%endif%}>1920 × 1080 (High Quality)</option>
                                             </select>
                                             <small class="form-text text-muted">
@@ -717,7 +943,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- ROI Selector - Range slider-based (dual handles for min/max) -->
-    <script src="{{ url_for('static', filename='roi_selector_range.js') }}"></script>
+    <script src="{{ url_for('static', filename='roi_selector_range.js') }}?v=20260715b"></script>
+    <!-- Camera status bar: cursor position + pixel value hover readout -->
+    <script src="{{ url_for('static', filename='stream_stats.js') }}?v=20260715a"></script>
     <script src="{{ url_for('static', filename='droplet_histogram.js') }}"></script>
     
     <script type="text/javascript">
@@ -794,8 +1022,8 @@
             const maxWidth = {% if cam.display_width %}{{cam.display_width}}{% else %}1920{% endif %};
             const maxHeight = {% if cam.display_height %}{{cam.display_height}}{% else %}1080{% endif %};
             
-            // Wait for jQuery UI to be loaded
-            if (typeof $.fn.slider === 'undefined') {
+            // Wait for jQuery (DOM helpers) to be loaded
+            if (typeof $ === 'undefined') {
                 setTimeout(initROISelectorRange, 100);
                 return;
             }
@@ -815,6 +1043,13 @@
             setTimeout(initROISelectorRange, 500);
         }
         
+        function applyROI() {
+            if (roiSelectorRange) {
+                roiSelectorRange.applyHardwareROI();
+            }
+        }
+        window.applyROI = applyROI;
+
         // Clear ROI function (for button)
         function clearROI() {
             if (roiSelectorRange) {
@@ -995,6 +1230,7 @@
             pump_update_fields();
             
             socket.on('connect', function() {
+            syncDahengExposureUI();
                 console.log('✅ WebSocket connected! Socket.connected:', socket.connected);
                 // Try to flush any queued events
                 console.log('SendBuffer length:', socket.sendBuffer.length);
@@ -1072,7 +1308,146 @@
             });
         });
         
-        // Control functions
+        // Control functions — Daheng exposure (number + log slider)
+        var exposureInputDirty = false;
+        var exposureSliderDragging = false;
+        var exposureProgrammatic = false;  // ignore synthetic input/change from .val()
+        var exposureMinUs = {% if cam.exposure_min_us %}{{ cam.exposure_min_us }}{% else %}20{% endif %};
+        var exposureMaxUs = {% if cam.exposure_max_us %}{{ cam.exposure_max_us }}{% else %}1000000{% endif %};
+        var exposureEmitTimer = null;
+        var lastEmittedExposureUs = null;
+        var EXPOSURE_SLIDER_STEPS = 1000;
+        var EXPOSURE_EMIT_MS = 120;
+
+        function isDahengActive() {
+            return ($('#select_camera').val() === 'daheng') || ($('#cam_type').text().trim() === 'daheng');
+        }
+        function syncDahengExposureUI() {
+            var show = isDahengActive();
+            $('#daheng_exposure_feed').css('display', show ? 'block' : 'none');
+        }
+        function formatExposureUs(us) {
+            us = Number(us);
+            if (!isFinite(us)) return '—';
+            if (us >= 1000) {
+                var ms = us / 1000;
+                return (ms >= 100 ? Math.round(ms) : (ms >= 10 ? ms.toFixed(1) : ms.toFixed(2))) + ' ms';
+            }
+            return Math.round(us) + ' µs';
+        }
+        function clampExposureUs(us) {
+            us = Number(us);
+            if (!isFinite(us) || us <= 0) return exposureMinUs;
+            return Math.max(exposureMinUs, Math.min(exposureMaxUs, us));
+        }
+        function exposureUsToSlider(us) {
+            us = clampExposureUs(us);
+            var lo = Math.max(1e-6, exposureMinUs);
+            var hi = Math.max(lo * 1.000001, exposureMaxUs);
+            var t = Math.log(us / lo) / Math.log(hi / lo);
+            return Math.round(Math.max(0, Math.min(1, t)) * EXPOSURE_SLIDER_STEPS);
+        }
+        function exposureSliderToUs(pos) {
+            var lo = Math.max(1e-6, exposureMinUs);
+            var hi = Math.max(lo * 1.000001, exposureMaxUs);
+            var t = Math.max(0, Math.min(EXPOSURE_SLIDER_STEPS, Number(pos))) / EXPOSURE_SLIDER_STEPS;
+            var us = lo * Math.pow(hi / lo, t);
+            return Math.round(clampExposureUs(us));
+        }
+        function updateExposureTicks() {
+            var mid = exposureSliderToUs(EXPOSURE_SLIDER_STEPS / 2);
+            $('#exposure_tick_min').text(formatExposureUs(exposureMinUs));
+            $('#exposure_tick_mid').text(formatExposureUs(mid));
+            $('#exposure_tick_max').text(formatExposureUs(exposureMaxUs));
+            var rng = Math.round(exposureMinUs) + ' – ' + Math.round(exposureMaxUs) + ' µs'
+                + ' (' + formatExposureUs(exposureMinUs) + ' – ' + formatExposureUs(exposureMaxUs) + ')';
+            $('#exposure_range_label_feed').text(rng);
+            $('#input_exposure_us_feed').attr('min', Math.round(exposureMinUs)).attr('max', Math.round(exposureMaxUs));
+        }
+        function setExposureControls(us, opts) {
+            opts = opts || {};
+            us = clampExposureUs(us);
+            exposureProgrammatic = true;
+            try {
+                if (!opts.skipInput) $('#input_exposure_us_feed').val(Math.round(us));
+                if (!opts.skipSlider) $('#slider_exposure_us_feed').val(exposureUsToSlider(us));
+                $('#exposure_live_label').text(formatExposureUs(us));
+                $('#cam_exposure_us').text(Math.round(us));
+            } finally {
+                // defer clear so any sync input/change from .val() is ignored
+                setTimeout(function() { exposureProgrammatic = false; }, 0);
+            }
+        }
+        function emitExposureUs(us, immediate) {
+            if (exposureProgrammatic) return;
+            us = Math.round(clampExposureUs(us));
+            // Deduplicate — breaks cam→UI→set_exposure feedback loops
+            if (lastEmittedExposureUs != null && Math.abs(us - lastEmittedExposureUs) < 2) {
+                return;
+            }
+            var send = function() {
+                exposureEmitTimer = null;
+                lastEmittedExposureUs = us;
+                socket.emit('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
+            };
+            if (immediate) {
+                if (exposureEmitTimer) { clearTimeout(exposureEmitTimer); exposureEmitTimer = null; }
+                send();
+                return;
+            }
+            if (exposureEmitTimer) clearTimeout(exposureEmitTimer);
+            exposureEmitTimer = setTimeout(send, EXPOSURE_EMIT_MS);
+        }
+        $(function() {
+            syncDahengExposureUI();
+            updateExposureTicks();
+            var initUs = parseInt($('#input_exposure_us_feed').val(), 10);
+            if (!isNaN(initUs) && initUs > 0) setExposureControls(initUs);
+
+            $('#input_exposure_us_feed')
+                .on('focus', function() { exposureInputDirty = true; })
+                .on('blur', function() {
+                    exposureInputDirty = false;
+                    var us = parseInt($(this).val(), 10);
+                    if (!isNaN(us) && us > 0) setExposureControls(us);
+                })
+                .on('input', function() {
+                    var us = parseInt($(this).val(), 10);
+                    if (isNaN(us) || us <= 0) return;
+                    us = clampExposureUs(us);
+                    $('#slider_exposure_us_feed').val(exposureUsToSlider(us));
+                    $('#exposure_live_label').text(formatExposureUs(us));
+                })
+                .on('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        cam_set_exposure();
+                    }
+                });
+
+            $('#slider_exposure_us_feed')
+                .on('pointerdown mousedown touchstart', function() { exposureSliderDragging = true; })
+                .on('input', function() {
+                    if (exposureProgrammatic) return;
+                    exposureSliderDragging = true;
+                    var us = exposureSliderToUs($(this).val());
+                    $('#input_exposure_us_feed').val(us);
+                    $('#exposure_live_label').text(formatExposureUs(us));
+                    emitExposureUs(us, false);
+                })
+                .on('change', function() {
+                    if (exposureProgrammatic) return;
+                    var us = exposureSliderToUs($(this).val());
+                    setExposureControls(us);
+                    emitExposureUs(us, true);
+                    exposureSliderDragging = false;
+                })
+                .on('pointerup mouseup touchend', function() {
+                    // change may already have fired; ensure release clears drag lock
+                    setTimeout(function() { exposureSliderDragging = false; }, 50);
+                });
+        });
+
         function cam_select() {
             socket.emit('cam_select', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } });
         }
@@ -1083,6 +1458,14 @@
             socket.emit('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
         }
         
+        function cam_set_exposure() {
+            var us = parseInt($('#input_exposure_us_feed').val(), 10);
+            if (isNaN(us) || us <= 0) return;
+            us = clampExposureUs(us);
+            setExposureControls(us);
+            emitExposureUs(us, true);
+        }
+
         function cam_set_snapshot_resolution() {
             var mode = $('#select_snapshot_resolution').val();
             socket.emit('cam', { cmd: 'set_snapshot_resolution', parameters: { 'mode': mode } });
@@ -1090,10 +1473,56 @@
         
         // Update UI when camera data changes
         socket.on('cam', function(data) {
-            if (data.display_width && data.display_height) {
+            if (data.acq_fps != null) $('#cam_acq_fps').text(data.acq_fps);
+            if (data.max_fps != null) $('#cam_max_fps').text(data.max_fps);
+            if (data.measured_fps != null) $('#cam_measured_fps').text(data.measured_fps);
+            // Galaxy Viewer style status bar under the camera image
+            if (data.frame_num != null) $('#sb_frame_num').text(data.frame_num);
+            if (data.acq_fps != null) $('#sb_acq_fps').text(data.acq_fps);
+            if (data.bandwidth_mbps != null) $('#sb_bandwidth').text(data.bandwidth_mbps);
+            var sbImg = document.getElementById('camera_image');
+            if (sbImg && sbImg.naturalWidth > 0) {
+                $('#sb_size').text(sbImg.naturalWidth + ' × ' + sbImg.naturalHeight);
+            }
+            if (data.exposure_min_us != null && data.exposure_max_us != null) {
+                var nmin = Number(data.exposure_min_us);
+                var nmax = Number(data.exposure_max_us);
+                // Ignore tiny GenICam range jitter (AFR coupling) that makes the slider pump.
+                var minChanged = !isFinite(exposureMinUs) || Math.abs(nmin - exposureMinUs) / Math.max(1, exposureMinUs) > 0.05;
+                var maxChanged = !isFinite(exposureMaxUs) || Math.abs(nmax - exposureMaxUs) / Math.max(1, exposureMaxUs) > 0.05;
+                if (minChanged || maxChanged) {
+                    exposureMinUs = nmin;
+                    exposureMaxUs = nmax;
+                    updateExposureTicks();
+                }
+            }
+            if (data.exposure_us != null) {
+                $('#cam_exposure_us').text(data.exposure_us);
+                if (!exposureInputDirty && !exposureSliderDragging) {
+                    var cur = parseInt($('#input_exposure_us_feed').val(), 10);
+                    var next = Number(data.exposure_us);
+                    // Ignore tiny readback jitter — do not chase GenICam with set_exposure.
+                    if (!isFinite(cur) || Math.abs(next - cur) / Math.max(1, cur) > 0.08) {
+                        setExposureControls(next);
+                    } else {
+                        $('#exposure_live_label').text(formatExposureUs(next));
+                    }
+                } else {
+                    $('#exposure_live_label').text(formatExposureUs(data.exposure_us));
+                }
+            }
+            if (data.camera) {
+                $('#cam_type').text(data.camera);
+                if ($('#select_camera option[value="' + data.camera + '"]').length) {
+                    $('#select_camera').val(data.camera);
+                }
+            }
+            syncDahengExposureUI();
+                if (data.display_width && data.display_height) {
                 var resText = data.display_width + ' × ' + data.display_height;
                 $('#current_display_resolution').text(resText);
                 $('#cam_display_res').text(resText);
+                // Stream size for ROI sliders is owned by roi socket events only — not cam.
                 // Update dropdown to match (if preset exists)
                 var preset = data.display_width + 'x' + data.display_height;
                 if ($('#select_display_resolution option[value="' + preset + '"]').length > 0) {

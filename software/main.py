@@ -60,7 +60,10 @@ REMOTE_MODULES = {
     item.strip().lower() for item in os.getenv("RIO_REMOTE_MODULES", "").split(",") if item.strip()
 }
 if "all" in REMOTE_MODULES:
-    REMOTE_MODULES = {"flow", "heater", "camera", "pump", "droplet"}
+    REMOTE_MODULES = {"flow", "heater", "camera", "pump", "droplet", "strobe"}
+# Alias: RIO_REMOTE_STROBE=1 → include strobe without listing it in RIO_REMOTE_MODULES
+if os.getenv("RIO_REMOTE_STROBE", "").strip().lower() in ("1", "true", "yes", "on"):
+    REMOTE_MODULES.add("strobe")
 REMOTE_API_URL = os.getenv(
     "RIO_REMOTE_API_URL", os.getenv("RIO_FASTAPI_BASE_URL", "http://127.0.0.1:8000")
 ).rstrip("/")
@@ -81,6 +84,12 @@ if not SIMULATION_MODE and not NO_GEVENT_PATCH:
 
 # In simulation, avoid gevent patching and use threading async mode
 if SIMULATION_MODE:
+    _async_mode_default = "threading"
+
+# Without patch_all() the camera loop stays on a real OS thread, but Flask-SocketIO would
+# still auto-select gevent and drive its hub from an unpatched stdlib. Pin threading so the
+# capture thread and the socket server cannot starve each other.
+if NO_GEVENT_PATCH and not SIMULATION_MODE:
     _async_mode_default = "threading"
 
 # Standard library version lookup to avoid pkg_resources deprecation
@@ -148,6 +157,7 @@ use_remote_heater = "heater" in REMOTE_MODULES
 use_remote_camera = "camera" in REMOTE_MODULES
 use_remote_pump = "pump" in REMOTE_MODULES
 use_remote_droplet = "droplet" in REMOTE_MODULES
+use_remote_strobe = "strobe" in REMOTE_MODULES
 
 remote_client: Optional["RioClient"] = None
 if REMOTE_MODULES:
@@ -168,7 +178,18 @@ debug_data = {"update_count": 0}
 
 # Initialize hardware communication
 logger.info("Step 1: Initializing SPI communication...")
-needs_spi = not (use_remote_flow and use_remote_heater and use_remote_camera)
+# SPI is only needed for local flow/heater/strobe. Remote strobe + remote
+# flow/heater (or unused) lets CoolerMaster skip SPI while keeping local Daheng.
+local_strobe = not use_remote_strobe and not use_remote_camera
+needs_spi = (not use_remote_flow) or (not use_remote_heater) or local_strobe
+# Hybrid host with only remote strobe: allow skipping SPI via env
+if use_remote_strobe and os.getenv("RIO_SKIP_SPI", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+):
+    needs_spi = False
 if needs_spi:
     try:
         spi_init(0, 2, 30000)
@@ -253,7 +274,7 @@ if use_remote_flow:
     from controllers.remote import RemoteFlow
 
     assert remote_client is not None
-    flow: "RemoteFlow" | "FlowWeb" = RemoteFlow(remote_client)
+    flow: "RemoteFlow | FlowWeb" = RemoteFlow(remote_client)
 else:
     flow = FlowWeb(PORT_FLOW)
 
@@ -264,9 +285,13 @@ try:
         from controllers.remote import RemoteCamera
 
         assert remote_client is not None
-        cam: "RemoteCamera" | "Camera" = RemoteCamera(exit_event, socketio, remote_client)
+        cam: "RemoteCamera | Camera" = RemoteCamera(exit_event, socketio, remote_client)
     else:
-        cam = Camera(exit_event, socketio)
+        cam = Camera(
+            exit_event,
+            socketio,
+            remote_strobe_client=remote_client if use_remote_strobe else None,
+        )
     logger.info("Step 5: Camera controller initialized")
 except Exception as e:
     logger.error(f"Step 5: Camera initialization failed: {e}")

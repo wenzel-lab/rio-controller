@@ -169,6 +169,14 @@ class BaseCamera(ABC):
         """
         return float(self.config.get("FrameRate", 30))
 
+    def get_frame_id(self) -> int:
+        """Frame counter of the most recent frame; 0 when the backend does not track it."""
+        return 0
+
+    def get_bandwidth_bps(self) -> float:
+        """Camera link throughput in bytes/s; 0.0 when the backend does not report it."""
+        return 0.0
+
     def get_actual_shutter_speed(self) -> int:
         """
         Get actual shutter speed from camera hardware.
@@ -225,16 +233,19 @@ def create_camera(
     """
     import os
 
-    # Check for simulation mode first
-    if simulation or os.getenv("RIO_SIMULATION", "false").lower() == "true":
+    if camera_type is None:
+        camera_type = os.getenv("RIO_CAMERA_TYPE")
+
+    # Simulation only when no real camera type is requested (SPI can still simulate)
+    if camera_type is None and (
+        simulation or os.getenv("RIO_SIMULATION", "false").lower() == "true"
+    ):
         return _create_simulated_camera(simulation, sim_config)
 
-    # Check for specific camera type
     if camera_type == "mako":
         return _create_mako_camera()
     if camera_type == "daheng":
         return _create_daheng_camera()
-    # Auto-detect based on platform
     return _create_pi_camera()
 
 
@@ -274,7 +285,20 @@ def _create_mako_camera() -> BaseCamera:
 
 
 def _create_daheng_camera() -> BaseCamera:
-    """Create Daheng camera instance."""
+    """Create Daheng camera instance (gxipy, or native grabber if RIO_DAHENG_CPP=1)."""
+    import os
+
+    use_cpp = os.getenv("RIO_DAHENG_CPP", "").strip().lower() in ("1", "true", "yes", "on")
+    if use_cpp:
+        try:
+            from .daheng_cpp_camera import DahengCppCamera
+
+            return DahengCppCamera()
+        except Exception as e:
+            raise RuntimeError(
+                f"RIO_DAHENG_CPP=1 but native grabber failed: {e}. "
+                "Build software/native/daheng_grabber (libdaheng_grabber.so)."
+            ) from e
     try:
         from .daheng_camera import DahengCamera
 

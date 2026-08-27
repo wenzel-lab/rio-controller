@@ -45,6 +45,7 @@ from api.schemas import (
     CameraState,
     StrobeEnableRequest,
     StrobeTimingRequest,
+    StrobeTriggerModeRequest,
     StrobeState,
     PumpSetFlowRequest,
     PumpSetDiameterRequest,
@@ -96,6 +97,7 @@ from config import (  # noqa: E402
     CMD_TIMING,
     CMD_ENABLE,
     CMD_HOLD,
+    CMD_TRIGGER_MODE,
 )
 
 logger = logging.getLogger("api")
@@ -108,8 +110,15 @@ class _DummySocketIO:
         logger.debug("DummySocketIO emit: args=%s kwargs=%s", args, kwargs)
 
     def on(self, event, handler=None):
-        logger.debug("DummySocketIO on: event=%s handler=%s", event, handler)
-        return handler
+        """Support both @sio.on('event') and sio.on('event', handler)."""
+
+        def decorator(fn):
+            logger.debug("DummySocketIO on: event=%s handler=%s", event, fn)
+            return fn
+
+        if handler is None:
+            return decorator
+        return decorator(handler)
 
 
 def _init_controllers() -> tuple[dict[str, bool], dict[str, Any]]:
@@ -262,8 +271,16 @@ def create_app() -> FastAPI:  # noqa: C901
             add_thing("flow", FlowThing, [CONTROLLERS["flow"]])
         if CONTROLLERS.get("heaters"):
             add_thing("heater", HeaterThing, [CONTROLLERS["heaters"]])
-        if CONTROLLERS.get("camera"):
+        # CameraThing (LabThings) can break on some FastAPI/labthings versions
+        # (BlobOutput response model). Legacy /api/control/strobe/* is enough for hybrid.
+        if CONTROLLERS.get("camera") and os.getenv(
+            "RIO_REGISTER_CAMERA_THING", "false"
+        ).lower() in ("1", "true", "yes", "on"):
             add_thing("camera", CameraThing, [CONTROLLERS["camera"]])
+        elif CONTROLLERS.get("camera"):
+            logger.info(
+                "Skipping CameraThing registration; using legacy camera/strobe HTTP routes"
+            )
         if CONTROLLERS.get("droplet"):
             add_thing("droplet", DropletThing, [CONTROLLERS["droplet"]])
         if CONTROLLERS.get("pump"):
@@ -285,7 +302,9 @@ def create_app() -> FastAPI:  # noqa: C901
                 args=[CONTROLLERS["heaters"]],
             )
 
-        if CONTROLLERS.get("camera"):
+        if CONTROLLERS.get("camera") and os.getenv(
+            "RIO_REGISTER_CAMERA_THING", "false"
+        ).lower() in ("1", "true", "yes", "on"):
             things_config["camera"] = ThingConfig(
                 cls=CameraThing,
                 args=[CONTROLLERS["camera"]],
@@ -636,6 +655,29 @@ def create_app() -> FastAPI:  # noqa: C901
             params["wait_ns"] = int(req.wait_ns)
         cam.on_strobe({"cmd": CMD_TIMING, "parameters": params})
         return {"ok": True}
+
+    @app.post("/api/control/strobe/trigger_mode")
+    def strobe_trigger_mode_legacy(req: StrobeTriggerModeRequest):
+        """Select software free-run vs hardware (camera LineOut → PIC) trigger."""
+        cam: Optional[Camera] = CONTROLLERS.get("camera")
+        if cam is None:
+            raise HTTPException(status_code=503, detail="Camera unavailable")
+        cam.on_strobe(
+            {
+                "cmd": CMD_TRIGGER_MODE,
+                "parameters": {"hardware": 1 if req.hardware else 0},
+            }
+        )
+        applied = int(cam.strobe_data.get("trigger_mode", 0) or 0) == (1 if req.hardware else 0)
+        if not applied:
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    "PIC rejected set_trigger_mode — flash hardware-trigger firmware "
+                    "(main_hardware_trigger.c) for camera→strobe sync"
+                ),
+            )
+        return {"ok": True, "hardware": bool(req.hardware)}
 
     @app.get("/api/control/strobe/state", response_model=StrobeState)
     def strobe_state_legacy() -> StrobeState:

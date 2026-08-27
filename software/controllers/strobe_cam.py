@@ -125,6 +125,17 @@ class PiStrobeCam:
             True if camera was created successfully, False otherwise
         """
         try:
+            # Idempotent: re-selecting the same live camera must not close/reopen.
+            # Daheng/Galaxy returns "device already opened" if close_device was skipped
+            # or the SDK has not released the handle yet.
+            if (
+                camera_type != "none"
+                and self.camera is not None
+                and getattr(self, "_camera_type", None) == camera_type
+            ):
+                logger.info("Camera type already %s — keeping existing instance", camera_type)
+                return True
+
             # Close existing camera if any
             if self.camera:
                 try:
@@ -132,6 +143,10 @@ class PiStrobeCam:
                 except Exception:
                     pass
                 self.camera = None
+                # Give Galaxy/USB a beat to release before reopen
+                import time
+
+                time.sleep(0.4)
 
             if camera_type == "none":
                 self._camera_type = None
@@ -203,16 +218,22 @@ class PiStrobeCam:
             True if timing was set successfully, False otherwise
         """
         try:
-            # Calculate initial camera timing
-            framerate, shutter_speed_us = self._calculate_camera_timing(
-                strobe_period_ns, pre_padding_ns, post_padding_ns
-            )
-
-            # Daheng / manual exposure: ExposureTime via Galaxy SDK, not PIC-paced strobe sum
-            if self._user_controls_exposure or self._camera_type == "daheng":
+            # Strobe-only (no camera / camera=none), Daheng, or manual exposure:
+            # set SPI timing only — do not require a live camera config.
+            if (
+                self.camera is None
+                or self._camera_type in (None, "none")
+                or self._user_controls_exposure
+                or self._camera_type == "daheng"
+            ):
                 if not self._set_strobe_timing(pre_padding_ns, strobe_period_ns):
                     return False
                 return True
+
+            # Calculate initial camera timing (PIC-paced: Pi + Mako)
+            framerate, shutter_speed_us = self._calculate_camera_timing(
+                strobe_period_ns, pre_padding_ns, post_padding_ns
+            )
 
             # Update camera configuration first (PIC-paced: Pi + Mako)
             if not self._update_camera_config(framerate, shutter_speed_us):
