@@ -7,6 +7,13 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+# MPLAB X firmware artifacts under hardware-modules (same patterns; were
+# historically force-added — do not re-add strobe_pic/build or strobe_pic/dist,
+# especially the stale production .hex that caused a v1 reflash).
+hardware-modules/**/build/
+hardware-modules/**/dist/
+*.production.hex
+*.debug.hex
 downloads/
 eggs/
 .eggs/

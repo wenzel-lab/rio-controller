@@ -124,9 +124,23 @@ void set_strobe_enable( uint8_t enable )
     
     if ( trigger_mode == 0 )
     {
-        /* Software trigger mode (original behavior) */
-        T2CONbits.T2ON = enable;
-        T4CONbits.T4ON = 1;
+        /* Software free-run: CLC clock-gates at match — re-arm TMR2/TMR4 each cycle */
+        if ( enable )
+        {
+            T2CONbits.T2ON = 0;
+            T4CONbits.T4ON = 0;
+            TMR2 = 0;
+            TMR4 = 0;
+            PIR4bits.TMR2IF = 0;
+            PIR4bits.TMR4IF = 0;
+            T4CONbits.T4ON = 1;
+            T2CONbits.T2ON = 1;
+        }
+        else
+        {
+            T2CONbits.T2ON = 0;
+            T4CONbits.T4ON = 0;
+        }
     }
     else
     {

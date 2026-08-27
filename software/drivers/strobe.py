@@ -200,3 +200,34 @@ class PiStrobe:
             )
             return False
         return data[0] == 0
+
+    def get_diag(self):
+        """Read firmware diagnostics (packet 6, firmware v3+).
+
+        Returns:
+            dict or None: version, trigger line level, edge/trigger counters and
+            state flags. None if the firmware does not support packet 6.
+        """
+        valid, data = self.packet_query(6, [])
+        if not valid or len(data) < 9 or data[0] != 0:
+            return None
+        flags = data[8]
+        return {
+            "version": data[1],
+            "trig_level": data[2],
+            "edge_count": int.from_bytes(data[3:5], byteorder="little", signed=False),
+            "trigger_count": int.from_bytes(data[5:7], byteorder="little", signed=False),
+            "trigger_mode": data[7],
+            "enabled": bool(flags & 0x01),
+            "hold": bool(flags & 0x02),
+        }
+
+    def self_test(self):
+        """Run the firmware LED self-test (packet 7): 5 blinks of 250 ms.
+
+        Blocks the PIC for ~2.5 s, so it must not overlap other strobe commands.
+        """
+        valid, data = self.packet_query(7, [])
+        if not valid or len(data) == 0:
+            return False
+        return data[0] == 0
