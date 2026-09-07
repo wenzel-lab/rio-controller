@@ -116,6 +116,12 @@ export RIO_REMOTE_MODULES="${RIO_REMOTE_MODULES:-strobe,flow,heater}"
 export RIO_REMOTE_API_URL="$PI_URL"
 export RIO_FASTAPI_BASE_URL="$PI_URL"
 export RIO_LOG_LEVEL="${RIO_LOG_LEVEL:-INFO}"
+# Local Daheng on CoolerMaster (same defaults used when Enable/HW sync worked)
+export RIO_CAMERA_TYPE="${RIO_CAMERA_TYPE:-daheng}"
+export RIO_DAHENG_CPP="${RIO_DAHENG_CPP:-1}"
+export RIO_DAHENG_SN="${RIO_DAHENG_SN:-FDQ23120254}"
+# C++ grabber defaults to Line2; this rig's opto→PIC is Line3 (see probe_daheng_line3.py)
+export RIO_DAHENG_STROBE_LINE="${RIO_DAHENG_STROBE_LINE:-3}"
 
 cd "$SOFTWARE_DIR"
 
@@ -127,6 +133,7 @@ echo " Galaxy:     $GALAXY_ROOT"
 echo " UI:         http://0.0.0.0:${PORT}"
 echo " Pi API:     $PI_URL"
 echo " Remote:     $RIO_REMOTE_MODULES"
+echo " Camera:     $RIO_CAMERA_TYPE (cpp=$RIO_DAHENG_CPP sn=$RIO_DAHENG_SN line=$RIO_DAHENG_STROBE_LINE)"
 echo " Gevent:     PATCH OFF (RIO_NO_GEVENT_PATCH=true)"
 echo " SPI:        skipped (RIO_SKIP_SPI=1)"
 echo "============================================"
