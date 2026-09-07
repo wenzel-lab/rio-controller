@@ -446,9 +446,27 @@ class ROISelectorRange {
     }
 
     _snapToIncrement(value, minVal, maxVal, increment) {
+        // Nearest legal GenICam step (minimal change). Halfway → lower (Galaxy-like).
         const inc = Math.max(1, increment);
-        const snapped = Math.floor(value / inc) * inc;
-        return Math.max(minVal, Math.min(maxVal, snapped));
+        let lo = minVal;
+        let hi = maxVal;
+        if (hi < lo) {
+            const t = lo; lo = hi; hi = t;
+        }
+        const q = value / inc;
+        const flo = Math.floor(q) * inc;
+        const cei = Math.ceil(q) * inc;
+        let snapped = (Math.abs(value - flo) <= Math.abs(value - cei)) ? flo : cei;
+        if (snapped < lo) {
+            snapped = Math.ceil(lo / inc) * inc;
+        }
+        if (snapped > hi) {
+            snapped = Math.floor(hi / inc) * inc;
+        }
+        if (snapped < lo) {
+            snapped = lo;
+        }
+        return Math.max(lo, Math.min(hi, snapped));
     }
 
     /** Exact port of daheng validate_and_snap_roi (absolute sensor coords). */

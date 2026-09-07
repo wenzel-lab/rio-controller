@@ -413,6 +413,35 @@ extern "C" int daheng_grabber_get_stream_size(int32_t* width, int32_t* height) {
     return 0;
 }
 
+extern "C" int daheng_grabber_get_int_range(
+    const char* feature,
+    int32_t* min_value,
+    int32_t* max_value,
+    int32_t* increment,
+    int32_t* current) {
+    std::lock_guard<std::mutex> lock(g_api_mu);
+    if (!g_device || !feature || !feature[0]) {
+        return -1;
+    }
+    GX_INT_VALUE v{};
+    if (!Ok(GXGetIntValue(g_device, feature, &v))) {
+        return -1;
+    }
+    if (min_value) {
+        *min_value = static_cast<int32_t>(v.nMin);
+    }
+    if (max_value) {
+        *max_value = static_cast<int32_t>(v.nMax);
+    }
+    if (increment) {
+        *increment = static_cast<int32_t>(v.nInc > 0 ? v.nInc : 1);
+    }
+    if (current) {
+        *current = static_cast<int32_t>(v.nCurValue);
+    }
+    return 0;
+}
+
 extern "C" int daheng_grabber_set_roi(
     int32_t offset_x, int32_t offset_y, int32_t width, int32_t height) {
     const bool was_running = daheng_grabber_is_running() != 0;

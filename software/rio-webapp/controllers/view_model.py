@@ -218,7 +218,7 @@ class ViewModel:
                 "hold": 0,
                 "enable": 0,
                 "wait_ns": 0,
-                "period_ns": 100000,
+                "period_ns": 50000,
                 "framerate": 0,
                 "cam_read_time_us": 0,
             }

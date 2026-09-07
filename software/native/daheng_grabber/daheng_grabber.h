@@ -22,6 +22,17 @@ int daheng_grabber_get_sensor_size(int32_t* width, int32_t* height);
 int daheng_grabber_get_stream_size(int32_t* width, int32_t* height);
 
 /**
+ * GenICam integer feature range (e.g. "Width", "Height", "OffsetX", "OffsetY").
+ * Fills min/max/inc/current. Any pointer may be NULL. Returns 0 on success.
+ */
+int daheng_grabber_get_int_range(
+    const char* feature,
+    int32_t* min_value,
+    int32_t* max_value,
+    int32_t* increment,
+    int32_t* current);
+
+/**
  * Set absolute ROI (OffsetX/Y, Width, Height). Stops stream if running, applies, restarts.
  * Returns 0 on success.
  */

@@ -25,12 +25,14 @@ from config import (
     CAMERA_INIT_TIMEOUT_S,
     CAMERA_FRAME_WAIT_SLEEP_S,
     STROBE_DEFAULT_PERIOD_NS,
+    STROBE_DEFAULT_ENABLE,
     STROBE_MAX_PERIOD_NS,
     STROBE_PIC_MAX_TIME_NS,
     STROBE_PRE_PADDING_NS,
     STROBE_POST_PADDING_NS,
     STROBE_VISIBLE_MAX_HZ,
     STROBE_REPLY_PAUSE_S,
+    CAMERA_DEFAULT_EXPOSURE_US,
     CAMERA_TYPE_NONE,
     CAMERA_TYPE_RPI,
     CAMERA_TYPE_DAHENG,
@@ -138,7 +140,7 @@ class Camera:
         # Initialize strobe data with default values
         self.strobe_data: Dict[str, Any] = {
             "hold": 0,
-            "enable": 0,
+            "enable": int(STROBE_DEFAULT_ENABLE),
             "wait_ns": 0,
             "period_ns": STROBE_DEFAULT_PERIOD_NS,
             "framerate": 0,
@@ -157,11 +159,18 @@ class Camera:
             self.strobe_cam._user_controls_exposure = True
         # Note: strobe_cam and strobe are always initialized (PiStrobeCam.__init__ raises on failure)
         try:
-            valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
             self.strobe_cam.strobe.set_hold(self.strobe_data["hold"])
             logger.debug("Setting initial strobe timing")
             self.set_timing()
-            self.enabled = valid
+            if self.strobe_data["enable"]:
+                # Hybrid Daheng: LineOut + HW trigger before Enable (same as UI Enable path)
+                if self._remote_strobe and active_type == CAMERA_TYPE_DAHENG:
+                    self._prepare_hybrid_strobe_sync()
+                valid = self.strobe_cam.strobe.set_enable(1)
+                self.strobe_data["enable"] = 1 if valid else 0
+            else:
+                valid = self.strobe_cam.strobe.set_enable(0)
+            self.enabled = bool(valid)
         except Exception as e:
             logger.error(f"Error initializing strobe: {e}")
             self.enabled = False
@@ -174,6 +183,20 @@ class Camera:
         self.roi_mode_config = ROI_MODE
         self.roi_mode_active = ROI_MODE_SOFTWARE
         self.bind_camera_backend(self.camera)
+
+        # Default exposure for Daheng (aligned with strobe flash)
+        if self.camera is not None and hasattr(self.camera, "set_exposure_us"):
+            try:
+                self.camera.set_exposure_us(float(CAMERA_DEFAULT_EXPOSURE_US))
+                self.cam_data["exposure_us"] = int(CAMERA_DEFAULT_EXPOSURE_US)
+                self.user_controls_exposure = True
+                if self.strobe_cam:
+                    self.strobe_cam._user_controls_exposure = True
+                logger.warning(
+                    "Default exposure set to %s us", CAMERA_DEFAULT_EXPOSURE_US
+                )
+            except Exception as exc:
+                logger.warning("Failed to set default exposure: %s", exc)
 
         self.snapshot_resolution_mode: str = (
             SNAPSHOT_RESOLUTION_DISPLAY  # "display", "full", or "custom"

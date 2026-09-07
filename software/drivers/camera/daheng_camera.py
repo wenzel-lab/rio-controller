@@ -235,24 +235,25 @@ class DahengCamera(BaseCamera):
         return ok
 
     def _ensure_default_exposure(self) -> None:
-        """ExposureAuto/GainAuto off + sane ExposureTime if device was left at an extreme."""
+        """ExposureAuto/GainAuto off + startup ExposureTime (CAMERA_DEFAULT_EXPOSURE_US)."""
         if self._device is None:
             return
+        try:
+            from config import CAMERA_DEFAULT_EXPOSURE_US
+
+            default_us = float(CAMERA_DEFAULT_EXPOSURE_US)
+        except Exception:
+            default_us = 50.0
         try:
             self._device.ExposureAuto.set(0)  # GX_EXPOSURE_AUTO_OFF (ExposureGain.cpp)
             try:
                 self._device.GainAuto.set(0)  # GX_GAIN_AUTO_OFF
             except Exception:
                 pass
-            current = float(self._device.ExposureTime.get())
-            # AFR→max clamps ExposureTime to ~100us; treat <1ms as unusable for live view.
-            if current > 500_000 or current < 1_000:
-                rng = self._device.ExposureTime.get_range()
-                target = max(float(rng["min"]), min(float(rng["max"]), 50_000.0))
-                self._device.ExposureTime.set(target)
-                self.config["ShutterSpeed"] = int(self._device.ExposureTime.get())
-            else:
-                self.config["ShutterSpeed"] = int(current)
+            rng = self._device.ExposureTime.get_range()
+            target = max(float(rng["min"]), min(float(rng["max"]), default_us))
+            self._device.ExposureTime.set(target)
+            self.config["ShutterSpeed"] = int(self._device.ExposureTime.get())
         except Exception as exc:
             logger.warning("Failed to set default Daheng exposure: %s", exc)
 

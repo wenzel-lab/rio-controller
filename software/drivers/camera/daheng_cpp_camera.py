@@ -37,6 +37,35 @@ def _cpp_enabled() -> bool:
     return os.getenv("RIO_DAHENG_CPP", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _snap_nearest(value: int, min_val: int, max_val: int, increment: int) -> int:
+    """Snap to nearest valid GenICam step (minimal change), then clamp.
+
+    On an exact halfway (e.g. 300 with inc=8 → 296 vs 304), prefer the lower
+    value so we match Galaxy floor bias and stay conservative on size.
+    """
+    import math
+
+    inc = max(1, int(increment))
+    lo = int(min_val)
+    hi = int(max_val)
+    if hi < lo:
+        lo, hi = hi, lo
+    q = float(value) / float(inc)
+    flo = int(math.floor(q)) * inc
+    cei = int(math.ceil(q)) * inc
+    if abs(int(value) - flo) <= abs(int(value) - cei):
+        snapped = flo
+    else:
+        snapped = cei
+    if snapped < lo:
+        snapped = ((lo + inc - 1) // inc) * inc
+    if snapped > hi:
+        snapped = (hi // inc) * inc
+    if snapped < lo:
+        snapped = lo
+    return max(lo, min(hi, snapped))
+
+
 class DahengCppCamera(BaseCamera):
     """Native-drain Daheng camera for Acq.FPS comparison vs gxipy path."""
 
@@ -67,9 +96,19 @@ class DahengCppCamera(BaseCamera):
         self.config["Width"] = w
         self.config["Height"] = h
         try:
+            from config import CAMERA_DEFAULT_EXPOSURE_US
+
+            default_us = float(CAMERA_DEFAULT_EXPOSURE_US)
+        except Exception:
+            default_us = 50.0
+        try:
+            self._grabber.set_exposure_us(default_us)
             self.config["ShutterSpeed"] = int(self._grabber.get_exposure_us())
         except Exception:
-            self.config["ShutterSpeed"] = 10000
+            try:
+                self.config["ShutterSpeed"] = int(self._grabber.get_exposure_us())
+            except Exception:
+                self.config["ShutterSpeed"] = int(default_us)
         logger.warning(
             "DahengCppCamera active (RIO_DAHENG_CPP): GxViewer-style open "
             "(UserSet Default load, TriggerMode off, GXDQAllBufs); "
@@ -159,22 +198,84 @@ class DahengCppCamera(BaseCamera):
         )
 
     def get_roi_constraints(self) -> Dict[str, Any]:
-        sw, sh = self.get_max_resolution()
-        return {
-            "Width": {"min": 16, "max": sw, "inc": 2},
-            "Height": {"min": 2, "max": sh, "inc": 2},
-            "OffsetX": {"min": 0, "max": sw, "inc": 2},
-            "OffsetY": {"min": 0, "max": sh, "inc": 2},
+        """UI + snap constraints using live GenICam increments when available.
+
+        MER2 typically: Width/OffsetX inc=8, Height/OffsetY inc=2. Old hardcoded
+        inc=2 caused Apply ROI failures for valid-looking even widths (e.g. 300).
+        """
+        max_w, max_h = self.get_max_resolution()
+        try:
+            sw, sh = self.get_stream_size()
+        except Exception:
+            sw, sh = max_w, max_h
+        # Safe MER2-ish defaults if .so has no get_int_range yet
+        defaults = {
+            "offset_x": {"min": 0, "max": max_w, "increment": 8, "current": int(self.config.get("OffsetX", 0))},
+            "offset_y": {"min": 0, "max": max_h, "increment": 2, "current": int(self.config.get("OffsetY", 0))},
+            "width": {"min": 16, "max": max_w, "increment": 8, "current": sw},
+            "height": {"min": 2, "max": max_h, "increment": 2, "current": sh},
         }
+        constraints: Dict[str, Any] = {
+            **defaults,
+            "sensor_width": max_w,
+            "sensor_height": max_h,
+            "stream_width": sw,
+            "stream_height": sh,
+        }
+        feature_map = (
+            ("Width", "width"),
+            ("Height", "height"),
+            ("OffsetX", "offset_x"),
+            ("OffsetY", "offset_y"),
+        )
+        for feature, key in feature_map:
+            try:
+                lo, hi, inc, cur = self._grabber.get_int_range(feature)
+                constraints[key] = {
+                    "min": int(lo),
+                    "max": int(hi),
+                    "increment": max(1, int(inc)),
+                    "current": int(cur),
+                }
+            except Exception:
+                pass
+        constraints["stream_width"] = int(constraints["width"]["current"])
+        constraints["stream_height"] = int(constraints["height"]["current"])
+        return constraints
 
     def validate_and_snap_roi(self, roi: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
-        x, y, w, h = (int(v) for v in roi)
-        sw, sh = self.get_max_resolution()
-        w = max(16, min(sw, (w // 2) * 2))
-        h = max(2, min(sh, (h // 2) * 2))
-        x = max(0, min(sw - w, (x // 2) * 2))
-        y = max(0, min(sh - h, (y // 2) * 2))
-        return x, y, w, h
+        """Snap absolute sensor ROI to nearest legal GenICam values (minimal delta)."""
+        x, y, width, height = (int(v) for v in roi)
+        max_w, max_h = self.get_max_resolution()
+        c = self.get_roi_constraints()
+        min_w = int(c["width"]["min"])
+        min_h = int(c["height"]["min"])
+        w_inc = int(c["width"]["increment"])
+        h_inc = int(c["height"]["increment"])
+        ox_inc = int(c["offset_x"]["increment"])
+        oy_inc = int(c["offset_y"]["increment"])
+
+        width = _snap_nearest(width, min_w, max_w, w_inc)
+        height = _snap_nearest(height, min_h, max_h, h_inc)
+        x = _snap_nearest(x, 0, max(0, max_w - width), ox_inc)
+        y = _snap_nearest(y, 0, max(0, max_h - height), oy_inc)
+        if x + width > max_w:
+            width = _snap_nearest(max_w - x, min_w, max_w, w_inc)
+        if y + height > max_h:
+            height = _snap_nearest(max_h - y, min_h, max_h, h_inc)
+        if x > max_w - width:
+            x = _snap_nearest(max(0, max_w - width), 0, max(0, max_w - width), ox_inc)
+        if y > max_h - height:
+            y = _snap_nearest(max(0, max_h - height), 0, max(0, max_h - height), oy_inc)
+        return x, y, width, height
+
+    def snap_view_roi(self, roi: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
+        """View-relative ROI → absolute snap → view coords."""
+        cur_ox = int(self.config.get("OffsetX", 0))
+        cur_oy = int(self.config.get("OffsetY", 0))
+        vx, vy, vw, vh = (int(v) for v in roi)
+        ax, ay, aw, ah = self.validate_and_snap_roi((cur_ox + vx, cur_oy + vy, vw, vh))
+        return (ax - cur_ox, ay - cur_oy, aw, ah)
 
     def schedule_roi_hardware(
         self, roi: Tuple[int, int, int, int], absolute: bool = False
@@ -210,6 +311,7 @@ class DahengCppCamera(BaseCamera):
             self.config["Width"] = w
             self.config["Height"] = h
             self._grabber.sync_afr_max()
+            logger.info("CPP ROI applied: OffsetX=%s OffsetY=%s Width=%s Height=%s", x, y, w, h)
             return True
         except Exception as exc:
             logger.warning("CPP ROI apply failed: %s", exc)

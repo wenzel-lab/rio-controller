@@ -64,13 +64,17 @@ SNAPSHOT_RESOLUTION_CUSTOM = "custom"  # Use custom resolution
 # Strobe Configuration
 # Use BOARD numbering to stay consistent with other GPIO users (SPI handler pins use BOARD)
 # Pin 12 (board) == BCM 18
-STROBE_DEFAULT_PERIOD_NS = 100000  # 100 microseconds (legacy PiStrobeCam default; visible free-run)
+STROBE_DEFAULT_PERIOD_NS = 50000  # 50 µs flash (matches typical hybrid Enable + exp 50)
+STROBE_DEFAULT_ENABLE = 1  # Enable strobe when Rio starts
 STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds (PIC timer max ≈ 16.32 ms)
 STROBE_PIC_MAX_TIME_NS = 16320000  # firmware MAX_TIME_NS for wait/duration
 STROBE_PRE_PADDING_NS = 32  # Pre-padding before strobe pulse
 STROBE_POST_PADDING_NS = 20000000  # Post-padding after strobe pulse (legacy fps calc)
 STROBE_VISIBLE_MAX_HZ = 60  # Match old PiCamera clamp — free-run blink rate cap
 STROBE_REPLY_PAUSE_S = 0.1  # SPI reply pause time
+
+# Camera exposure default (µs) — aligned with strobe flash for hybrid lab startup
+CAMERA_DEFAULT_EXPOSURE_US = 50
 
 # Flow Control Configuration
 FLOW_REPLY_PAUSE_S = 0.1  # SPI reply pause time for flow controller

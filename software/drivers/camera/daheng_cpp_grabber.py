@@ -60,6 +60,16 @@ class DahengGrabberLib:
         L.daheng_grabber_get_sensor_size.restype = c_int
         L.daheng_grabber_get_stream_size.argtypes = [POINTER(c_int32), POINTER(c_int32)]
         L.daheng_grabber_get_stream_size.restype = c_int
+        self._has_int_range = hasattr(L, "daheng_grabber_get_int_range")
+        if self._has_int_range:
+            L.daheng_grabber_get_int_range.argtypes = [
+                c_char_p,
+                POINTER(c_int32),
+                POINTER(c_int32),
+                POINTER(c_int32),
+                POINTER(c_int32),
+            ]
+            L.daheng_grabber_get_int_range.restype = c_int
         L.daheng_grabber_set_roi.argtypes = [c_int32, c_int32, c_int32, c_int32]
         L.daheng_grabber_set_roi.restype = c_int
         L.daheng_grabber_set_exposure_us.argtypes = [c_double]
@@ -142,6 +152,25 @@ class DahengGrabberLib:
         if self._lib.daheng_grabber_get_stream_size(ctypes.byref(w), ctypes.byref(h)) != 0:
             raise RuntimeError("get_stream_size failed")
         return int(w.value), int(h.value)
+
+    def get_int_range(self, feature: str) -> Tuple[int, int, int, int]:
+        """Return (min, max, increment, current) for a GenICam int feature."""
+        if not getattr(self, "_has_int_range", False):
+            raise RuntimeError("get_int_range not available in libdaheng_grabber.so")
+        lo = c_int32()
+        hi = c_int32()
+        inc = c_int32()
+        cur = c_int32()
+        rc = self._lib.daheng_grabber_get_int_range(
+            feature.encode("utf-8"),
+            ctypes.byref(lo),
+            ctypes.byref(hi),
+            ctypes.byref(inc),
+            ctypes.byref(cur),
+        )
+        if rc != 0:
+            raise RuntimeError(f"get_int_range({feature}) failed")
+        return int(lo.value), int(hi.value), max(1, int(inc.value)), int(cur.value)
 
     def set_roi(self, ox: int, oy: int, w: int, h: int) -> None:
         if self._lib.daheng_grabber_set_roi(ox, oy, w, h) != 0:
