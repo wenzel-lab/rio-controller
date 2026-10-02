@@ -64,7 +64,7 @@ SNAPSHOT_RESOLUTION_CUSTOM = "custom"  # Use custom resolution
 # Strobe Configuration
 # Use BOARD numbering to stay consistent with other GPIO users (SPI handler pins use BOARD)
 # Pin 12 (board) == BCM 18
-STROBE_DEFAULT_PERIOD_NS = 50000  # 50 µs flash (matches typical hybrid Enable + exp 50)
+STROBE_DEFAULT_PERIOD_NS = 5000  # 5 µs flash pulse (Period µs in UI)
 STROBE_DEFAULT_ENABLE = 1  # Enable strobe when Rio starts
 STROBE_MAX_PERIOD_NS = 16000000  # 16 milliseconds (PIC timer max ≈ 16.32 ms)
 STROBE_PIC_MAX_TIME_NS = 16320000  # firmware MAX_TIME_NS for wait/duration
@@ -107,8 +107,13 @@ CAMERA_TYPE_RPI = "rpi"
 CAMERA_TYPE_MAKO = "mako"
 CAMERA_TYPE_DAHENG = "daheng"
 
-# File Paths
-SNAPSHOT_FOLDER = "home/pi/snapshots/"
+# File Paths — default under the current user home (Pi: /home/pi/snapshots/)
+# Override with RIO_SNAPSHOT_FOLDER if needed. Old relative "home/pi/snapshots/"
+# wrote into cwd (e.g. ~/rio-controller/home/pi/snapshots/), which looked like "not saving".
+SNAPSHOT_FOLDER = os.environ.get(
+    "RIO_SNAPSHOT_FOLDER",
+    os.path.join(os.path.expanduser("~"), "snapshots") + os.sep,
+)
 SNAPSHOT_FILENAME_PREFIX = "snapshot_"
 SNAPSHOT_FILENAME_SUFFIX = ".jpg"
 
@@ -237,6 +242,11 @@ WS_EVENT_RELOAD = "reload"
 # WebSocket Commands
 CMD_SELECT = "select"
 CMD_SNAPSHOT = "snapshot"
+CMD_SET_SNAPSHOT_FOLDER = "set_snapshot_folder"
+CMD_BROWSE_SNAPSHOT_FOLDERS = "browse_snapshot_folders"
+CMD_CREATE_SNAPSHOT_FOLDER = "create_snapshot_folder"
+CMD_START_VIDEO_RECORDING = "start_video_recording"
+CMD_STOP_VIDEO_RECORDING = "stop_video_recording"
 CMD_OPTIMIZE = "optimize"
 CMD_RECORD_ROI_FRAMES = "record_roi_frames"
 CMD_SET_CONFIG = "set_config"

@@ -25,12 +25,14 @@ from config import (
     CAMERA_INIT_TIMEOUT_S,
     CAMERA_FRAME_WAIT_SLEEP_S,
     STROBE_DEFAULT_PERIOD_NS,
+    STROBE_DEFAULT_ENABLE,
     STROBE_MAX_PERIOD_NS,
     STROBE_PIC_MAX_TIME_NS,
     STROBE_PRE_PADDING_NS,
     STROBE_POST_PADDING_NS,
     STROBE_VISIBLE_MAX_HZ,
     STROBE_REPLY_PAUSE_S,
+    CAMERA_DEFAULT_EXPOSURE_US,
     CAMERA_TYPE_NONE,
     CAMERA_TYPE_RPI,
     CAMERA_TYPE_DAHENG,
@@ -48,6 +50,11 @@ from config import (
     WS_EVENT_STROBE,
     WS_EVENT_ROI,
     CMD_SNAPSHOT,
+    CMD_SET_SNAPSHOT_FOLDER,
+    CMD_BROWSE_SNAPSHOT_FOLDERS,
+    CMD_CREATE_SNAPSHOT_FOLDER,
+    CMD_START_VIDEO_RECORDING,
+    CMD_STOP_VIDEO_RECORDING,
     CMD_OPTIMIZE,
     CMD_RECORD_ROI_FRAMES,
     CMD_SET_RESOLUTION,
@@ -138,7 +145,7 @@ class Camera:
         # Initialize strobe data with default values
         self.strobe_data: Dict[str, Any] = {
             "hold": 0,
-            "enable": 0,
+            "enable": int(STROBE_DEFAULT_ENABLE),
             "wait_ns": 0,
             "period_ns": STROBE_DEFAULT_PERIOD_NS,
             "framerate": 0,
@@ -157,33 +164,57 @@ class Camera:
             self.strobe_cam._user_controls_exposure = True
         # Note: strobe_cam and strobe are always initialized (PiStrobeCam.__init__ raises on failure)
         try:
-            valid = self.strobe_cam.strobe.set_enable(self.strobe_data["enable"])
             self.strobe_cam.strobe.set_hold(self.strobe_data["hold"])
             logger.debug("Setting initial strobe timing")
             self.set_timing()
-            self.enabled = valid
+            if self.strobe_data["enable"]:
+                # Hybrid Daheng: LineOut + HW trigger before Enable (same as UI Enable path)
+                if self._remote_strobe and active_type == CAMERA_TYPE_DAHENG:
+                    self._prepare_hybrid_strobe_sync()
+                valid = self.strobe_cam.strobe.set_enable(1)
+                self.strobe_data["enable"] = 1 if valid else 0
+            else:
+                valid = self.strobe_cam.strobe.set_enable(0)
+            self.enabled = bool(valid)
         except Exception as e:
             logger.error(f"Error initializing strobe: {e}")
             self.enabled = False
 
-        self.cam_data: Dict[str, Any] = {"camera": active_type, "status": ""}
+        self.snapshot_folder = SNAPSHOT_FOLDER
+        self.cam_data: Dict[str, Any] = {
+            "camera": active_type,
+            "status": "",
+            "snapshot_folder": self.snapshot_folder,
+            "video_recording": False,
+            "last_video": None,
+        }
+
+        # Hardware H.264 recording (picamera splitter_port=1; JPEG stream on port 0)
+        self._video_lock = threading.Lock()
+        self._video_path: Optional[str] = None
+        self._video_recording = False
+        self._video_t0: Optional[float] = None
 
         # ROI storage: dictionary with keys 'x', 'y', 'width', 'height' or None
         self.roi: Optional[Dict[str, int]] = None
         # Active ROI mode (software by default; hardware if configured and supported)
         self.roi_mode_config = ROI_MODE
         self.roi_mode_active = ROI_MODE_SOFTWARE
-        if (
-            active_type == CAMERA_TYPE_DAHENG
-            and self.camera
-            and (
-                hasattr(self.camera, "schedule_roi_hardware")
-                or hasattr(self.camera, "set_roi_hardware")
-            )
-        ):
-            self.roi_mode_config = ROI_MODE_HARDWARE
-            self.roi_mode_active = ROI_MODE_HARDWARE
-            logger.info("Daheng camera: hardware ROI enabled for live stream crop")
+        self.bind_camera_backend(self.camera)
+
+        # Default exposure for Daheng (aligned with strobe flash)
+        if self.camera is not None and hasattr(self.camera, "set_exposure_us"):
+            try:
+                self.camera.set_exposure_us(float(CAMERA_DEFAULT_EXPOSURE_US))
+                self.cam_data["exposure_us"] = int(CAMERA_DEFAULT_EXPOSURE_US)
+                self.user_controls_exposure = True
+                if self.strobe_cam:
+                    self.strobe_cam._user_controls_exposure = True
+                logger.warning(
+                    "Default exposure set to %s us", CAMERA_DEFAULT_EXPOSURE_US
+                )
+            except Exception as exc:
+                logger.warning("Failed to set default exposure: %s", exc)
 
         self.snapshot_resolution_mode: str = (
             SNAPSHOT_RESOLUTION_DISPLAY  # "display", "full", or "custom"
@@ -212,10 +243,41 @@ class Camera:
         # Register WebSocket event handlers
         self._register_websocket_handlers()
         self._pending_roi_clear = False
-        if self.camera and hasattr(self.camera, "set_roi_applied_callback"):
-            self.camera.set_roi_applied_callback(self._on_hardware_roi_applied)
 
         logger.debug("Camera initialization complete")
+
+    def bind_camera_backend(self, camera: Any) -> None:
+        """Point the controller at a camera backend and re-derive its ROI capabilities.
+
+        Runtime camera switches must go through here. Hybrid hosts have no camera during
+        __init__ (it is created when the UI selects one), so capabilities latched at
+        construction time would pin software ROI and leave the applied-ROI callback
+        unregistered for the whole process lifetime.
+        """
+        self.camera = camera
+        active_type = getattr(self.strobe_cam, "_camera_type", None) or CAMERA_TYPE_RPI
+        supports_hardware_roi = camera is not None and (
+            hasattr(camera, "schedule_roi_hardware") or hasattr(camera, "set_roi_hardware")
+        )
+        # Daheng and Pi legacy both support sensor crop; Enable Apply ROI for live crop.
+        # (Hybrid CoolerMaster path is unchanged — still Daheng+hardware.)
+        if supports_hardware_roi and active_type in (
+            CAMERA_TYPE_DAHENG,
+            CAMERA_TYPE_RPI,
+        ):
+            if self.roi_mode_config != ROI_MODE_HARDWARE:
+                logger.info(
+                    "%s camera: hardware ROI enabled for live stream crop",
+                    active_type,
+                )
+            self.roi_mode_config = ROI_MODE_HARDWARE
+            self.roi_mode_active = ROI_MODE_HARDWARE
+        else:
+            self.roi_mode_config = ROI_MODE
+            self.roi_mode_active = ROI_MODE_SOFTWARE
+
+        if camera is not None and hasattr(camera, "set_roi_applied_callback"):
+            camera.set_roi_applied_callback(self._on_hardware_roi_applied)
 
     def _get_snapshot_resolution(self) -> Tuple[int, int]:
         """
@@ -551,7 +613,277 @@ class Camera:
             self.initialize()
         return self.frame
 
-    def save(self) -> None:
+    def _resolve_snapshot_folder(self, folder: Optional[str] = None) -> str:
+        """
+        Resolve and create a snapshot folder under the user home directory.
+
+        Args:
+            folder: Requested folder path (may include ~). Falls back to current
+                session folder, then SNAPSHOT_FOLDER.
+
+        Returns:
+            Absolute folder path with trailing separator.
+
+        Raises:
+            ValueError: If the resolved path is outside the home directory.
+        """
+        import os
+
+        raw = (folder or "").strip() or self.snapshot_folder or SNAPSHOT_FOLDER
+        path = os.path.abspath(os.path.expanduser(raw))
+        home = os.path.abspath(os.path.expanduser("~"))
+        if path != home and not path.startswith(home + os.sep):
+            raise ValueError("Snapshot folder must be under your home directory")
+        os.makedirs(path, exist_ok=True)
+        if not path.endswith(os.sep):
+            path = path + os.sep
+        return path
+
+    def set_snapshot_folder(self, folder: str) -> str:
+        """Set the active snapshot folder for subsequent saves."""
+        resolved = self._resolve_snapshot_folder(folder)
+        self.snapshot_folder = resolved
+        self.cam_data["snapshot_folder"] = resolved
+        self.cam_data["status"] = f"Snapshot folder: {resolved}"
+        logger.info("Snapshot folder set to %s", resolved)
+        return resolved
+
+    def browse_snapshot_folders(self, folder: Optional[str] = None) -> Dict[str, Any]:
+        """
+        List subdirectories under a path (restricted to the user home).
+
+        Used by the UI folder picker so the user can navigate instead of typing.
+        """
+        import os
+
+        home = os.path.abspath(os.path.expanduser("~"))
+        raw = (folder or "").strip() or self.snapshot_folder or SNAPSHOT_FOLDER or home
+        try:
+            path = os.path.abspath(os.path.expanduser(raw))
+        except Exception:
+            path = home
+
+        if path != home and not path.startswith(home + os.sep):
+            path = home
+        if not os.path.isdir(path):
+            # Fall back to parent or home if current path missing
+            parent = os.path.dirname(path.rstrip(os.sep))
+            path = parent if parent.startswith(home) and os.path.isdir(parent) else home
+
+        dirs: list = []
+        try:
+            for name in sorted(os.listdir(path), key=str.lower):
+                if name.startswith("."):
+                    continue
+                full = os.path.join(path, name)
+                if os.path.isdir(full):
+                    dirs.append(name)
+        except OSError as e:
+            logger.warning("browse_snapshot_folders failed for %s: %s", path, e)
+
+        parent = os.path.dirname(path.rstrip(os.sep)) if path != home else None
+        if parent and (parent == home or parent.startswith(home + os.sep)):
+            parent_path = parent
+        else:
+            parent_path = None
+
+        result = {
+            "path": path if path.endswith(os.sep) else path + os.sep,
+            "parent": parent_path,
+            "dirs": dirs,
+            "home": home if home.endswith(os.sep) else home + os.sep,
+            "error": None,
+        }
+        self.cam_data["folder_browse"] = result
+        return result
+
+    def create_snapshot_folder(self, parent: str, name: str) -> Dict[str, Any]:
+        """Create a new subdirectory under an allowed parent and re-list it."""
+        import os
+        import re
+
+        name = (name or "").strip().strip("/\\")
+        if not name or name in (".", "..") or "/" in name or "\\" in name:
+            raise ValueError("Invalid folder name")
+        if not re.match(r"^[A-Za-z0-9._\-\s]+$", name):
+            raise ValueError("Folder name may only contain letters, numbers, spaces, . _ -")
+
+        parent_resolved = self._resolve_snapshot_folder(parent)
+        new_path = os.path.join(parent_resolved, name)
+        # _resolve will enforce home boundary
+        created = self._resolve_snapshot_folder(new_path)
+        logger.info("Created snapshot folder %s", created)
+        return self.browse_snapshot_folders(parent_resolved)
+
+    def start_video_recording(self, folder: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Start hardware H.264 recording (Raspberry Pi Camera / picamera).
+
+        Uses the official picamera dual-splitter pattern:
+        - Live JPEG stream continues on splitter_port=0 (capture_continuous)
+        - H.264 encodes on splitter_port=1 via PiCamera.start_recording
+
+        Docs: https://picamera.readthedocs.io/en/latest/recipes2.html
+        """
+        if self._video_recording:
+            return {
+                "ok": False,
+                "error": "already recording",
+                "path": self._video_path,
+            }
+        if self.camera is None or self.cam_data.get("camera") == CAMERA_TYPE_NONE:
+            return {"ok": False, "error": "camera unavailable"}
+        if self.cam_data.get("camera") != CAMERA_TYPE_RPI:
+            return {
+                "ok": False,
+                "error": "hardware H.264 video recording is only supported for Pi Camera",
+            }
+        if not hasattr(self.camera, "start_h264_recording"):
+            return {"ok": False, "error": "Pi camera driver missing start_h264_recording"}
+
+        try:
+            self.initialize()
+        except Exception as e:
+            logger.warning("Could not initialize camera for video recording: %s", e)
+
+        dest = self._resolve_snapshot_folder(folder)
+        self.snapshot_folder = dest
+        self.cam_data["snapshot_folder"] = dest
+
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        h264_path = f"{dest}video_{ts}.h264"
+
+        with self._video_lock:
+            try:
+                self.camera.start_h264_recording(h264_path, splitter_port=1)
+            except Exception as e:
+                self.cam_data["status"] = f"Video error: {e}"
+                logger.error("Failed to start H.264 recording: %s", e)
+                return {"ok": False, "error": str(e)}
+            self._video_path = h264_path
+            self._video_t0 = time.monotonic()
+            self._video_recording = True
+
+        self.cam_data["video_recording"] = True
+        self.cam_data["last_video"] = None
+        self.cam_data["status"] = f"Recording video… {h264_path}"
+        logger.info("H.264 video recording started: %s", h264_path)
+        return {"ok": True, "path": h264_path, "folder": dest}
+
+    def stop_video_recording(self) -> Dict[str, Any]:
+        """Stop H.264 recording and remux to a playable MP4 with ffmpeg."""
+        if not self._video_recording and not self._video_path:
+            return {"ok": False, "error": "not recording"}
+
+        self._video_recording = False
+        t0 = self._video_t0
+        h264_path = None
+
+        with self._video_lock:
+            try:
+                if self.camera is not None and hasattr(self.camera, "stop_h264_recording"):
+                    h264_path = self.camera.stop_h264_recording()
+            except Exception as e:
+                self.cam_data["video_recording"] = False
+                self.cam_data["status"] = f"Video error on stop: {e}"
+                logger.error("Failed to stop H.264 recording: %s", e)
+                return {"ok": False, "error": str(e)}
+            if not h264_path:
+                h264_path = self._video_path
+            self._video_path = None
+            self._video_t0 = None
+
+        self.cam_data["video_recording"] = False
+        if not h264_path:
+            self.cam_data["status"] = "Video recording stopped (no file)"
+            return {"ok": False, "error": "no file"}
+
+        elapsed = (time.monotonic() - t0) if t0 else 0.0
+        fps = float(CAMERA_THREAD_FPS) or 30.0
+        try:
+            if self.camera is not None:
+                cfg_fps = getattr(self.camera, "config", {}).get("FrameRate")
+                if cfg_fps:
+                    fps = float(cfg_fps)
+        except Exception:
+            pass
+
+        mp4_path = self._remux_h264_to_mp4(h264_path, fps=fps)
+        out = mp4_path or h264_path
+        self.cam_data["last_video"] = out
+        self.cam_data["status"] = (
+            f"Video saved: {out} ({elapsed:.1f}s wall, H.264 hardware encode)"
+        )
+        logger.info("Video recording stopped: %s (%.2fs wall)", out, elapsed)
+        return {
+            "ok": True,
+            "path": out,
+            "h264": h264_path,
+            "elapsed_s": round(elapsed, 3),
+            "fps": round(fps, 2),
+        }
+
+    def _remux_h264_to_mp4(self, h264_path: str, fps: float = 30.0) -> Optional[str]:
+        """
+        Remux annex-B H.264 into MP4 without re-encoding (ffmpeg -c copy).
+
+        Raw .h264 from picamera has no container timestamps; pass -framerate so
+        players treat duration as realtime.
+        """
+        import os
+        import subprocess
+
+        if not h264_path or not os.path.isfile(h264_path):
+            return None
+        if os.path.getsize(h264_path) < 32:
+            logger.warning("H.264 file too small: %s", h264_path)
+            return None
+
+        mp4_path = h264_path.rsplit(".", 1)[0] + ".mp4"
+        fps = max(1.0, min(float(fps) or 30.0, 60.0))
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-framerate",
+            f"{fps:.3f}",
+            "-i",
+            h264_path,
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            mp4_path,
+        ]
+        try:
+            subprocess.run(cmd, check=True, timeout=120)
+            if os.path.isfile(mp4_path) and os.path.getsize(mp4_path) > 0:
+                try:
+                    os.remove(h264_path)
+                except OSError:
+                    pass
+                logger.info("Remuxed H.264 → MP4: %s", mp4_path)
+                return mp4_path
+        except FileNotFoundError:
+            logger.warning("ffmpeg not found; leaving raw H.264 at %s", h264_path)
+        except Exception as e:
+            logger.warning("ffmpeg remux failed (%s); leaving H.264 at %s", e, h264_path)
+        return None
+
+    def _finalize_video_writer(self) -> Optional[str]:
+        """Compatibility helper: stop H.264 if still active."""
+        if self._video_recording or (
+            self.camera is not None
+            and hasattr(self.camera, "is_h264_recording")
+            and self.camera.is_h264_recording()
+        ):
+            result = self.stop_video_recording()
+            return result.get("path")
+        return self._video_path
+
+    def save(self, folder: Optional[str] = None) -> None:
         """
         Save the current frame as a snapshot image.
 
@@ -560,11 +892,16 @@ class Camera:
 
         If snapshot resolution mode is "full" or "custom", captures at that resolution.
         Otherwise, uses the current display frame.
+
+        Args:
+            folder: Optional folder override for this save (session-chosen path).
         """
         try:
             import os
 
-            os.makedirs(SNAPSHOT_FOLDER, exist_ok=True)
+            dest_folder = self._resolve_snapshot_folder(folder)
+            self.snapshot_folder = dest_folder
+            self.cam_data["snapshot_folder"] = dest_folder
 
             # Determine snapshot resolution
             snapshot_width, snapshot_height = self._get_snapshot_resolution()
@@ -627,13 +964,16 @@ class Camera:
 
             current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"{SNAPSHOT_FILENAME_PREFIX}{current_time}{SNAPSHOT_FILENAME_SUFFIX}"
-            filepath = f"{SNAPSHOT_FOLDER}/{filename}"
+            filepath = os.path.join(dest_folder, filename)
 
             img.save(filepath, "JPEG", quality=CAMERA_SNAPSHOT_JPEG_QUALITY)
+            self.cam_data["status"] = f"Saved: {filepath}"
+            self.cam_data["last_snapshot"] = filepath
             logger.info(
                 f"Snapshot saved: {filepath} ({snapshot_width}x{snapshot_height}, size: {img.size[0]}x{img.size[1]})"
             )
         except Exception as e:
+            self.cam_data["status"] = f"Snapshot error: {e}"
             logger.error(f"Error saving snapshot: {e}")
 
     def record_roi_frames(self, frames: int) -> Dict[str, Any]:
@@ -904,6 +1244,19 @@ class Camera:
             self.camera.start()
             logger.info("Camera started, generating frames...")
 
+            # Pi Camera: thread set_config(FrameRate=CAMERA_THREAD_FPS) overwrites the
+            # PIC-paced shutter/framerate that __init__ set via set_timing(). That
+            # desync leaves the preview half-black until the UI "Set" button runs
+            # set_timing() again. Re-apply after start so the first frames are synced.
+            if getattr(self.strobe_cam, "_camera_type", None) != CAMERA_TYPE_DAHENG:
+                try:
+                    if self.set_timing():
+                        if self.strobe_data.get("enable"):
+                            self.strobe_cam.strobe.set_enable(1)
+                        self.emit()
+                except Exception as e:
+                    logger.warning("Re-apply strobe timing after camera start: %s", e)
+
             # Use new camera abstraction - generate_frames() returns JPEG bytes
             frame_count = 0
             for frame_data in self.camera.generate_frames():
@@ -932,6 +1285,11 @@ class Camera:
             else:
                 logger.debug(f"Camera thread error during shutdown (ignored): {e}")
         finally:
+            if self._video_recording:
+                try:
+                    self.stop_video_recording()
+                except Exception:
+                    pass
             if self.camera is not None:
                 try:
                     self.camera.close()
@@ -951,6 +1309,7 @@ class Camera:
             return  # Cannot emit without socketio
 
         try:
+            self.cam_data["video_recording"] = bool(getattr(self, "_video_recording", False))
             self.socketio.emit(WS_EVENT_CAM, self.cam_data)
             self.socketio.emit(WS_EVENT_STROBE, self.strobe_data)
         except Exception as e:
@@ -1167,6 +1526,13 @@ class Camera:
             except Exception as exc:
                 logger.debug("Remote strobe state refresh failed: %s", exc)
 
+        # Keep video recording flag visible on every cam telemetry emit
+        self.cam_data["video_recording"] = bool(self._video_recording)
+        if self._video_path and self._video_recording:
+            self.cam_data["last_video"] = None  # only set on stop
+        elif not self._video_recording and self.cam_data.get("last_video"):
+            pass  # keep last saved path
+
     def _hybrid_paced_wait_ns(self, flash_ns: int) -> int:
         """
         Legacy free-run pacing (old PiStrobeCam): fill wait so flash+wait ≈ 1/fps.
@@ -1225,23 +1591,30 @@ class Camera:
         return bool(valid)
 
     def _prepare_hybrid_strobe_sync(self) -> None:
-        """Enable Daheng LineOut; try HW trigger; else legacy free-run pacing."""
+        """Enable Daheng LineOut; try HW trigger; else legacy free-run pacing.
+
+        Hardware trigger needs a live camera driving ExposureActive. With camera
+        set to 'none' (or no LineOut), prefer paced free-run so Enable still
+        produces a visible blink instead of a silent HW wait for RC5 edges.
+        """
         if not self._remote_strobe:
             return
         cam = self.camera
+        line_out_ok = False
         if cam is not None and hasattr(cam, "configure_strobe_line_out"):
             try:
-                ok = bool(cam.configure_strobe_line_out(True))
-                if ok:
+                line_out_ok = bool(cam.configure_strobe_line_out(True))
+                if line_out_ok:
                     logger.warning("Daheng strobe LineOut (ExposureActive) enabled")
                 else:
                     logger.warning("Daheng configure_strobe_line_out(True) returned False")
             except Exception as exc:
                 logger.warning("Daheng configure_strobe_line_out failed: %s", exc)
 
+        want_hw = cam is not None and line_out_ok
         hw_ok = False
         strobe = self.strobe_cam.strobe
-        if hasattr(strobe, "set_trigger_mode"):
+        if want_hw and hasattr(strobe, "set_trigger_mode"):
             hw_ok = bool(strobe.set_trigger_mode(True))
             if hw_ok:
                 self.strobe_data["trigger_mode"] = 1
@@ -1252,6 +1625,13 @@ class Camera:
                     "PIC HW trigger unavailable — using legacy free-run pacing "
                     "(~50–60 Hz visible blink; flash firmware for frame-accurate sync)"
                 )
+        elif hasattr(strobe, "set_trigger_mode"):
+            # No camera / no LineOut: force software free-run
+            if strobe.set_trigger_mode(False):
+                self.strobe_data["trigger_mode"] = 0
+            logger.warning(
+                "No camera LineOut for HW sync — using free-run pacing (~50–60 Hz)"
+            )
 
         # Always apply paced timing so Continuous-OFF blinks like the old Rio UI
         if not hw_ok:
@@ -1408,8 +1788,44 @@ class Camera:
             cmd = data.get("cmd")
 
             if cmd == CMD_SNAPSHOT:
-                logger.info("Snapshot requested")
-                self.save()
+                params = data.get("parameters", {}) or {}
+                folder = params.get("folder")
+                logger.info("Snapshot requested (folder=%s)", folder or self.snapshot_folder)
+                self.save(folder=folder)
+            elif cmd == CMD_SET_SNAPSHOT_FOLDER:
+                params = data.get("parameters", {}) or {}
+                folder = params.get("folder", "")
+                logger.info("Set snapshot folder requested: %s", folder)
+                self.set_snapshot_folder(folder)
+            elif cmd == CMD_BROWSE_SNAPSHOT_FOLDERS:
+                params = data.get("parameters", {}) or {}
+                folder = params.get("folder")
+                logger.info("Browse snapshot folders: %s", folder)
+                self.browse_snapshot_folders(folder)
+            elif cmd == CMD_CREATE_SNAPSHOT_FOLDER:
+                params = data.get("parameters", {}) or {}
+                parent = params.get("parent", "")
+                name = params.get("name", "")
+                logger.info("Create snapshot folder: %s / %s", parent, name)
+                try:
+                    self.create_snapshot_folder(parent, name)
+                except Exception as e:
+                    current = self.cam_data.get("folder_browse") or {}
+                    self.cam_data["folder_browse"] = {
+                        **current,
+                        "error": str(e),
+                    }
+                    logger.warning("Create snapshot folder failed: %s", e)
+            elif cmd == CMD_START_VIDEO_RECORDING:
+                params = data.get("parameters", {}) or {}
+                folder = params.get("folder")
+                logger.info("Start video recording (folder=%s)", folder)
+                result = self.start_video_recording(folder=folder)
+                self.cam_data["video_record_last"] = result
+            elif cmd == CMD_STOP_VIDEO_RECORDING:
+                logger.info("Stop video recording")
+                result = self.stop_video_recording()
+                self.cam_data["video_record_last"] = result
             elif cmd == CMD_OPTIMIZE:
                 logger.info("FPS optimization requested")
                 self.optimize_fps()
@@ -1796,6 +2212,13 @@ class Camera:
         ensuring all resources are released.
         """
         try:
+            # Finalize any open video before shutting down
+            if getattr(self, "_video_recording", False):
+                try:
+                    self.stop_video_recording()
+                except Exception:
+                    pass
+
             # Signal thread to exit
             if self.exit_event:
                 self.exit_event.set()

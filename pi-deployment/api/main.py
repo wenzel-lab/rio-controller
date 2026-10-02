@@ -621,9 +621,9 @@ def create_app() -> FastAPI:  # noqa: C901
             raise HTTPException(status_code=400, detail="Failed to set camera type")
         cam.cam_data["camera"] = camera_name if success else "none"
         if camera_name != "none" and cam.strobe_cam.camera:
-            cam.camera = cam.strobe_cam.camera
+            cam.bind_camera_backend(cam.strobe_cam.camera)
         else:
-            cam.camera = None
+            cam.bind_camera_backend(None)
         return {"ok": True, "camera": cam.cam_data["camera"]}
 
     @app.post("/api/control/strobe/enable")

@@ -86,6 +86,12 @@ if not SIMULATION_MODE and not NO_GEVENT_PATCH:
 if SIMULATION_MODE:
     _async_mode_default = "threading"
 
+# Without patch_all() the camera loop stays on a real OS thread, but Flask-SocketIO would
+# still auto-select gevent and drive its hub from an unpatched stdlib. Pin threading so the
+# capture thread and the socket server cannot starve each other.
+if NO_GEVENT_PATCH and not SIMULATION_MODE:
+    _async_mode_default = "threading"
+
 # Standard library version lookup to avoid pkg_resources deprecation
 try:
     import importlib.metadata as importlib_metadata
@@ -268,7 +274,7 @@ if use_remote_flow:
     from controllers.remote import RemoteFlow
 
     assert remote_client is not None
-    flow: "RemoteFlow" | "FlowWeb" = RemoteFlow(remote_client)
+    flow: "RemoteFlow | FlowWeb" = RemoteFlow(remote_client)
 else:
     flow = FlowWeb(PORT_FLOW)
 
@@ -279,7 +285,7 @@ try:
         from controllers.remote import RemoteCamera
 
         assert remote_client is not None
-        cam: "RemoteCamera" | "Camera" = RemoteCamera(exit_event, socketio, remote_client)
+        cam: "RemoteCamera | Camera" = RemoteCamera(exit_event, socketio, remote_client)
     else:
         cam = Camera(
             exit_event,

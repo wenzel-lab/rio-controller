@@ -514,11 +514,22 @@
                                                 <div class="control-section">
                                                     <div class="d-grid gap-2">
                                                         <button id="btn_cam_snapshot" onclick="cam_snapshot()" class="btn btn-primary" style="font-weight: bold;">📸 Snapshot</button>
+                                                        <button id="btn_snapshot_folder" onclick="change_snapshot_folder()" class="btn btn-outline-secondary btn-sm">Change folder</button>
+                                                        <small id="snapshot_folder_label" class="text-muted text-center d-block" style="font-size: 0.75em; word-break: break-all;">Folder: (not set this session)</small>
+                                                        <small id="snapshot_status" class="text-success text-center d-block" style="font-size: 0.75em;"></small>
                                                         <button id="btn_roi_apply" onclick="applyROI()" class="btn btn-success">Apply ROI</button>
                                                         <button id="btn_roi_clear" onclick="clearROI()" class="btn btn-outline-secondary">✕ Clear ROI</button>
                                                         <span id="roi_info" class="badge bg-info text-center" style="font-size: 0.85em; padding: 0.45rem;">No ROI selected</span>
                                                         <small id="roi_warning" class="text-warning d-none w-100 mt-1"></small>
                                                     </div>
+                                                </div>
+                                                <div class="control-section">
+                                                    <label class="form-label">Record video</label>
+                                                    <div class="d-grid gap-2">
+                                                        <button id="btn_video_start" onclick="cam_start_video()" class="btn btn-danger btn-sm">● Start video</button>
+                                                        <button id="btn_video_stop" onclick="cam_stop_video()" class="btn btn-outline-secondary btn-sm" disabled>■ Stop</button>
+                                                    </div>
+                                                    <small id="video_record_status" class="text-muted d-block mt-1">Ready to record video.</small>
                                                 </div>
                                                 <div class="control-section">
                                                     <label class="form-label">Record ROI</label>
@@ -908,6 +919,38 @@
                         </div>
                     </div>
                     {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Snapshot folder picker (once per browser tab session) -->
+    <div class="modal fade" id="snapshotFolderModal" tabindex="-1" aria-labelledby="snapshotFolderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="snapshotFolderModalLabel">Where to save snapshots?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2 small text-muted">Navigate and pick a folder for this session. Use <em>Change folder</em> anytime to switch (e.g. new experiment).</p>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn_snapshot_folder_up" title="Up">⬆ Up</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn_snapshot_folder_home" title="Home">🏠 Home</button>
+                        <code id="snapshot_browse_path" class="small flex-grow-1 text-truncate" style="font-size:0.8em;">—</code>
+                    </div>
+                    <div id="snapshot_folder_list" class="list-group mb-3" style="max-height: 280px; overflow-y: auto;">
+                        <div class="list-group-item text-muted">Loading…</div>
+                    </div>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="input_new_snapshot_folder" placeholder="New folder name" autocomplete="off">
+                        <button type="button" class="btn btn-outline-primary" id="btn_create_snapshot_folder">Create</button>
+                    </div>
+                    <div id="snapshot_folder_error" class="text-danger mt-2 d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btn_snapshot_folder_ok">Use this folder</button>
                 </div>
             </div>
         </div>
@@ -1535,10 +1578,265 @@
                 $('#cam_snapshot_mode').text(data.snapshot_resolution_mode);
                 $('#select_snapshot_resolution').val(data.snapshot_resolution_mode);
             }
+            if (data.snapshot_folder) {
+                var label = document.getElementById('snapshot_folder_label');
+                if (label && !sessionStorage.getItem('rio_snapshot_folder')) {
+                    label.textContent = 'Folder: ' + data.snapshot_folder + ' (default)';
+                }
+            }
+            if (data.folder_browse) {
+                renderSnapshotFolderBrowse(data.folder_browse);
+            }
+            if (typeof data.video_recording === 'boolean') {
+                updateVideoRecordingUI(data.video_recording, data.last_video, data.status);
+            }
+            if (data.status && (String(data.status).indexOf('Saved:') === 0 || String(data.status).indexOf('Snapshot') === 0 || String(data.status).indexOf('Video') === 0 || String(data.status).indexOf('Recording video') === 0)) {
+                var st = document.getElementById('snapshot_status');
+                if (st && String(data.status).indexOf('Video') !== 0 && String(data.status).indexOf('Recording video') !== 0) {
+                    st.textContent = data.status;
+                }
+            }
             if (data.camera) {
                 $('#cam_type').text(data.camera);
             }
         });
+
+        // --- Snapshot folder browser: once per browser tab session ---
+        var SNAPSHOT_FOLDER_KEY = 'rio_snapshot_folder';
+        var _snapshotTakeAfterFolder = false;
+        var _snapshotFolderModal = null;
+        var _browsePath = '';
+        var _browseParent = null;
+        var _browseHome = '';
+        var _videoStartAfterFolder = false;
+
+        function getSessionSnapshotFolder() {
+            return sessionStorage.getItem(SNAPSHOT_FOLDER_KEY) || '';
+        }
+
+        function updateSnapshotFolderLabel(folder) {
+            var label = document.getElementById('snapshot_folder_label');
+            if (label) {
+                label.textContent = folder ? ('Folder: ' + folder) : 'Folder: (not set this session)';
+            }
+        }
+
+        function updateVideoRecordingUI(recording, lastVideo, status) {
+            var startBtn = document.getElementById('btn_video_start');
+            var stopBtn = document.getElementById('btn_video_stop');
+            var statusEl = document.getElementById('video_record_status');
+            if (startBtn) startBtn.disabled = !!recording;
+            if (stopBtn) stopBtn.disabled = !recording;
+            if (statusEl) {
+                if (recording) {
+                    statusEl.textContent = status || 'Recording…';
+                    statusEl.className = 'text-danger d-block mt-1';
+                } else if (lastVideo) {
+                    statusEl.textContent = 'Saved: ' + lastVideo;
+                    statusEl.className = 'text-success d-block mt-1';
+                } else if (status && (String(status).indexOf('Video') === 0 || String(status).indexOf('video') >= 0)) {
+                    statusEl.textContent = status;
+                    statusEl.className = 'text-muted d-block mt-1';
+                }
+            }
+        }
+
+        function setSnapshotFolderError(msg) {
+            var err = document.getElementById('snapshot_folder_error');
+            if (!err) return;
+            if (msg) {
+                err.textContent = msg;
+                err.classList.remove('d-none');
+            } else {
+                err.textContent = '';
+                err.classList.add('d-none');
+            }
+        }
+
+        function renderSnapshotFolderBrowse(browse) {
+            if (!browse) return;
+            _browsePath = browse.path || '';
+            _browseParent = browse.parent || null;
+            _browseHome = browse.home || '';
+            var pathEl = document.getElementById('snapshot_browse_path');
+            if (pathEl) pathEl.textContent = _browsePath || '—';
+            var upBtn = document.getElementById('btn_snapshot_folder_up');
+            if (upBtn) upBtn.disabled = !_browseParent;
+            if (browse.error) setSnapshotFolderError(browse.error);
+            else setSnapshotFolderError('');
+
+            var list = document.getElementById('snapshot_folder_list');
+            if (!list) return;
+            list.innerHTML = '';
+            var dirs = browse.dirs || [];
+            if (!dirs.length) {
+                var empty = document.createElement('div');
+                empty.className = 'list-group-item text-muted';
+                empty.textContent = '(no subfolders — you can use this folder, or create one below)';
+                list.appendChild(empty);
+                return;
+            }
+            dirs.forEach(function (name) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                btn.innerHTML = '<span>📁 ' + name + '</span><span class="text-muted small">Open</span>';
+                btn.addEventListener('click', function () {
+                    var next = (_browsePath || '').replace(/\/?$/, '/') + name;
+                    browseSnapshotFolders(next);
+                });
+                list.appendChild(btn);
+            });
+        }
+
+        function browseSnapshotFolders(folder) {
+            var list = document.getElementById('snapshot_folder_list');
+            if (list) list.innerHTML = '<div class="list-group-item text-muted">Loading…</div>';
+            if (socket && socket.emit) {
+                socket.emit('cam', { cmd: 'browse_snapshot_folders', parameters: { folder: folder || '' } });
+            }
+        }
+
+        function showSnapshotFolderModal(takeAfter, forVideo) {
+            _snapshotTakeAfterFolder = !!takeAfter && !forVideo;
+            _videoStartAfterFolder = !!forVideo;
+            setSnapshotFolderError('');
+            var newInput = document.getElementById('input_new_snapshot_folder');
+            if (newInput) newInput.value = '';
+            if (!_snapshotFolderModal) {
+                var el = document.getElementById('snapshotFolderModal');
+                if (el && window.bootstrap) {
+                    _snapshotFolderModal = new bootstrap.Modal(el);
+                }
+            }
+            var start = getSessionSnapshotFolder() || '~/snapshots';
+            browseSnapshotFolders(start);
+            if (_snapshotFolderModal) {
+                _snapshotFolderModal.show();
+            }
+        }
+
+        function confirmSnapshotFolder(folder) {
+            folder = (folder || _browsePath || '').trim();
+            if (!folder) {
+                setSnapshotFolderError('Select a folder first.');
+                return;
+            }
+            sessionStorage.setItem(SNAPSHOT_FOLDER_KEY, folder);
+            updateSnapshotFolderLabel(folder);
+            if (socket && socket.emit) {
+                socket.emit('cam', { cmd: 'set_snapshot_folder', parameters: { folder: folder } });
+            }
+            if (_snapshotFolderModal) {
+                _snapshotFolderModal.hide();
+            }
+            if (_snapshotTakeAfterFolder) {
+                _snapshotTakeAfterFolder = false;
+                emitSnapshot(folder);
+            }
+            if (_videoStartAfterFolder) {
+                _videoStartAfterFolder = false;
+                emitStartVideo(folder);
+            }
+        }
+
+        function emitSnapshot(folder) {
+            if (!socket || !socket.emit) {
+                console.error('socket is not available for cam_snapshot!');
+                return;
+            }
+            var st = document.getElementById('snapshot_status');
+            if (st) st.textContent = 'Saving…';
+            socket.emit('cam', { cmd: 'snapshot', parameters: { folder: folder } });
+        }
+
+        function emitStartVideo(folder) {
+            if (!socket || !socket.emit) {
+                console.error('socket is not available for start video!');
+                return;
+            }
+            var statusEl = document.getElementById('video_record_status');
+            if (statusEl) {
+                statusEl.textContent = 'Starting…';
+                statusEl.className = 'text-danger d-block mt-1';
+            }
+            socket.emit('cam', { cmd: 'start_video_recording', parameters: { folder: folder } });
+        }
+
+        // Override camera_pi.html cam_snapshot: ask once per session
+        function cam_snapshot() {
+            var folder = getSessionSnapshotFolder();
+            if (!folder) {
+                showSnapshotFolderModal(true, false);
+                return;
+            }
+            emitSnapshot(folder);
+        }
+        window.cam_snapshot = cam_snapshot;
+
+        function cam_start_video() {
+            var folder = getSessionSnapshotFolder();
+            if (!folder) {
+                showSnapshotFolderModal(false, true);
+                return;
+            }
+            emitStartVideo(folder);
+        }
+        window.cam_start_video = cam_start_video;
+
+        function cam_stop_video() {
+            if (!socket || !socket.emit) return;
+            socket.emit('cam', { cmd: 'stop_video_recording', parameters: {} });
+        }
+        window.cam_stop_video = cam_stop_video;
+
+        function change_snapshot_folder() {
+            showSnapshotFolderModal(false, false);
+        }
+        window.change_snapshot_folder = change_snapshot_folder;
+
+        document.getElementById('btn_snapshot_folder_ok') &&
+            document.getElementById('btn_snapshot_folder_ok').addEventListener('click', function () {
+                confirmSnapshotFolder(_browsePath);
+            });
+
+        document.getElementById('btn_snapshot_folder_up') &&
+            document.getElementById('btn_snapshot_folder_up').addEventListener('click', function () {
+                if (_browseParent) browseSnapshotFolders(_browseParent);
+            });
+
+        document.getElementById('btn_snapshot_folder_home') &&
+            document.getElementById('btn_snapshot_folder_home').addEventListener('click', function () {
+                browseSnapshotFolders(_browseHome || '~');
+            });
+
+        document.getElementById('btn_create_snapshot_folder') &&
+            document.getElementById('btn_create_snapshot_folder').addEventListener('click', function () {
+                var input = document.getElementById('input_new_snapshot_folder');
+                var name = input ? input.value.trim() : '';
+                if (!name) {
+                    setSnapshotFolderError('Enter a name for the new folder.');
+                    return;
+                }
+                if (socket && socket.emit) {
+                    socket.emit('cam', {
+                        cmd: 'create_snapshot_folder',
+                        parameters: { parent: _browsePath, name: name }
+                    });
+                }
+                if (input) input.value = '';
+            });
+
+        document.getElementById('input_new_snapshot_folder') &&
+            document.getElementById('input_new_snapshot_folder').addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('btn_create_snapshot_folder').click();
+                }
+            });
+
+        // Restore label if session already has a folder (same tab reload)
+        updateSnapshotFolderLabel(getSessionSnapshotFolder());
         
         function heater_temp_c_target(index) {
             socket.emit('heater', { cmd: 'temp_c_target', parameters: { 'index': index, 'temp_c_target': $('#input_heater' + (index + 1) + '_temp_c_target').val() } });

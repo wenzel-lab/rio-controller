@@ -1,19 +1,27 @@
 [Unit]
-Description=Rio Controller UI (Flask)
+Description=Rio Controller UI (Flask) — Scenario 1 Pi Camera
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/pi/rio-controller/pi-deployment
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/rio-controller
+Environment=PYTHONPATH=.
 Environment=RIO_SIMULATION=false
+Environment=RIO_CAMERA_TYPE=rpi
+Environment=RIO_ROI_MODE=hardware
 Environment=RIO_DROPLET_ANALYSIS_ENABLED=true
-Environment=RIO_FLOW_ENABLED=true
-Environment=RIO_HEATER_ENABLED=true
+Environment=RIO_FLOW_ENABLED=false
+Environment=RIO_HEATER_ENABLED=false
 Environment=RIO_PUMP_ENABLED=false
-ExecStart=/usr/bin/python3 /home/pi/rio-controller/pi-deployment/main.py
+ExecStart=/usr/bin/python3 -u /home/pi/rio-controller/main.py
 Restart=on-failure
-RestartSec=2
+RestartSec=3
+
+# Camera / SPI access
+SupplementaryGroups=video gpio spi i2c
 
 [Install]
 WantedBy=multi-user.target

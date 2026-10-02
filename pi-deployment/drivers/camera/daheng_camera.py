@@ -235,24 +235,25 @@ class DahengCamera(BaseCamera):
         return ok
 
     def _ensure_default_exposure(self) -> None:
-        """ExposureAuto/GainAuto off + sane ExposureTime if device was left at an extreme."""
+        """ExposureAuto/GainAuto off + startup ExposureTime (CAMERA_DEFAULT_EXPOSURE_US)."""
         if self._device is None:
             return
+        try:
+            from config import CAMERA_DEFAULT_EXPOSURE_US
+
+            default_us = float(CAMERA_DEFAULT_EXPOSURE_US)
+        except Exception:
+            default_us = 50.0
         try:
             self._device.ExposureAuto.set(0)  # GX_EXPOSURE_AUTO_OFF (ExposureGain.cpp)
             try:
                 self._device.GainAuto.set(0)  # GX_GAIN_AUTO_OFF
             except Exception:
                 pass
-            current = float(self._device.ExposureTime.get())
-            # AFR→max clamps ExposureTime to ~100us; treat <1ms as unusable for live view.
-            if current > 500_000 or current < 1_000:
-                rng = self._device.ExposureTime.get_range()
-                target = max(float(rng["min"]), min(float(rng["max"]), 50_000.0))
-                self._device.ExposureTime.set(target)
-                self.config["ShutterSpeed"] = int(self._device.ExposureTime.get())
-            else:
-                self.config["ShutterSpeed"] = int(current)
+            rng = self._device.ExposureTime.get_range()
+            target = max(float(rng["min"]), min(float(rng["max"]), default_us))
+            self._device.ExposureTime.set(target)
+            self.config["ShutterSpeed"] = int(self._device.ExposureTime.get())
         except Exception as exc:
             logger.warning("Failed to set default Daheng exposure: %s", exc)
 
@@ -782,6 +783,43 @@ class DahengCamera(BaseCamera):
         self._apply_exposure_us(pending)
         return True
 
+    def configure_strobe_line_out(self, enabled: bool, line_selector: int = -1) -> bool:
+        """Drive the opto output with ExposureActive so the PIC can strobe per frame.
+
+        The hybrid sync path probes this by name (see Camera._prepare_hybrid_strobe_sync),
+        so a backend without it silently leaves the camera with no trigger output.
+        line_selector < 0 resolves to RIO_DAHENG_STROBE_LINE, defaulting to Line3.
+        """
+        if self._device is None:
+            return False
+
+        if line_selector < 0:
+            line_selector = int(os.getenv("RIO_DAHENG_STROBE_LINE", "3"))
+
+        try:
+            from gxipy.gxidef import (  # type: ignore
+                GxLineModeEntry,
+                GxLineSourceEntry,
+            )
+
+            self._device.LineSelector.set(line_selector)
+            self._device.LineMode.set(GxLineModeEntry.OUTPUT)
+            if enabled:
+                self._device.LineSource.set(GxLineSourceEntry.EXPOSURE_ACTIVE)
+            else:
+                # This Galaxy build has no LineSource.OFF; leave ExposureActive wired
+                # but inert once the PIC strobe is disabled.
+                pass
+            logger.warning(
+                "Daheng strobe LineOut %s (Line%d)",
+                "ON/ExposureActive" if enabled else "left (no OFF enum)",
+                line_selector,
+            )
+            return True
+        except Exception as exc:
+            logger.warning("configure_strobe_line_out failed: %s", exc)
+            return False
+
     def get_exposure_range(self) -> Dict[str, float]:
         if self._device is None:
             return {"min": 20.0, "max": 1_000_000.0}
@@ -1023,5 +1061,11 @@ class DahengCamera(BaseCamera):
 
     def close(self) -> None:
         self.stop()
+        if self._device is not None:
+            try:
+                self._device.close_device()
+            except Exception as exc:
+                logger.warning("Daheng close_device failed: %s", exc)
         self._device = None
         self._data_stream = None
+        self._device_manager = None

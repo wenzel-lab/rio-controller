@@ -19,7 +19,7 @@
       $('#btn_strobe_enable').addClass( strobe.enable ? 'btn-primary' : 'btn-secondary' );
       
       // Toggle button for Hold (Continuous Light) - shows CURRENT state
-      $('#btn_strobe_hold').html( strobe.hold ? 'ON' : 'OFF' );
+      $('#btn_strobe_hold').html( strobe.hold ? 'Continuous: ON' : 'Continuous: OFF' );
       $('#btn_strobe_hold').removeClass('btn-secondary btn-success');
       $('#btn_strobe_hold').addClass( strobe.hold ? 'btn-success' : 'btn-secondary' );
       
@@ -39,7 +39,7 @@
       // Default values if strobe data not loaded yet
       $('#btn_strobe_enable').html( 'DISABLED' );
       $('#btn_strobe_enable').removeClass('btn-primary').addClass('btn-secondary');
-      $('#btn_strobe_hold').html( 'OFF' );
+      $('#btn_strobe_hold').html( 'Continuous: OFF' );
       $('#btn_strobe_hold').removeClass('btn-success').addClass('btn-secondary');
       $('#input_strobe_period_us').val( '0' );
       $('#strobe_cam_time_us').html( '0' );
@@ -82,10 +82,14 @@
       console.error('socket is not available or socket.emit is not a function!');
       return;
     }
-    var data = { cmd: 'enable', parameters: { 'on': strobe.enable ? 0 : 1 } };
+    // Optimistic UI flip so a desynced label cannot trap the user on DISABLED
+    // while the PIC is already enabled (or the reverse).
+    var next = strobe.enable ? 0 : 1;
+    strobe.enable = next;
+    cam_update();
+    var data = { cmd: 'enable', parameters: { 'on': next } };
     console.log('Emitting strobe event:', data);
     socket.emit( 'strobe', data );
-    console.log('strobe event emitted');
   }
   function strobe_hold() {
     console.log('strobe_hold() called, socket:', socket);
@@ -93,10 +97,12 @@
       console.error('socket is not available or socket.emit is not a function!');
       return;
     }
-    var data = { cmd: 'hold', parameters: { 'on': strobe.hold ? 0 : 1 } };
+    var next = strobe.hold ? 0 : 1;
+    strobe.hold = next;
+    cam_update();
+    var data = { cmd: 'hold', parameters: { 'on': next } };
     console.log('Emitting strobe event:', data);
     socket.emit( 'strobe', data );
-    console.log('strobe event emitted');
   }
   function strobe_wait() {
     socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': ( $('#input_strobe_wait_us').val() * 1000 ), 'period_ns': strobe.period_ns } } );
@@ -139,7 +145,9 @@
       console.error('socket is not available for cam_snapshot!');
       return;
     }
-    socket.emit( 'cam', { cmd: 'snapshot', parameters: {} } );
+    var folder = '';
+    try { folder = sessionStorage.getItem('rio_snapshot_folder') || ''; } catch (e) {}
+    socket.emit( 'cam', { cmd: 'snapshot', parameters: folder ? { folder: folder } : {} } );
   }
   
   // Make functions globally accessible (for onclick handlers)

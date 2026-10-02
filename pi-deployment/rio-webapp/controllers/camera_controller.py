@@ -57,12 +57,14 @@ class CameraController:
         logger.debug("Stopping camera thread for camera switch")
         if hasattr(cam, "exit_event"):
             cam.exit_event.set()
-        try:
-            cam.thread.join(timeout=3.0)
-            if cam.thread.is_alive():
-                logger.warning("Camera thread did not stop within timeout during switch")
-        except Exception as e:
-            logger.warning("Error waiting for camera thread during switch: %s", e)
+        thread = getattr(cam, "thread", None)
+        if thread is not None:
+            try:
+                thread.join(timeout=3.0)
+                if thread.is_alive():
+                    logger.warning("Camera thread did not stop within timeout during switch")
+            except Exception as e:
+                logger.warning("Error waiting for camera thread during switch: %s", e)
         cam.thread = None
         cam.frame = None
         # Must clear: exit_event is app-wide; leaving it set blocks initialize() -> white video
@@ -98,11 +100,11 @@ class CameraController:
         """
         self.camera.cam_data["camera"] = camera_name
         if camera_name != "none" and self.camera.strobe_cam and self.camera.strobe_cam.camera:
-            self.camera.camera = self.camera.strobe_cam.camera
+            self.camera.bind_camera_backend(self.camera.strobe_cam.camera)
             if hasattr(self.camera, "_sync_default_stream_resolution"):
                 self.camera._sync_default_stream_resolution()
         else:
-            self.camera.camera = None
+            self.camera.bind_camera_backend(None)
 
     def handle_camera_select(self, data: Dict[str, Any]) -> None:
         """
@@ -118,6 +120,24 @@ class CameraController:
 
             camera_name = data.get("parameters", {}).get("camera", "none")
             logger.info(f"Camera selection changed to: {camera_name}")
+
+            # Re-selecting the same live camera must be a no-op. Stopping the
+            # capture thread + emitting "reload" races the Galaxy handle and
+            # leaves Enable on free-run with a dead LineOut (_device is None).
+            current = (self.camera.cam_data or {}).get("camera")
+            live_backend = (
+                getattr(self.camera, "strobe_cam", None)
+                and self.camera.strobe_cam.camera is not None
+                and self.camera.camera is self.camera.strobe_cam.camera
+            )
+            if camera_name == current and live_backend and camera_name != "none":
+                if self.camera.thread is None or not self.camera.thread.is_alive():
+                    try:
+                        self.camera.initialize()
+                    except Exception as e:
+                        logger.error("Failed to restart camera thread: %s", e)
+                logger.info("Camera already %s — skip switch/reload", camera_name)
+                return
 
             # Stop current camera thread if running
             self._stop_camera_thread()

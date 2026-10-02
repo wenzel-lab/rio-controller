@@ -125,6 +125,17 @@ class PiStrobeCam:
             True if camera was created successfully, False otherwise
         """
         try:
+            # Idempotent: re-selecting the same live camera must not close/reopen.
+            # Daheng/Galaxy returns "device already opened" if close_device was skipped
+            # or the SDK has not released the handle yet.
+            if (
+                camera_type != "none"
+                and self.camera is not None
+                and getattr(self, "_camera_type", None) == camera_type
+            ):
+                logger.info("Camera type already %s — keeping existing instance", camera_type)
+                return True
+
             # Close existing camera if any
             if self.camera:
                 try:
@@ -132,6 +143,10 @@ class PiStrobeCam:
                 except Exception:
                     pass
                 self.camera = None
+                # Give Galaxy/USB a beat to release before reopen
+                import time
+
+                time.sleep(0.4)
 
             if camera_type == "none":
                 self._camera_type = None

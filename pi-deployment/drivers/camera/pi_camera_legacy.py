@@ -72,8 +72,9 @@ class PiCameraLegacy(BaseCamera):
         # Store original crop for ROI support
         self._original_crop = None
 
-        # Hardware ROI state (for persistent hardware ROI)
-        self.hardware_roi = None  # (x, y, width, height) in sensor coordinates
+        # Hardware H.264 recording on splitter port 1 (JPEG stream uses port 0)
+        self._h264_record_port: Optional[int] = None
+        self._h264_path: Optional[str] = None
 
     def start(self) -> None:
         """Start camera (picamera is always running, but ensure it's configured)"""
@@ -97,10 +98,81 @@ class PiCameraLegacy(BaseCamera):
         # Note: JPEG quality is set in capture_continuous() call, not as camera attribute
 
     def stop(self) -> None:
-        """Stop camera recording"""
+        """Stop camera recording / streaming helpers"""
         if self.cam and self.cam.recording:
-            self.cam.stop_recording()
+            try:
+                port = self._h264_record_port if self._h264_record_port is not None else 1
+                self.cam.stop_recording(splitter_port=port)
+            except Exception as e:
+                logger.debug("stop_recording during stop(): %s", e)
+            self._h264_record_port = None
+            self._h264_path = None
         self.cam_running_event.clear()
+
+    def start_h264_recording(
+        self,
+        path: str,
+        splitter_port: int = 1,
+        bitrate: int = 8_000_000,
+    ) -> str:
+        """
+        Start hardware H.264 recording on a splitter port.
+
+        Official picamera pattern (recipes2 / multi-res recording):
+        - JPEG / capture_continuous uses splitter_port=0 (use_video_port=True)
+        - H.264 recording uses splitter_port=1 (default) so both run together
+
+        See: https://picamera.readthedocs.io/en/latest/recipes2.html#recording-at-multiple-resolutions
+        """
+        if self.cam is None:
+            raise RuntimeError("Camera not initialized")
+        if splitter_port == 0:
+            raise ValueError("splitter_port 0 is reserved for JPEG streaming")
+        if self.cam.recording:
+            raise RuntimeError("Camera is already recording")
+
+        # Ensure framerate matches config so timestamps are correct
+        framerate = self.config.get("FrameRate", self.frame_rate or 30)
+        try:
+            self.cam.framerate = int(framerate)
+        except Exception as e:
+            logger.debug("Could not set framerate before recording: %s", e)
+
+        self.cam.start_recording(
+            path,
+            format="h264",
+            splitter_port=int(splitter_port),
+            bitrate=int(bitrate),
+        )
+        self._h264_record_port = int(splitter_port)
+        self._h264_path = path
+        logger.info(
+            "H.264 recording started on splitter_port=%s → %s",
+            splitter_port,
+            path,
+        )
+        return path
+
+    def stop_h264_recording(self) -> Optional[str]:
+        """Stop hardware H.264 recording; returns the .h264 path if any."""
+        if self.cam is None:
+            return None
+        path = self._h264_path
+        port = self._h264_record_port if self._h264_record_port is not None else 1
+        if self.cam.recording:
+            try:
+                self.cam.stop_recording(splitter_port=port)
+                logger.info("H.264 recording stopped (port=%s): %s", port, path)
+            except Exception as e:
+                logger.error("Error stopping H.264 recording: %s", e)
+                raise
+        self._h264_record_port = None
+        self._h264_path = None
+        return path
+
+    def is_h264_recording(self) -> bool:
+        """True if hardware H.264 recording is active."""
+        return bool(self.cam is not None and self.cam.recording and self._h264_path)
 
     def generate_frames(self, config: Optional[Dict] = None) -> Generator:
         """
@@ -124,7 +196,11 @@ class PiCameraLegacy(BaseCamera):
         # Set JPEG quality for streaming (lower quality reduces bandwidth/CPU)
         stream = io.BytesIO()
         for frame in self.cam.capture_continuous(
-            stream, format="jpeg", use_video_port=True, quality=CAMERA_STREAMING_JPEG_QUALITY
+            stream,
+            format="jpeg",
+            use_video_port=True,
+            splitter_port=0,
+            quality=CAMERA_STREAMING_JPEG_QUALITY,
         ):
             if not self.cam_running_event.is_set():
                 break
@@ -266,12 +342,14 @@ class PiCameraLegacy(BaseCamera):
             # Fallback: return a black frame of correct size
             return np.zeros((height, width, 3), dtype=np.uint8)
 
-    def set_roi_hardware(self, roi: Tuple[int, int, int, int]) -> bool:
+    def set_roi_hardware(self, roi: Tuple[int, int, int, int], absolute: bool = False) -> bool:
         """
         Set hardware ROI on Pi camera using picamera's crop property.
 
         Args:
             roi: (x, y, width, height) tuple in pixels
+            absolute: accepted for API parity with Daheng (coords are still pixels
+                normalized against the active capture resolution / sensor max).
 
         Returns:
             bool: True if hardware ROI was set successfully, False otherwise
@@ -287,15 +365,20 @@ class PiCameraLegacy(BaseCamera):
         x, y, width, height = roi
 
         try:
-            # Get current resolution for normalization
-            current_res = self.cam.resolution
-            sensor_width, sensor_height = current_res
+            # Prefer full sensor size for absolute UI coords; else active resolution.
+            try:
+                sensor_width, sensor_height = self.get_max_resolution()
+            except Exception:
+                sensor_width, sensor_height = self.cam.resolution
+            if not absolute:
+                current_res = self.cam.resolution
+                sensor_width, sensor_height = current_res
 
             # Convert pixel coordinates to normalized coordinates (0.0-1.0)
-            norm_x = x / sensor_width
-            norm_y = y / sensor_height
-            norm_w = width / sensor_width
-            norm_h = height / sensor_height
+            norm_x = x / float(sensor_width)
+            norm_y = y / float(sensor_height)
+            norm_w = width / float(sensor_width)
+            norm_h = height / float(sensor_height)
 
             # Clamp to valid range
             norm_x = max(0.0, min(1.0, norm_x))
@@ -317,6 +400,39 @@ class PiCameraLegacy(BaseCamera):
             logger.warning(f"Failed to set hardware ROI on Pi camera (legacy): {e}")
             self.hardware_roi = None
             return False
+
+    def get_stream_size(self) -> Tuple[int, int]:
+        """Current capture size (hardware ROI size when crop is active)."""
+        if self.hardware_roi is not None:
+            return int(self.hardware_roi[2]), int(self.hardware_roi[3])
+        if self.cam is None:
+            size = self.config.get("size", [640, 480])
+            return int(size[0]), int(size[1])
+        try:
+            w, h = self.cam.resolution
+            return int(w), int(h)
+        except Exception:
+            size = self.config.get("size", [640, 480])
+            return int(size[0]), int(size[1])
+
+    def reset_to_resolution(self, width: int, height: int) -> None:
+        """Clear hardware crop and restore full-frame capture (Clear ROI)."""
+        if self.cam is None:
+            return
+        try:
+            # Full sensor zoom window (picamera normalized crop).
+            self.cam.crop = (0.0, 0.0, 1.0, 1.0)
+            self.hardware_roi = None
+            w = max(16, int(width))
+            h = max(16, int(height))
+            try:
+                self.cam.resolution = (w, h)
+                self.config["size"] = [w, h]
+            except Exception as exc:
+                logger.debug("Pi resolution restore after ROI clear failed: %s", exc)
+            logger.info("Pi camera hardware ROI cleared → full frame (%sx%s)", w, h)
+        except Exception as e:
+            logger.warning("Failed to clear Pi camera hardware ROI: %s", e)
 
     def get_max_resolution(self) -> Tuple[int, int]:
         """
