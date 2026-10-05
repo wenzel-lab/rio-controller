@@ -10,17 +10,28 @@
         body {
             background-color: #FFFFFF; /* Pure White - Ocean Breeze */
         }
-        .sidebar {
-            background-color: #6c757d; /* Professional Grey */
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .sidebar img {
-            filter: brightness(0) invert(1);
-        }
         .main-content {
             padding: 20px;
             background-color: #FFFFFF; /* Pure White */
+        }
+        /* Compact layout on small screens (no decorative left rail) */
+        @media (max-width: 767.98px) {
+            .main-content {
+                padding: 10px 12px;
+            }
+            .main-content > h1 {
+                font-size: 1.15rem;
+                margin-bottom: 0.5rem !important;
+            }
+            .nav-tabs .nav-link {
+                padding: 0.35rem 0.55rem;
+                font-size: 0.85rem;
+            }
+            .roi-view-row {
+                height: calc(100vh - 8.5rem);
+                max-height: calc(100vh - 8.5rem);
+                min-height: 200px;
+            }
         }
         .card {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -395,15 +406,8 @@
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-1 sidebar">
-                <div class="text-center">
-                    <i class="bi bi-droplet" style="font-size: 3rem; color: white;"></i>
-                </div>
-            </div>
-            
-            <!-- Main Content -->
-            <div class="col-md-11 main-content">
+            <!-- Main Content (full width; decorative grey droplet rail removed) -->
+            <div class="col-12 main-content">
                 <h1 class="mb-4">Rio Microfluidics Controller</h1>
                 
                 <!-- Tabs Navigation -->
@@ -609,12 +613,12 @@
                                         <div class="mb-3">
                                             <label for="select_display_resolution" class="form-label">Resolution for Web Streaming:</label>
                                             <select id="select_display_resolution" class="form-select" onchange="cam_set_resolution()">
-                                                <option value="640x480"{% if cam.display_width == 640 and cam.display_height == 480 %} selected{%endif%}>640 × 480 (Low - Fast)</option>
-                                                <option value="800x600"{% if cam.display_width == 800 and cam.display_height == 600 %} selected{%endif%}>800 × 600</option>
-                                                <option value="1024x768"{% if cam.display_width == 1024 and cam.display_height == 768 %} selected{%endif%}>1024 × 768 (Default)</option>
-                                                <option value="1280x960"{% if cam.display_width == 1280 and cam.display_height == 960 %} selected{%endif%}>1280 × 960</option>
-                                                <option value="1440x1080"{% if cam.display_width == 1440 and cam.display_height == 1080 %} selected{%endif%}>1440 × 1080 (Daheng MER2 Full)</option>
-                                                <option value="1920x1080"{% if cam.display_width == 1920 and cam.display_height == 1080 %} selected{%endif%}>1920 × 1080 (High Quality)</option>
+                                                <option value="640x480" class="res-opt-general"{% if cam.display_width == 640 and cam.display_height == 480 %} selected{%endif%}>640 × 480 (Low - Fast)</option>
+                                                <option value="800x600" class="res-opt-general"{% if cam.display_width == 800 and cam.display_height == 600 %} selected{%endif%}>800 × 600</option>
+                                                <option value="1024x768" class="res-opt-rpi res-opt-general"{% if cam.display_width == 1024 and cam.display_height == 768 %} selected{%endif%}>1024 × 768 (Default)</option>
+                                                <option value="1280x960" class="res-opt-general"{% if cam.display_width == 1280 and cam.display_height == 960 %} selected{%endif%}>1280 × 960</option>
+                                                <option value="1440x1080" class="res-opt-general"{% if cam.display_width == 1440 and cam.display_height == 1080 %} selected{%endif%}>1440 × 1080 (Daheng MER2 Full)</option>
+                                                <option value="1920x1080" class="res-opt-general"{% if cam.display_width == 1920 and cam.display_height == 1080 %} selected{%endif%}>1920 × 1080 (High Quality)</option>
                                             </select>
                                             <small class="form-text text-muted">
                                                 Current: <span id="current_display_resolution">{% if cam.display_width %}{{cam.display_width}} × {{cam.display_height}}{% else %}1024 × 768{% endif %}</span>
@@ -629,10 +633,10 @@
                                         <div class="mb-3">
                                             <label for="select_snapshot_resolution" class="form-label">Resolution for Snapshots:</label>
                                             <select id="select_snapshot_resolution" class="form-select" onchange="cam_set_snapshot_resolution()">
-                                                <option value="display"{% if cam.snapshot_resolution_mode == "display" or not cam.snapshot_resolution_mode %} selected{%endif%}>Use Display Resolution (Fast)</option>
-                                                <option value="full"{% if cam.snapshot_resolution_mode == "full" %} selected{%endif%}>Full Sensor Resolution (High Quality)</option>
+                                                <option value="display" class="snap-opt-rpi snap-opt-general"{% if cam.snapshot_resolution_mode == "display" or not cam.snapshot_resolution_mode %} selected{%endif%}>Use Display Resolution (Fast)</option>
+                                                <option value="full" class="snap-opt-general"{% if cam.snapshot_resolution_mode == "full" %} selected{%endif%}>Full Sensor Resolution (High Quality)</option>
                                             </select>
-                                            <small class="form-text text-muted">
+                                            <small id="snapshot_resolution_hint" class="form-text text-muted">
                                                 Full resolution: 3280 × 2464 (V2 Camera)<br>
                                                 <em>Note: Full resolution snapshots take longer to capture (~100-500ms) but provide maximum image quality.</em>
                                             </small>
@@ -1271,6 +1275,7 @@
             heaters_update();
             flows_update();
             pump_update_fields();
+            applyCameraConfigUiForType($('#select_camera').val() || '{{ cam.camera or "none" }}');
             
             socket.on('connect', function() {
             syncDahengExposureUI();
@@ -1493,6 +1498,48 @@
 
         function cam_select() {
             socket.emit('cam_select', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } });
+            applyCameraConfigUiForType($('#select_camera').val());
+        }
+
+        /**
+         * Pi Camera V2: only 1024×768 streaming + display-resolution snapshots.
+         * Other cameras (Daheng/Mako/hybrid) keep the full option lists.
+         */
+        function applyCameraConfigUiForType(cameraType) {
+            var isRpi = (cameraType === 'rpi');
+            $('#select_display_resolution option.res-opt-general').each(function () {
+                var $o = $(this);
+                if (isRpi) {
+                    var keep = $o.hasClass('res-opt-rpi');
+                    $o.prop('disabled', !keep).prop('hidden', !keep);
+                    if (!keep) $o.removeAttr('selected');
+                } else {
+                    $o.prop('disabled', false).prop('hidden', false);
+                }
+            });
+            $('#select_snapshot_resolution option.snap-opt-general').each(function () {
+                var $o = $(this);
+                if (isRpi) {
+                    var keep = $o.hasClass('snap-opt-rpi');
+                    $o.prop('disabled', !keep).prop('hidden', !keep);
+                    if (!keep) $o.removeAttr('selected');
+                } else {
+                    $o.prop('disabled', false).prop('hidden', false);
+                }
+            });
+            if (isRpi) {
+                $('#snapshot_resolution_hint').hide();
+                if ($('#select_display_resolution').val() !== '1024x768') {
+                    $('#select_display_resolution').val('1024x768');
+                    cam_set_resolution();
+                }
+                if ($('#select_snapshot_resolution').val() !== 'display') {
+                    $('#select_snapshot_resolution').val('display');
+                    cam_set_snapshot_resolution();
+                }
+            } else {
+                $('#snapshot_resolution_hint').show();
+            }
         }
         
         function cam_set_resolution() {
@@ -1559,6 +1606,7 @@
                 if ($('#select_camera option[value="' + data.camera + '"]').length) {
                     $('#select_camera').val(data.camera);
                 }
+                applyCameraConfigUiForType(data.camera);
             }
             syncDahengExposureUI();
                 if (data.display_width && data.display_height) {
