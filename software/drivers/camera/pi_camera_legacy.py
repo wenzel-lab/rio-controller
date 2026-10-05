@@ -71,6 +71,10 @@ class PiCameraLegacy(BaseCamera):
 
         # Store original crop for ROI support
         self._original_crop = None
+        # Cumulative picamera zoom window in normalized sensor coords (0..1).
+        # Nested Apply ROI composes into this; Clear resets to full frame.
+        self._norm_crop: Optional[Tuple[float, float, float, float]] = None
+        self.hardware_roi: Optional[Tuple[int, int, int, int]] = None
 
         # Hardware H.264 recording on splitter port 1 (JPEG stream uses port 0)
         self._h264_record_port: Optional[int] = None
@@ -348,16 +352,13 @@ class PiCameraLegacy(BaseCamera):
 
         Args:
             roi: (x, y, width, height) tuple in pixels
-            absolute: accepted for API parity with Daheng (coords are still pixels
-                normalized against the active capture resolution / sensor max).
+            absolute: If True, coords are in the capture-frame pixel space and
+                replace the zoom window from the full sensor. If False, coords
+                are view-relative to the current zoomed frame and nest inside
+                the existing crop (successive Apply ROI without Clear).
 
         Returns:
             bool: True if hardware ROI was set successfully, False otherwise
-
-        Note:
-            This uses picamera's crop property to set sensor-level ROI.
-            The camera will only capture the specified region.
-            To reset to full frame, set ROI to (0, 0, sensor_width, sensor_height).
         """
         if self.cam is None:
             return False
@@ -365,34 +366,64 @@ class PiCameraLegacy(BaseCamera):
         x, y, width, height = roi
 
         try:
-            # Prefer full sensor size for absolute UI coords; else active resolution.
-            try:
-                sensor_width, sensor_height = self.get_max_resolution()
-            except Exception:
-                sensor_width, sensor_height = self.cam.resolution
-            if not absolute:
-                current_res = self.cam.resolution
-                sensor_width, sensor_height = current_res
+            res_w, res_h = self.cam.resolution
+            res_w = max(1, int(res_w))
+            res_h = max(1, int(res_h))
 
-            # Convert pixel coordinates to normalized coordinates (0.0-1.0)
-            norm_x = x / float(sensor_width)
-            norm_y = y / float(sensor_height)
-            norm_w = width / float(sensor_width)
-            norm_h = height / float(sensor_height)
+            if self._norm_crop is None:
+                self._norm_crop = (0.0, 0.0, 1.0, 1.0)
 
-            # Clamp to valid range
-            norm_x = max(0.0, min(1.0, norm_x))
-            norm_y = max(0.0, min(1.0, norm_y))
-            norm_w = max(0.0, min(1.0 - norm_x, norm_w))
-            norm_h = max(0.0, min(1.0 - norm_y, norm_h))
+            if absolute:
+                # Capture-frame absolute → full-sensor normalized crop (replaces).
+                nx = x / float(res_w)
+                ny = y / float(res_h)
+                nw = width / float(res_w)
+                nh = height / float(res_h)
+                self._norm_crop = (
+                    max(0.0, min(1.0, nx)),
+                    max(0.0, min(1.0, ny)),
+                    max(0.0, min(1.0, nw)),
+                    max(0.0, min(1.0, nh)),
+                )
+            else:
+                # View-relative nest inside the current zoom window.
+                cx, cy, cw, ch = self._norm_crop
+                nx = cx + (x / float(res_w)) * cw
+                ny = cy + (y / float(res_h)) * ch
+                nw = (width / float(res_w)) * cw
+                nh = (height / float(res_h)) * ch
+                self._norm_crop = (
+                    max(0.0, min(1.0, nx)),
+                    max(0.0, min(1.0, ny)),
+                    max(0.0, min(1.0, nw)),
+                    max(0.0, min(1.0, nh)),
+                )
 
-            # Set crop (picamera expects (x, y, width, height) in normalized coords)
-            self.cam.crop = (norm_x, norm_y, norm_w, norm_h)
+            # Keep crop inside the sensor and non-empty.
+            cx, cy, cw, ch = self._norm_crop
+            cw = max(1e-4, min(cw, 1.0 - cx))
+            ch = max(1e-4, min(ch, 1.0 - cy))
+            self._norm_crop = (cx, cy, cw, ch)
 
-            # Store hardware ROI state
-            self.hardware_roi = (x, y, width, height)
+            self.cam.crop = self._norm_crop
+
+            # Pixel ROI in capture-frame space (for constraints / UI absolute mode).
+            self.hardware_roi = (
+                int(round(cx * res_w)),
+                int(round(cy * res_h)),
+                max(1, int(round(cw * res_w))),
+                max(1, int(round(ch * res_h))),
+            )
             logger.info(
-                f"Hardware ROI set on Pi camera (legacy): {roi} (normalized: {norm_x:.3f}, {norm_y:.3f}, {norm_w:.3f}, {norm_h:.3f})"
+                "Hardware ROI set on Pi camera (legacy): roi=%s absolute=%s "
+                "norm_crop=(%.4f, %.4f, %.4f, %.4f) hardware_roi=%s",
+                roi,
+                absolute,
+                cx,
+                cy,
+                cw,
+                ch,
+                self.hardware_roi,
             )
             return True
 
@@ -402,9 +433,7 @@ class PiCameraLegacy(BaseCamera):
             return False
 
     def get_stream_size(self) -> Tuple[int, int]:
-        """Current capture size (hardware ROI size when crop is active)."""
-        if self.hardware_roi is not None:
-            return int(self.hardware_roi[2]), int(self.hardware_roi[3])
+        """Actual JPEG frame size (picamera crop zooms content; resolution stays)."""
         if self.cam is None:
             size = self.config.get("size", [640, 480])
             return int(size[0]), int(size[1])
@@ -422,6 +451,7 @@ class PiCameraLegacy(BaseCamera):
         try:
             # Full sensor zoom window (picamera normalized crop).
             self.cam.crop = (0.0, 0.0, 1.0, 1.0)
+            self._norm_crop = (0.0, 0.0, 1.0, 1.0)
             self.hardware_roi = None
             w = max(16, int(width))
             h = max(16, int(height))

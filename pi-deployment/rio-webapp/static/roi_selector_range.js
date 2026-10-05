@@ -62,6 +62,12 @@ class ROISelectorRange {
         this._userHasAdjustedSliders = false;
         /** Set when user clicks Apply ROI; cleared on hardware_applied. */
         this._awaitingHardwareApply = false;
+        /**
+         * Pi Camera nested ROI: after Apply+reset_view, further Apply ROI sends
+         * view-relative hardware crops (absolute=false). Cleared on Clear ROI.
+         * Daheng/hybrid never sets this.
+         */
+        this._piNestedRoi = false;
         /** Frozen stream + track pixels for the duration of a handle drag. */
         this._dragLayout = null;
         /** Delta-drag anchor: start mouse + edge values (stream coords). */
@@ -1335,6 +1341,7 @@ class ROISelectorRange {
                 }
 
                 if (data.cleared) {
+                    this._piNestedRoi = false;
                     this._applyStreamSize(
                         data.stream_width, data.stream_height, data.constraints, false, true
                     );
@@ -1349,27 +1356,38 @@ class ROISelectorRange {
                 }
 
                 if (data.hardware_applied) {
-                    const saved = {
-                        x_min: this.x_min, x_max: this.x_max,
-                        y_min: this.y_min, y_max: this.y_max,
-                    };
-                    this._applyStreamSize(
-                        data.stream_width, data.stream_height, data.constraints, false, false
-                    );
-                    this.x_min = saved.x_min;
-                    this.x_max = saved.x_max;
-                    this.y_min = saved.y_min;
-                    this.y_max = saved.y_max;
-                    this._clampSliderValues();
+                    if (data.reset_view) {
+                        // Pi: zoomed frame becomes the new full view — allow nested Apply.
+                        this._applyStreamSize(
+                            data.stream_width, data.stream_height, data.constraints, false, true
+                        );
+                        this._normalizeViewConstraints();
+                        this.setSlidersToFullStream(false);
+                        this._piNestedRoi = true;
+                    } else {
+                        // Daheng/hybrid: keep absolute rails + offsets for expand/move.
+                        const saved = {
+                            x_min: this.x_min, x_max: this.x_max,
+                            y_min: this.y_min, y_max: this.y_max,
+                        };
+                        this._applyStreamSize(
+                            data.stream_width, data.stream_height, data.constraints, false, false
+                        );
+                        this.x_min = saved.x_min;
+                        this.x_max = saved.x_max;
+                        this.y_min = saved.y_min;
+                        this.y_max = saved.y_max;
+                        this._clampSliderValues();
+                    }
                     this.roi = null;
                     this._pendingHardwareCommit = false;
                     this._awaitingHardwareApply = false;
                     this._lastCommitRoi = null;
                     localStorage.removeItem('camera_roi');
-                    // Keep server constraints as-is: offset_x/y.current now hold the
-                    // real crop offsets, needed for absolute<->view conversion.
                     this._clearCanvasLogical();
-                    this.syncUIFromRange();
+                    if (!data.reset_view) {
+                        this.syncUIFromRange();
+                    }
                     if (this.img) {
                         this.updateCanvasSize();
                     }
@@ -1539,6 +1557,7 @@ class ROISelectorRange {
     clearROI(sendToServer = true) {
         this.roi = null;
         this._lastCommitRoi = null;
+        this._piNestedRoi = false;
         this._clearCanvasLogical();
         localStorage.removeItem('camera_roi');
 
@@ -1638,7 +1657,9 @@ class ROISelectorRange {
                 cmd: 'set',
                 parameters: Object.assign({}, roiPayload, {
                     apply_hardware: applyHardware,
-                    absolute: !!applyHardware,
+                    // Pi nested mode: view-relative crops compose into current zoom.
+                    // Daheng/hybrid: keep absolute sensor coords.
+                    absolute: !!applyHardware && !this._piNestedRoi,
                 })
             });
         }

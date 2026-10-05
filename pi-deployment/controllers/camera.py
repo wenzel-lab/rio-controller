@@ -2009,6 +2009,12 @@ class Camera:
                 "hardware_applied": hardware_applied,
                 "roi_scheduled": roi_scheduled,
             }
+            # Pi Camera: after Apply, UI must treat the zoomed frame as a fresh
+            # full view so a second Apply nests inside it (Daheng keeps absolute rails).
+            if hardware_applied and (
+                getattr(self.strobe_cam, "_camera_type", None) == CAMERA_TYPE_RPI
+            ):
+                payload["reset_view"] = True
             if snapped_roi_dict is not None:
                 payload["snapped_roi"] = snapped_roi_dict
             # Future crop size — only send after hardware_applied, not on roi_scheduled preview.
@@ -2067,6 +2073,8 @@ class Camera:
                 "stream_width": int(sw),
                 "stream_height": int(sh),
             }
+            if getattr(self.strobe_cam, "_camera_type", None) == CAMERA_TYPE_RPI:
+                payload["reset_view"] = True
             if self.camera and hasattr(self.camera, "get_sensor_roi"):
                 try:
                     ox, oy, aw, ah = self.camera.get_sensor_roi()
