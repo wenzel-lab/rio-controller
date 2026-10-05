@@ -12,7 +12,7 @@ Environment=PYTHONPATH=.
 Environment=RIO_SIMULATION=false
 Environment=RIO_CAMERA_TYPE=rpi
 Environment=RIO_ROI_MODE=hardware
-Environment=RIO_DROPLET_ANALYSIS_ENABLED=true
+Environment=RIO_DROPLET_ANALYSIS_ENABLED=false
 Environment=RIO_FLOW_ENABLED=false
 Environment=RIO_HEATER_ENABLED=false
 Environment=RIO_PUMP_ENABLED=false
