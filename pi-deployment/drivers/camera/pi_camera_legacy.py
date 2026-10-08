@@ -16,6 +16,7 @@ from threading import Event
 import logging
 
 from .camera_base import BaseCamera
+from .h264_timestamped_output import TimestampedH264Output, TimestampedRecordingResult
 
 # Import JPEG quality configuration
 try:
@@ -79,6 +80,8 @@ class PiCameraLegacy(BaseCamera):
         # Hardware H.264 recording on splitter port 1 (JPEG stream uses port 0)
         self._h264_record_port: Optional[int] = None
         self._h264_path: Optional[str] = None
+        self._h264_output: Optional[TimestampedH264Output] = None
+        self._h264_last_result: Optional[TimestampedRecordingResult] = None
         # Decode JPEG→numpy only when a consumer needs ROI arrays (droplet, etc.).
         # Always-on decode at 1024×768 saturates the Pi CPU and freezes the preview.
         self._roi_decode_enabled: bool = False
@@ -116,6 +119,12 @@ class PiCameraLegacy(BaseCamera):
                 self.cam.stop_recording(splitter_port=port)
             except Exception as e:
                 logger.debug("stop_recording during stop(): %s", e)
+            if self._h264_output is not None:
+                try:
+                    self._h264_last_result = self._h264_output.close()
+                except Exception as e:
+                    logger.debug("close timestamped output during stop(): %s", e)
+                self._h264_output = None
             self._h264_record_port = None
             self._h264_path = None
         self.cam_running_event.clear()
@@ -127,11 +136,14 @@ class PiCameraLegacy(BaseCamera):
         bitrate: int = 8_000_000,
     ) -> str:
         """
-        Start hardware H.264 recording on a splitter port.
+        Start hardware H.264 recording on a splitter port with per-frame PTS.
 
         Official picamera pattern (recipes2 / multi-res recording):
         - JPEG / capture_continuous uses splitter_port=0 (use_video_port=True)
         - H.264 recording uses splitter_port=1 (default) so both run together
+
+        Timestamps follow the Raspberry Pi rpicam-vid --save-pts recipe:
+        sidecar .csv + .pts (mkvmerge v2) written by TimestampedH264Output.
 
         See: https://picamera.readthedocs.io/en/latest/recipes2.html#recording-at-multiple-resolutions
         """
@@ -142,44 +154,64 @@ class PiCameraLegacy(BaseCamera):
         if self.cam.recording:
             raise RuntimeError("Camera is already recording")
 
-        # Ensure framerate matches config so timestamps are correct
+        # Ensure framerate matches config so sensor pacing matches set_timing
         framerate = self.config.get("FrameRate", self.frame_rate or 30)
         try:
             self.cam.framerate = int(framerate)
         except Exception as e:
             logger.debug("Could not set framerate before recording: %s", e)
 
+        output = TimestampedH264Output(path, camera=self.cam)
         self.cam.start_recording(
-            path,
+            output,
             format="h264",
             splitter_port=int(splitter_port),
             bitrate=int(bitrate),
         )
         self._h264_record_port = int(splitter_port)
         self._h264_path = path
+        self._h264_output = output
+        self._h264_last_result = None
         logger.info(
-            "H.264 recording started on splitter_port=%s → %s",
+            "H.264+PTS recording started on splitter_port=%s → %s (+ .csv/.pts)",
             splitter_port,
             path,
         )
         return path
 
     def stop_h264_recording(self) -> Optional[str]:
-        """Stop hardware H.264 recording; returns the .h264 path if any."""
-        if self.cam is None:
+        """Stop hardware H.264 recording; returns the .h264 path if any.
+
+        Also closes the timestamped output and stores metrics in
+        ``_h264_last_result`` (CSV/PTS sidecars on disk).
+        """
+        if self.cam is None and self._h264_output is None:
             return None
         path = self._h264_path
         port = self._h264_record_port if self._h264_record_port is not None else 1
-        if self.cam.recording:
+        if self.cam is not None and self.cam.recording:
             try:
                 self.cam.stop_recording(splitter_port=port)
                 logger.info("H.264 recording stopped (port=%s): %s", port, path)
             except Exception as e:
                 logger.error("Error stopping H.264 recording: %s", e)
                 raise
+        result: Optional[TimestampedRecordingResult] = None
+        if self._h264_output is not None:
+            try:
+                result = self._h264_output.close()
+            except Exception as e:
+                logger.error("Error closing timestamped H.264 output: %s", e)
+                raise
+            self._h264_output = None
+        self._h264_last_result = result
         self._h264_record_port = None
         self._h264_path = None
-        return path
+        return path if path else (result.h264 if result else None)
+
+    def get_last_h264_recording_result(self) -> Optional[TimestampedRecordingResult]:
+        """Metrics/paths from the most recent stop_h264_recording() call."""
+        return self._h264_last_result
 
     def is_h264_recording(self) -> bool:
         """True if hardware H.264 recording is active."""

@@ -47,6 +47,12 @@ sudo apt-get install -y python3-spidev python3-rpi.gpio python3-picamera python3
     echo "Warning: Some hardware packages failed to install. Continuing..."
 }
 
+# Video recording: ffmpeg always; mkvtoolnix for PTS-accurate MKV (rpicam-vid recipe)
+echo "Installing video mux tools (ffmpeg + mkvtoolnix)..."
+sudo apt-get install -y ffmpeg mkvtoolnix || {
+    echo "Warning: ffmpeg/mkvtoolnix install failed. Video remux may use ffmpeg-only fallback."
+}
+
 # Install OpenCV from apt (fast, pre-built) - critical for droplet detection
 echo "Installing OpenCV from apt (fast, pre-built)..."
 sudo apt-get install -y python3-opencv || {

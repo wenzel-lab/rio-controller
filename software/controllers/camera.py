@@ -717,11 +717,12 @@ class Camera:
 
     def start_video_recording(self, folder: Optional[str] = None) -> Dict[str, Any]:
         """
-        Start hardware H.264 recording (Raspberry Pi Camera / picamera).
+        Start hardware H.264 recording with per-frame PTS (Raspberry Pi Camera).
 
         Uses the official picamera dual-splitter pattern:
         - Live JPEG stream continues on splitter_port=0 (capture_continuous)
         - H.264 encodes on splitter_port=1 via PiCamera.start_recording
+        - Sidecar .csv / .pts written per frame (rpicam-vid --save-pts recipe)
 
         Docs: https://picamera.readthedocs.io/en/latest/recipes2.html
         """
@@ -766,12 +767,12 @@ class Camera:
 
         self.cam_data["video_recording"] = True
         self.cam_data["last_video"] = None
-        self.cam_data["status"] = f"Recording video… {h264_path}"
-        logger.info("H.264 video recording started: %s", h264_path)
+        self.cam_data["status"] = f"Recording video (PTS)… {h264_path}"
+        logger.info("H.264+PTS video recording started: %s", h264_path)
         return {"ok": True, "path": h264_path, "folder": dest}
 
     def stop_video_recording(self) -> Dict[str, Any]:
-        """Stop H.264 recording and remux to a playable MP4 with ffmpeg."""
+        """Stop H.264+PTS recording and mux to MKV/MP4 with real timestamps."""
         if not self._video_recording and not self._video_path:
             return {"ok": False, "error": "not recording"}
 
@@ -798,79 +799,110 @@ class Camera:
             self.cam_data["status"] = "Video recording stopped (no file)"
             return {"ok": False, "error": "no file"}
 
-        elapsed = (time.monotonic() - t0) if t0 else 0.0
-        fps = float(CAMERA_THREAD_FPS) or 30.0
-        try:
-            if self.camera is not None:
-                cfg_fps = getattr(self.camera, "config", {}).get("FrameRate")
-                if cfg_fps:
-                    fps = float(cfg_fps)
-        except Exception:
-            pass
+        import os
 
-        mp4_path = self._remux_h264_to_mp4(h264_path, fps=fps)
-        out = mp4_path or h264_path
-        self.cam_data["last_video"] = out
-        self.cam_data["status"] = (
-            f"Video saved: {out} ({elapsed:.1f}s wall, H.264 hardware encode)"
+        elapsed = (time.monotonic() - t0) if t0 else 0.0
+
+        from drivers.camera.h264_timestamped_output import (
+            load_pts_us_from_csv,
+            metrics_from_pts_us,
+            mux_h264_with_pts,
+            paths_for_h264,
         )
-        logger.info("Video recording stopped: %s (%.2fs wall)", out, elapsed)
+
+        _h264, csv_path, pts_path = paths_for_h264(h264_path)
+        rec = None
+        if self.camera is not None and hasattr(self.camera, "get_last_h264_recording_result"):
+            rec = self.camera.get_last_h264_recording_result()
+
+        if rec is not None:
+            n_frames = int(rec.n_frames)
+            playback_s = float(rec.playback_s)
+            mean_fps = float(rec.mean_fps_pts)
+            max_gap_ms = float(rec.max_gap_ms)
+            csv_path = rec.csv or csv_path
+            pts_path = rec.pts or pts_path
+            h264_path = rec.h264 or h264_path
+        else:
+            pts_us = load_pts_us_from_csv(csv_path) if os.path.isfile(csv_path) else []
+            m = metrics_from_pts_us(pts_us)
+            n_frames = int(m["n_frames"])
+            playback_s = float(m["playback_s"])
+            mean_fps = float(m["mean_fps_pts"])
+            max_gap_ms = float(m["max_gap_ms"])
+
+        if mean_fps <= 0 and elapsed > 0 and n_frames > 0:
+            mean_fps = n_frames / elapsed
+        if mean_fps <= 0:
+            mean_fps = float(CAMERA_THREAD_FPS) or 30.0
+
+        mux = mux_h264_with_pts(
+            h264_path,
+            pts_path,
+            mean_fps=mean_fps,
+            keep_h264=True,
+        )
+        out = mux.get("path") or h264_path
+        mux_mode = mux.get("mux") or "none"
+        ratio = (playback_s / elapsed) if elapsed > 1e-6 and playback_s > 0 else None
+
+        self.cam_data["last_video"] = out
+        self.cam_data["video_n_frames"] = n_frames
+        self.cam_data["video_wall_s"] = round(elapsed, 3)
+        self.cam_data["video_playback_s"] = round(playback_s, 3)
+        self.cam_data["video_mean_fps_pts"] = round(mean_fps, 2)
+        self.cam_data["video_max_gap_ms"] = round(max_gap_ms, 2)
+        self.cam_data["video_duration_ratio"] = round(ratio, 3) if ratio is not None else None
+        self.cam_data["video_mux"] = mux_mode
+        self.cam_data["video_csv"] = csv_path
+
+        ratio_txt = f"{ratio:.2f}" if ratio is not None else "n/a"
+        self.cam_data["status"] = (
+            f"Video saved: {out} | wall={elapsed:.1f}s play={playback_s:.1f}s "
+            f"frames={n_frames} ratio={ratio_txt} max_gap={max_gap_ms:.0f}ms mux={mux_mode}"
+        )
+        logger.info(
+            "Video recording stopped: %s (wall=%.2fs play=%.2fs frames=%s mux=%s)",
+            out,
+            elapsed,
+            playback_s,
+            n_frames,
+            mux_mode,
+        )
         return {
-            "ok": True,
+            "ok": bool(mux.get("ok") or out),
             "path": out,
             "h264": h264_path,
+            "csv": csv_path,
+            "pts": pts_path,
             "elapsed_s": round(elapsed, 3),
-            "fps": round(fps, 2),
+            "playback_s": round(playback_s, 3),
+            "n_frames": n_frames,
+            "mean_fps_pts": round(mean_fps, 2),
+            "max_gap_ms": round(max_gap_ms, 2),
+            "duration_ratio": round(ratio, 3) if ratio is not None else None,
+            "mux": mux_mode,
         }
 
     def _remux_h264_to_mp4(self, h264_path: str, fps: float = 30.0) -> Optional[str]:
-        """
-        Remux annex-B H.264 into MP4 without re-encoding (ffmpeg -c copy).
-
-        Raw .h264 from picamera has no container timestamps; pass -framerate so
-        players treat duration as realtime.
-        """
+        """Legacy helper: remux via PTS sidecars when present, else mean FPS."""
         import os
-        import subprocess
 
-        if not h264_path or not os.path.isfile(h264_path):
-            return None
-        if os.path.getsize(h264_path) < 32:
-            logger.warning("H.264 file too small: %s", h264_path)
-            return None
+        from drivers.camera.h264_timestamped_output import (
+            load_pts_us_from_csv,
+            metrics_from_pts_us,
+            mux_h264_with_pts,
+            paths_for_h264,
+        )
 
-        mp4_path = h264_path.rsplit(".", 1)[0] + ".mp4"
-        fps = max(1.0, min(float(fps) or 30.0, 60.0))
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-framerate",
-            f"{fps:.3f}",
-            "-i",
-            h264_path,
-            "-c",
-            "copy",
-            "-movflags",
-            "+faststart",
-            mp4_path,
-        ]
-        try:
-            subprocess.run(cmd, check=True, timeout=120)
-            if os.path.isfile(mp4_path) and os.path.getsize(mp4_path) > 0:
-                try:
-                    os.remove(h264_path)
-                except OSError:
-                    pass
-                logger.info("Remuxed H.264 → MP4: %s", mp4_path)
-                return mp4_path
-        except FileNotFoundError:
-            logger.warning("ffmpeg not found; leaving raw H.264 at %s", h264_path)
-        except Exception as e:
-            logger.warning("ffmpeg remux failed (%s); leaving H.264 at %s", e, h264_path)
-        return None
+        _h, csv_path, pts_path = paths_for_h264(h264_path)
+        mean_fps = float(fps) or 30.0
+        if os.path.isfile(csv_path):
+            m = metrics_from_pts_us(load_pts_us_from_csv(csv_path))
+            if m["mean_fps_pts"] > 0:
+                mean_fps = float(m["mean_fps_pts"])
+        result = mux_h264_with_pts(h264_path, pts_path, mean_fps=mean_fps, keep_h264=True)
+        return result.get("path") if result.get("ok") else None
 
     def _finalize_video_writer(self) -> Optional[str]:
         """Compatibility helper: stop H.264 if still active."""
