@@ -9,6 +9,7 @@ Routes:
     /video: MJPEG video stream
 """
 
+import os
 import time
 import logging
 from flask import Flask, render_template, Response
@@ -532,13 +533,23 @@ def create_background_update_task(
 
                 debug_data["update_count"] += 1
 
-                # Update hardware device controllers (only if not shutting down)
+                # Update hardware device controllers (only if not shutting down).
+                # Skip SPI for modules disabled via env (Scenario 1 defaults).
+                heaters_on = os.getenv("RIO_HEATER_ENABLED", "true").lower() != "false"
+                flow_on = os.getenv("RIO_FLOW_ENABLED", "true").lower() != "false"
+                pumps_on = (
+                    pump is not None
+                    and os.getenv("RIO_PUMP_ENABLED", "false").lower() == "true"
+                )
+
                 if not exit_event.is_set():
                     try:
                         cam.update_strobe_data()
-                        for heater in heaters:
-                            heater.update()
-                        flow.update()
+                        if heaters_on:
+                            for heater in heaters:
+                                heater.update()
+                        if flow_on and flow is not None:
+                            flow.update()
                     except KeyboardInterrupt:
                         # KeyboardInterrupt means shutdown - exit loop
                         logger.debug("Background update loop interrupted (shutdown)")
@@ -548,11 +559,16 @@ def create_background_update_task(
                 if exit_event.is_set():
                     break
 
-                heaters_data = view_model.format_heater_data(heaters)
-                flows_data = view_model.format_flow_data(flow)
+                heaters_data = (
+                    view_model.format_heater_data(heaters) if heaters_on else {}
+                )
+                flows_data = view_model.format_flow_data(flow) if flow_on else {}
                 camera_data = view_model.format_camera_data(cam)
                 strobe_data = view_model.format_strobe_data(cam)
-                pumps_data = view_model.format_pump_data(pump)
+                # Avoid blocking serial pump polls when pumps are disabled
+                pumps_data = (
+                    view_model.format_pump_data(pump) if pumps_on else {}
+                )
                 debug_formatted = view_model.format_debug_data(debug_data["update_count"])
 
                 # Emit updates to all connected clients (only if not shutting down)

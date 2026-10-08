@@ -179,6 +179,10 @@ def spi_release():
 
 
 def pi_wait_s(delay_s):
-    start_time = time.time()
-    while (time.time() - start_time) < delay_s:
-        pass
+    """Wait after SPI write for PIC reply.
+
+    Uses time.sleep (legacy strobe/flow/heater pattern) so the wait yields the
+    CPU / gevent hub. The previous busy-wait starved MJPEG capture under gevent.
+    """
+    if delay_s and delay_s > 0:
+        time.sleep(delay_s)

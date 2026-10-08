@@ -277,6 +277,7 @@ class DropletDetectorController:
         # Start processing thread
         self.running = True
         self.exit_event.clear()
+        self._set_camera_roi_decode(True)
         self.processing_thread = threading.Thread(
             target=self._processing_loop, name="DropletDetectionThread", daemon=True
         )
@@ -304,7 +305,17 @@ class DropletDetectorController:
             except queue.Empty:
                 break
 
+        self._set_camera_roi_decode(False)
         logger.info("Droplet detection stopped")
+
+    def _set_camera_roi_decode(self, enabled: bool) -> None:
+        """Pi Camera: enable JPEG→numpy decode only while droplet needs frames."""
+        try:
+            backend = getattr(self.camera, "camera", None)
+            if backend is not None and hasattr(backend, "set_roi_decode_enabled"):
+                backend.set_roi_decode_enabled(enabled)
+        except Exception as e:
+            logger.debug("Could not toggle ROI frame decode: %s", e)
 
     def _create_timing_callback(self):
         """Create timing callback for frame processing instrumentation."""

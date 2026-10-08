@@ -16,6 +16,8 @@ Environment=RIO_DROPLET_ANALYSIS_ENABLED=false
 Environment=RIO_FLOW_ENABLED=false
 Environment=RIO_HEATER_ENABLED=false
 Environment=RIO_PUMP_ENABLED=false
+# Proven: same as hybrid host — keep camera capture off the gevent hub
+Environment=RIO_NO_GEVENT_PATCH=true
 ExecStart=/usr/bin/python3 -u /home/pi/rio-controller/main.py
 Restart=on-failure
 RestartSec=3

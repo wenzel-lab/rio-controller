@@ -339,6 +339,7 @@ export RIO_DROPLET_ANALYSIS_ENABLED="${RIO_DROPLET_ANALYSIS_ENABLED:-false}"
 export RIO_FLOW_ENABLED="${RIO_FLOW_ENABLED:-false}"
 export RIO_HEATER_ENABLED="${RIO_HEATER_ENABLED:-false}"
 export RIO_PUMP_ENABLED="${RIO_PUMP_ENABLED:-false}"
+export RIO_NO_GEVENT_PATCH="${RIO_NO_GEVENT_PATCH:-true}"
 
 echo "Starting Rio microfluidics controller (Scenario 1)..."
 echo "  Simulation:  $RIO_SIMULATION"
@@ -346,6 +347,7 @@ echo "  Camera:      $RIO_CAMERA_TYPE"
 echo "  ROI mode:    $RIO_ROI_MODE"
 echo "  Droplet:     $RIO_DROPLET_ANALYSIS_ENABLED"
 echo "  Flow/Heater: $RIO_FLOW_ENABLED / $RIO_HEATER_ENABLED"
+echo "  No gevent:   $RIO_NO_GEVENT_PATCH"
 echo ""
 
 if command -v python3 >/dev/null 2>&1; then
