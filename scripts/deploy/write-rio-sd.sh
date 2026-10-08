@@ -17,7 +17,8 @@ fi
 
 # Refuse to touch internal NVMe / huge SATA disks
 TRAN=$(lsblk -no TRAN "$DEV" 2>/dev/null | head -1 | tr -d ' ')
-SIZE_G=$(lsblk -bno SIZE "$DEV" | awk '{printf "%.0f", $1/1e9}')
+# Only the disk size (first line) — partitions would concatenate (e.g. 32+0+7 → 3207G).
+SIZE_G=$(lsblk -bno SIZE "$DEV" | head -1 | awk '{printf "%.0f", $1/1e9}')
 MODEL=$(lsblk -no MODEL "$DEV" | head -1 | xargs)
 
 echo "Target: $DEV  tran=$TRAN  size≈${SIZE_G}G  model='$MODEL'"

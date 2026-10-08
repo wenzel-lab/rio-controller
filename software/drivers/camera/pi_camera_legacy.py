@@ -79,6 +79,13 @@ class PiCameraLegacy(BaseCamera):
         # Hardware H.264 recording on splitter port 1 (JPEG stream uses port 0)
         self._h264_record_port: Optional[int] = None
         self._h264_path: Optional[str] = None
+        # Decode JPEG→numpy only when a consumer needs ROI arrays (droplet, etc.).
+        # Always-on decode at 1024×768 saturates the Pi CPU and freezes the preview.
+        self._roi_decode_enabled: bool = False
+
+    def set_roi_decode_enabled(self, enabled: bool) -> None:
+        """Enable/disable per-frame JPEG decode for get_frame_roi / droplet."""
+        self._roi_decode_enabled = bool(enabled)
 
     def start(self) -> None:
         """Start camera (picamera is always running, but ensure it's configured)"""
@@ -221,19 +228,19 @@ class PiCameraLegacy(BaseCamera):
             stream.seek(0)
             stream.truncate()
 
-            # Decode JPEG frame for ROI access (needed for droplet detection)
-            # If hardware ROI is active, the frame is already at ROI resolution (crop applied at sensor)
-            # This allows get_frame_roi() to work even while capture_continuous is running
-            try:
-                from PIL import Image
-                import io as io_module
+            # Decode JPEG→RGB only when droplet/ROI consumers need arrays.
+            # Scenario 1 (droplet off) skips this — major source of ~1–2s freezes on Pi.
+            if self._roi_decode_enabled:
+                try:
+                    from PIL import Image
+                    import io as io_module
 
-                img = Image.open(io_module.BytesIO(data))
-                frame_array = np.array(img.convert("RGB"))
-                with self._last_frame_lock:
-                    self._last_frame_array = frame_array
-            except Exception as e:
-                logger.debug(f"Could not decode frame for ROI access: {e}")
+                    img = Image.open(io_module.BytesIO(data))
+                    frame_array = np.array(img.convert("RGB"))
+                    with self._last_frame_lock:
+                        self._last_frame_array = frame_array
+                except Exception as e:
+                    logger.debug(f"Could not decode frame for ROI access: {e}")
 
             # Return bytes directly (not numpy array) for web streaming
             buffer = data
