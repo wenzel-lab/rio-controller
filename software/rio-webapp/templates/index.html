@@ -65,8 +65,20 @@
         /* Narrow screens: controls go below the image, so the view must not
            take the whole viewport — otherwise camera and buttons never fit together */
         @media (max-width: 767.98px) {
-            :root { --rio-view-h: max(200px, 46vh); }
-            .camera-controls-panel { max-height: none; }
+            :root { --rio-view-h: max(240px, 50vh); }
+            #camera-view-pane .camera-workspace { gap: 0.4rem; }
+            /* Shrink-wrap the view: the row is as tall as image + bar + slider,
+               so hiding the stats pulls the slider (and the controls below) up */
+            .camera-viewport .roi-view-row { height: auto; min-height: 0; max-height: none; }
+            .roi-view-row .camera-container { flex: 0 0 auto; }
+            .roi-view-row .roi-y-slider-container { height: auto; }
+            #camera_image {
+                width: auto;
+                max-width: 100%;
+                height: auto;
+                max-height: calc(var(--rio-view-h) - 70px);
+            }
+            .camera-controls-panel { max-height: none; padding: 0.5rem 0.75rem; }
         }
         .card {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -284,6 +296,7 @@
             flex: 1;
             min-width: 0;
             align-items: stretch;
+            position: relative; /* anchor for the collapsed stats toggle */
         }
         .camera-container {
             position: relative;
@@ -336,8 +349,22 @@
             cursor: pointer;
         }
         .camera-status-bar .sb-toggle:hover { background: #444; }
-        .camera-status-bar.collapsed { padding: 0 8px; background: transparent; }
+        /* Collapsed: the bar leaves the layout (0 px tall) and only the toggle
+           floats over the bottom-left corner of the view, just above the X slider */
+        .camera-status-bar.collapsed {
+            position: absolute;
+            left: 0;
+            bottom: 49px; /* X slider block: 3 + 20 + 2 + 22 px, + 2 px handle overhang */
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            z-index: 3;
+        }
         .camera-status-bar.collapsed > span { display: none; }
+        .camera-status-bar.collapsed .sb-toggle {
+            margin: 0;
+            background: rgba(34, 34, 34, 0.85);
+        }
         /* X ROI slider below the image, as thin as possible (rail + one short inputs row) */
         .roi-x-slider-container {
             flex-shrink: 0;
