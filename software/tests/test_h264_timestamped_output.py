@@ -67,23 +67,66 @@ class TestH264TimestampedOutput(unittest.TestCase):
             cam.frame = FakeFrame(2, 0, 4, 18, 18, 33333, True)
             out.write(b"\x00\x00\x00\x01\x65")
 
+            # Complete picture whose buffer had no PTS (picamera reports None for
+            # pts==0 / MMAL_TIME_UNKNOWN): still one picture in the .h264, so it
+            # must get a timestamp (previous + last gap) or mkvmerge sees
+            # fewer timestamps than frames and doubles the file duration.
             cam.frame = FakeFrame(3, 0, 4, 22, 22, None, True)
             out.write(b"\x00\x00\x00\x01\x65")
 
             result = out.close()
-            self.assertEqual(result.n_frames, 2)
+            self.assertEqual(result.n_frames, 3)
             self.assertEqual(result.pts_first_us, 0)
-            self.assertEqual(result.pts_last_us, 33333)
+            self.assertEqual(result.pts_last_us, 66666)
             self.assertTrue(os.path.isfile(result.csv))
             self.assertTrue(os.path.isfile(result.pts))
 
             pts_us = load_pts_us_from_csv(result.csv)
-            self.assertEqual(pts_us, [0, 33333])
+            self.assertEqual(pts_us, [0, 33333, 66666])
 
             pts_text = Path(result.pts).read_text(encoding="utf-8")
             self.assertTrue(pts_text.startswith("# timestamp format v2\n"))
             self.assertIn("0\n", pts_text)
             self.assertIn("33\n", pts_text)
+            self.assertIn("66\n", pts_text)
+
+    def test_first_picture_with_none_ts_gets_zero_and_sps_skipped(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            cam = FakeCamera()
+            out = TimestampedH264Output(os.path.join(td, "clip.h264"), camera=cam)
+            # SPS/PPS header buffer: frame_type 2, complete, no PTS -> not a picture
+            cam.frame = FakeFrame(0, 2, 10, 10, 10, None, True)
+            out.write(b"\x00\x00\x00\x01\x67")
+            # First IDR: picamera maps pts==0 to None -> must be logged as t=0
+            cam.frame = FakeFrame(1, 1, 4, 14, 14, None, True)
+            out.write(b"\x00\x00\x00\x01\x65")
+            cam.frame = FakeFrame(2, 0, 4, 18, 18, 20350, True)
+            out.write(b"\x00\x00\x00\x01\x41")
+            result = out.close()
+            self.assertEqual(load_pts_us_from_csv(result.csv), [0, 20350])
+
+    def test_reconcile_pts_pads_and_truncates(self):
+        import tempfile
+
+        from drivers.camera.h264_timestamped_output import (
+            _read_pts_v2_ms,
+            _reconcile_pts_with_frames,
+            write_pts_v2,
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            pts = os.path.join(td, "v.pts")
+            write_pts_v2(pts, [0, 20, 40, 60])
+            _reconcile_pts_with_frames(pts, 6)
+            self.assertEqual(_read_pts_v2_ms(pts), [0, 20, 40, 60, 80, 100])
+            _reconcile_pts_with_frames(pts, 6)  # idempotent
+            self.assertEqual(_read_pts_v2_ms(pts), [0, 20, 40, 60, 80, 100])
+            _reconcile_pts_with_frames(pts, 5)
+            self.assertEqual(_read_pts_v2_ms(pts), [0, 20, 40, 60, 80])
+            _reconcile_pts_with_frames(pts, None)  # unknown frame count: untouched
+            self.assertEqual(_read_pts_v2_ms(pts), [0, 20, 40, 60, 80])
 
     def test_mux_prefers_mkvmerge(self):
         import tempfile
