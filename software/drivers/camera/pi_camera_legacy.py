@@ -154,12 +154,17 @@ class PiCameraLegacy(BaseCamera):
         if self.cam.recording:
             raise RuntimeError("Camera is already recording")
 
-        # Ensure framerate matches config so sensor pacing matches set_timing
-        framerate = self.config.get("FrameRate", self.frame_rate or 30)
-        try:
-            self.cam.framerate = int(framerate)
-        except Exception as e:
-            logger.debug("Could not set framerate before recording: %s", e)
+        # Only touch the framerate when the live JPEG stream is NOT running.
+        # picamera's framerate setter re-configures the camera/splitter ports; doing
+        # that while capture_continuous() is active on splitter_port=0 produces
+        # "mmal_port_enable: ... already enabled / output port couldn't be enabled"
+        # and the live view dies. start() already applied the configured framerate.
+        if not self.cam_running_event.is_set():
+            framerate = self.config.get("FrameRate", self.frame_rate or 30)
+            try:
+                self.cam.framerate = int(framerate)
+            except Exception as e:
+                logger.debug("Could not set framerate before recording: %s", e)
 
         output = TimestampedH264Output(path, camera=self.cam)
         self.cam.start_recording(

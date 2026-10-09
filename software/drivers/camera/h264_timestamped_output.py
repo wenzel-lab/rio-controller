@@ -197,6 +197,7 @@ def mux_h264_with_pts(
     *,
     mean_fps: float = 30.0,
     keep_h264: bool = True,
+    cleanup_sidecars: bool = False,
 ) -> Dict[str, Any]:
     """
     Mux annex-B H.264 + PTS sidecar into a playable container.
@@ -213,34 +214,55 @@ def mux_h264_with_pts(
     mkv_path = f"{stem}.mkv"
     mp4_path = f"{stem}.mp4"
 
+    stem_csv = f"{stem}.csv"
+
+    def _finish(path: str, mode: str, **extra: Any) -> Dict[str, Any]:
+        if not keep_h264:
+            _try_remove(h264_path)
+        if cleanup_sidecars:
+            # Timestamps now live inside the container; drop the .pts/.csv helpers.
+            _try_remove(pts_path)
+            _try_remove(stem_csv)
+        out = {"ok": True, "path": path, "mux": mode}
+        out.update(extra)
+        return out
+
     mkvmerge = shutil.which("mkvmerge")
     if mkvmerge and pts_path and os.path.isfile(pts_path):
-        # Support both historic --timecodes and newer --timestamps
+        # Support both historic --timecodes and newer --timestamps.
+        # mkvmerge exit codes: 0 = ok, 1 = finished WITH WARNINGS (file is valid),
+        # 2 = error. Treat 1 as success when the output exists (check=True would
+        # otherwise discard a good .mkv and fall back to a constant-fps .mp4).
         for flag in ("--timecodes", "--timestamps"):
             cmd = [mkvmerge, "-o", mkv_path, flag, f"0:{pts_path}", h264_path]
             try:
-                subprocess.run(
+                proc = subprocess.run(
                     cmd,
-                    check=True,
+                    check=False,
                     timeout=180,
                     capture_output=True,
                     text=True,
                 )
-                if os.path.isfile(mkv_path) and os.path.getsize(mkv_path) > 0:
-                    if not keep_h264:
-                        _try_remove(h264_path)
-                    return {
-                        "ok": True,
-                        "path": mkv_path,
-                        "mux": "mkvmerge",
-                        "command_flag": flag,
-                    }
             except FileNotFoundError:
                 break
             except Exception as e:
-                logger.debug("mkvmerge %s failed: %s", flag, e)
+                logger.warning("mkvmerge %s failed: %s", flag, e)
                 _try_remove(mkv_path)
                 continue
+            if proc.returncode in (0, 1) and os.path.isfile(mkv_path) and os.path.getsize(mkv_path) > 0:
+                if proc.returncode == 1:
+                    logger.warning(
+                        "mkvmerge finished with warnings (kept .mkv): %s",
+                        (proc.stdout or proc.stderr or "").strip()[-400:],
+                    )
+                return _finish(mkv_path, "mkvmerge", command_flag=flag, returncode=proc.returncode)
+            logger.warning(
+                "mkvmerge %s rc=%s: %s",
+                flag,
+                proc.returncode,
+                (proc.stderr or proc.stdout or "").strip()[-400:],
+            )
+            _try_remove(mkv_path)
 
     fps = max(1.0, min(float(mean_fps) or 30.0, 120.0))
     ffmpeg = shutil.which("ffmpeg")
@@ -270,14 +292,7 @@ def mux_h264_with_pts(
     try:
         subprocess.run(cmd, check=True, timeout=180)
         if os.path.isfile(mp4_path) and os.path.getsize(mp4_path) > 0:
-            if not keep_h264:
-                _try_remove(h264_path)
-            return {
-                "ok": True,
-                "path": mp4_path,
-                "mux": "ffmpeg_fallback",
-                "fps": round(fps, 3),
-            }
+            return _finish(mp4_path, "ffmpeg_fallback", fps=round(fps, 3))
     except Exception as e:
         logger.warning("ffmpeg PTS-fallback remux failed: %s", e)
     return {"ok": False, "error": "mux failed", "path": h264_path, "mux": None}

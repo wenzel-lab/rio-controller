@@ -18,9 +18,13 @@ Environment=RIO_HEATER_ENABLED=false
 Environment=RIO_PUMP_ENABLED=false
 # Proven: same as hybrid host — keep camera capture off the gevent hub
 Environment=RIO_NO_GEVENT_PATCH=true
+# INFO so rio-ui.log shows snapshot/video/ROI requests (event-based, not per-frame)
+Environment=RIO_LOG_LEVEL=INFO
 ExecStart=/usr/bin/python3 -u /home/pi/rio-controller/main.py
-Restart=on-failure
-RestartSec=3
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/pi/rio-controller/rio-ui.log
+StandardError=append:/home/pi/rio-controller/rio-ui.log
 
 # Camera / SPI access
 SupplementaryGroups=video gpio spi i2c

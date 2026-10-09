@@ -412,6 +412,138 @@ def _register_http_routes(  # noqa: C901
             traceback.print_exc()
             return f"<html><body><h1>Error</h1><pre>{str(e)}</pre></body></html>", 500
 
+    # Snapshot/video folder picker — HTTP so the modal works even if Socket.IO is down
+    # (Pi Chromium often cannot reach CDNs; Socket.IO was previously loaded from cdnjs).
+    @app.route("/api/snapshot-folders", methods=["GET"])
+    def api_browse_snapshot_folders():
+        from flask import jsonify, request
+
+        try:
+            folder = request.args.get("folder", "") or ""
+            result = cam.browse_snapshot_folders(folder)
+            return jsonify(result)
+        except Exception as e:
+            return _handle_route_error(e, "api_browse_snapshot_folders")
+
+    @app.route("/api/snapshot-folders", methods=["POST"])
+    def api_set_snapshot_folder():
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            folder = data.get("folder", "")
+            resolved = cam.set_snapshot_folder(folder)
+            return jsonify({"ok": True, "path": resolved})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    @app.route("/api/snapshot-folders/create", methods=["POST"])
+    def api_create_snapshot_folder():
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            parent = data.get("parent", "")
+            name = data.get("name", "")
+            result = cam.create_snapshot_folder(parent, name)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e), "dirs": [], "path": "", "parent": None, "home": ""}), 400
+
+    # Snapshot / video commands over plain HTTP. The Pi runs Flask-SocketIO 4.3.2 in threading
+    # mode where Socket.IO sessions expire every ~85 s (engineio "Session is disconnected"),
+    # so commands sent with socket.emit() were silently lost and the UI waited forever.
+    def _cam_status_payload(extra=None):
+        payload = {
+            "status": cam.cam_data.get("status"),
+            "video_recording": bool(cam.cam_data.get("video_recording")),
+            "last_video": cam.cam_data.get("last_video"),
+            "last_snapshot": cam.cam_data.get("last_snapshot"),
+            "snapshot_folder": cam.cam_data.get("snapshot_folder"),
+        }
+        if extra:
+            payload.update(extra)
+        return payload
+
+    @app.route("/api/camera/snapshot", methods=["POST"])
+    def api_camera_snapshot():
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            folder = data.get("folder") or None
+            logger.info("API snapshot requested (folder=%s)", folder)
+            cam.cam_data["status"] = "Saving…"
+            cam.save(folder=folder)
+            status = str(cam.cam_data.get("status") or "")
+            after = cam.cam_data.get("last_snapshot")
+            ok = status.startswith("Saved:") and bool(after)
+            if not ok:
+                logger.warning("API snapshot failed: %s", status)
+            return jsonify(_cam_status_payload({"ok": bool(ok), "path": after if ok else None})), (
+                200 if ok else 500
+            )
+        except Exception as e:
+            logger.error("API snapshot error: %s", e)
+            return jsonify({"ok": False, "status": f"Snapshot error: {e}"}), 500
+
+    @app.route("/api/camera/video/start", methods=["POST"])
+    def api_camera_video_start():
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            folder = data.get("folder") or None
+            logger.info("API start video requested (folder=%s)", folder)
+            result = cam.start_video_recording(folder=folder)
+            cam.cam_data["video_record_last"] = result
+            ok = bool(result.get("ok"))
+            if not ok:
+                logger.warning("API start video failed: %s", result)
+                if not cam.cam_data.get("status") or "Video" not in str(cam.cam_data.get("status")):
+                    cam.cam_data["status"] = f"Video error: {result.get('error')}"
+            return jsonify(_cam_status_payload({"ok": ok, "result": result})), (200 if ok else 500)
+        except Exception as e:
+            logger.error("API start video error: %s", e)
+            return jsonify({"ok": False, "status": f"Video error: {e}"}), 500
+
+    @app.route("/api/camera/video/stop", methods=["POST"])
+    def api_camera_video_stop():
+        from flask import jsonify
+
+        try:
+            logger.info("API stop video requested")
+            result = cam.stop_video_recording()
+            cam.cam_data["video_record_last"] = result
+            ok = bool(result.get("ok"))
+            if not ok:
+                logger.warning("API stop video: %s", result)
+            return jsonify(_cam_status_payload({"ok": ok, "result": result})), (200 if ok else 500)
+        except Exception as e:
+            logger.error("API stop video error: %s", e)
+            return jsonify({"ok": False, "status": f"Video error on stop: {e}"}), 500
+
+    @app.route("/api/camera/roi", methods=["POST"])
+    def api_camera_roi():
+        """ROI get/set/clear over HTTP (same handler as the Socket.IO 'roi' event)."""
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            cam.last_roi_payload = None
+            cam.on_roi(data)
+            return jsonify(
+                {
+                    "ok": True,
+                    "roi": cam.last_roi_payload,
+                    "display_width": cam.cam_data.get("display_width"),
+                    "display_height": cam.cam_data.get("display_height"),
+                }
+            )
+        except Exception as e:
+            logger.error("API roi error: %s", e)
+            return jsonify({"ok": False, "error": str(e), "roi": None}), 500
+
     @app.route("/video")
     def video():
         """

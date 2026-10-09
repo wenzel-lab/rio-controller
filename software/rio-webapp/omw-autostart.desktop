@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Rio backend ensure
+Comment=If systemd rio-ui is down, start updated Rio (run.sh) so PWA http://0.0.0.0:5000 works
+Exec=sh -c 'curl -fsS --max-time 1 http://127.0.0.1:5000 >/dev/null 2>&1 || /home/pi/rio-controller/run.sh >>/home/pi/rio-controller/rio-ui.log 2>&1'
+Path=/home/pi/rio-controller
+Icon=/home/pi/rio-controller/rio-webapp/static/icons/rio-controller.png
+Terminal=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

@@ -460,14 +460,27 @@ if __name__ == "__main__":
     print("", file=sys.stderr, flush=True)
 
     try:
-        socketio.run(
-            app,
-            host="0.0.0.0",
-            port=port,
-            debug=False,
-            allow_unsafe_werkzeug=(_async_mode_default == "threading"),
-            use_reloader=False,  # Disable reloader to ensure signal handling works
-        )
+        # Pi image ships Werkzeug 0.14 — it rejects allow_unsafe_werkzeug.
+        # Newer Flask needs that flag when async_mode=threading; pass it only if supported.
+        _run_kwargs = {
+            "host": "0.0.0.0",
+            "port": port,
+            "debug": False,
+            "use_reloader": False,  # Disable reloader to ensure signal handling works
+        }
+        if _async_mode_default == "threading":
+            _run_kwargs["allow_unsafe_werkzeug"] = True
+        try:
+            socketio.run(app, **_run_kwargs)
+        except TypeError as e:
+            if "allow_unsafe_werkzeug" not in str(e):
+                raise
+            _run_kwargs.pop("allow_unsafe_werkzeug", None)
+            logger.warning(
+                "Werkzeug/Flask on this image do not accept allow_unsafe_werkzeug; "
+                "retrying without it (Pi-compatible)."
+            )
+            socketio.run(app, **_run_kwargs)
     except KeyboardInterrupt:
         logger.info("Received KeyboardInterrupt, shutting down...")
         exit_event.set()

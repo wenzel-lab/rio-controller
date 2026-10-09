@@ -1,11 +1,10 @@
+#!/usr/bin/env xdg-open
 [Desktop Entry]
+Version=1.0
+Terminal=false
 Type=Application
 Name=Rio Microfluidics Controller
-Comment=Scenario 1 — Pi Camera + strobe UI (http://localhost:5000)
-Exec=/home/pi/rio-controller/run.sh
-Path=/home/pi/rio-controller
-Icon=applications-science
-Terminal=false
-Categories=Science;Utility;
-StartupNotify=false
-X-GNOME-Autostart-enabled=true
+Name[en_GB]=Rio Microfluidics Controller
+Exec=/usr/bin/chromium-browser --profile-directory=Default --app-id=fimaojahdaklnkiolkpkkdpagifaifll
+Icon=/home/pi/rio-controller/rio-webapp/static/icons/rio-controller.png
+StartupWMClass=crx_fimaojahdaklnkiolkpkkdpagifaifll

@@ -4,11 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rio Microfluidics Controller</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/rio-logo-32.png') }}">
+    <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/rio-logo-64.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/rio-logo-128.png') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         body {
             background-color: #FFFFFF; /* Pure White - Ocean Breeze */
+        }
+        .rio-brand-title {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+        }
+        .rio-brand-title img {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            flex-shrink: 0;
         }
         .main-content {
             padding: 20px;
@@ -408,7 +422,10 @@
         <div class="row">
             <!-- Main Content (full width; decorative grey droplet rail removed) -->
             <div class="col-12 main-content">
-                <h1 class="mb-4">Rio Microfluidics Controller</h1>
+                <h1 class="mb-4 rio-brand-title">
+                    <img src="{{ url_for('static', filename='icons/rio-controller.png') }}" alt="Rio" width="40" height="40">
+                    <span>Rio Microfluidics Controller</span>
+                </h1>
                 
                 <!-- Tabs Navigation -->
                 <ul class="nav nav-tabs" id="mainTab" role="tablist">
@@ -533,7 +550,7 @@
                                                         <button id="btn_video_start" onclick="cam_start_video()" class="btn btn-danger btn-sm">● Start video</button>
                                                         <button id="btn_video_stop" onclick="cam_stop_video()" class="btn btn-outline-secondary btn-sm" disabled>■ Stop</button>
                                                     </div>
-                                                    <small id="video_record_status" class="text-muted d-block mt-1">Ready to record video.</small>
+                                                    <small id="video_record_status" class="text-muted d-block mt-1">Ready. After Stop, open the .mkv (PTS), not the raw .h264.</small>
                                                 </div>
                                                 <div class="control-section">
                                                     <label class="form-label">Record ROI</label>
@@ -985,9 +1002,8 @@
             background: #7FD3D3 !important; /* Light Teal on hover */
         }
     </style>
-    <!-- Socket.IO client v2.3.0 - compatible with Flask-SocketIO 4.3.2 + python-engineio 3.13.2 -->
-    <!-- Socket.IO client - upgraded to v4.7.2 for compatibility with Flask-SocketIO 5.x -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <!-- Socket.IO JS 2.3.0 served locally (Pi often has no CDN). Matches Flask-SocketIO 4.3 on device. -->
+    <script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- ROI Selector - Range slider-based (dual handles for min/max) -->
     <script src="{{ url_for('static', filename='roi_selector_range.js') }}?v=20260907roi"></script>
@@ -996,28 +1012,26 @@
     <script src="{{ url_for('static', filename='droplet_histogram.js') }}"></script>
     
     <script type="text/javascript">
-        // Initialize Socket.IO FIRST (functions need it)
-        // Flask-SocketIO 5.x with Engine.IO 4.x requires allowEIO3 for backward compatibility
+        // Initialize Socket.IO FIRST (functions need it) — protocol must match Pi server
         var socket = io({
-            transports: ['websocket', 'polling'],
+            transports: ['polling', 'websocket'],
             reconnection: true,
             reconnectionDelay: 1000,
-            reconnectionAttempts: 5,
-            // Allow Engine.IO 3.x protocol for compatibility with Flask-SocketIO 5.x
-            allowEIO3: true
+            reconnectionAttempts: 10
         });
         
-        // Debug: Log connection state
-        console.log('Socket.IO initialized, connecting...');
-        console.log('Socket connection state:', socket.connected);
+        console.log('Socket.IO 2.3 client initialized, connecting...');
         
-        // Log connection attempts
         socket.on('connect_error', function(error) {
             console.error('Socket.IO connection error:', error);
         });
         
         socket.on('connect_timeout', function() {
             console.error('Socket.IO connection timeout');
+        });
+        
+        socket.on('connect', function() {
+            console.log('Socket.IO connected', socket.id);
         });
         
         // Include camera functions (after socket is defined so functions can use it)
@@ -1075,7 +1089,32 @@
                 return;
             }
             
-            roiSelectorRange = new ROISelectorRange(cameraImg, socket, maxWidth, maxHeight);
+            // ROI commands go over HTTP (Socket.IO sessions on the Pi stack expire every
+            // ~85 s, so socket.emit('roi') was silently dropped). Responses are fed to the
+            // same 'roi' handlers; live socket 'roi' broadcasts still work when present.
+            var roiHttpSocket = (function () {
+                var handlers = [];
+                return {
+                    on: function (ev, cb) {
+                        if (ev === 'roi') handlers.push(cb);
+                        if (socket && socket.on) socket.on(ev, cb);
+                    },
+                    emit: function (ev, data) {
+                        if (ev !== 'roi') { if (socket && socket.emit) socket.emit(ev, data); return; }
+                        fetch('/api/camera/roi', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(data || {})
+                        }).then(function (r) { return r.json(); })
+                          .then(function (j) {
+                              if (j && j.roi) handlers.forEach(function (cb) { try { cb(j.roi); } catch (e) { console.error(e); } });
+                          })
+                          .catch(function (err) { console.error('ROI request failed', err); });
+                    }
+                };
+            })();
+            roiSelectorRange = new ROISelectorRange(cameraImg, roiHttpSocket, maxWidth, maxHeight);
             window.roiSelectorRange = roiSelectorRange; // Make globally accessible
         }
         
@@ -1680,11 +1719,12 @@
                     statusEl.textContent = status || 'Recording…';
                     statusEl.className = 'text-danger d-block mt-1';
                 } else if (lastVideo) {
-                    statusEl.textContent = 'Saved: ' + lastVideo;
-                    statusEl.className = 'text-success d-block mt-1';
-                } else if (status && (String(status).indexOf('Video') === 0 || String(status).indexOf('video') >= 0)) {
+                    var muxFail = status && String(status).indexOf('mux FAILED') >= 0;
+                    statusEl.textContent = (muxFail ? status : ('Saved (play this): ' + lastVideo));
+                    statusEl.className = muxFail ? 'text-danger d-block mt-1' : 'text-success d-block mt-1';
+                } else if (status && (String(status).indexOf('Video') === 0 || String(status).indexOf('video') >= 0 || String(status).indexOf('mux') >= 0)) {
                     statusEl.textContent = status;
-                    statusEl.className = 'text-muted d-block mt-1';
+                    statusEl.className = (String(status).indexOf('FAILED') >= 0) ? 'text-danger d-block mt-1' : 'text-muted d-block mt-1';
                 }
             }
         }
@@ -1740,9 +1780,31 @@
         function browseSnapshotFolders(folder) {
             var list = document.getElementById('snapshot_folder_list');
             if (list) list.innerHTML = '<div class="list-group-item text-muted">Loading…</div>';
-            if (socket && socket.emit) {
-                socket.emit('cam', { cmd: 'browse_snapshot_folders', parameters: { folder: folder || '' } });
-            }
+            setSnapshotFolderError('');
+            var q = encodeURIComponent(folder || '');
+            // HTTP first — does not depend on Socket.IO (CDN/protocol issues broke the picker)
+            fetch('/api/snapshot-folders?folder=' + q, { credentials: 'same-origin' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function (data) {
+                    if (data && data.error && !(data.dirs && data.dirs.length)) {
+                        setSnapshotFolderError(data.error);
+                    }
+                    renderSnapshotFolderBrowse(data);
+                })
+                .catch(function (err) {
+                    console.error('Folder browse failed', err);
+                    setSnapshotFolderError('Could not list folders: ' + (err.message || err));
+                    if (list) {
+                        list.innerHTML = '<div class="list-group-item text-danger">Failed to load folders.</div>';
+                    }
+                    // Last resort: Socket.IO (if connected)
+                    if (socket && socket.connected && socket.emit) {
+                        socket.emit('cam', { cmd: 'browse_snapshot_folders', parameters: { folder: folder || '' } });
+                    }
+                });
         }
 
         function showSnapshotFolderModal(takeAfter, forVideo) {
@@ -1758,10 +1820,12 @@
                 }
             }
             var start = getSessionSnapshotFolder() || '~/snapshots';
-            browseSnapshotFolders(start);
             if (_snapshotFolderModal) {
                 _snapshotFolderModal.show();
+            } else {
+                setSnapshotFolderError('Folder dialog unavailable (Bootstrap missing).');
             }
+            browseSnapshotFolders(start);
         }
 
         function confirmSnapshotFolder(folder) {
@@ -1770,45 +1834,82 @@
                 setSnapshotFolderError('Select a folder first.');
                 return;
             }
-            sessionStorage.setItem(SNAPSHOT_FOLDER_KEY, folder);
-            updateSnapshotFolderLabel(folder);
-            if (socket && socket.emit) {
-                socket.emit('cam', { cmd: 'set_snapshot_folder', parameters: { folder: folder } });
-            }
-            if (_snapshotFolderModal) {
-                _snapshotFolderModal.hide();
-            }
-            if (_snapshotTakeAfterFolder) {
-                _snapshotTakeAfterFolder = false;
-                emitSnapshot(folder);
-            }
-            if (_videoStartAfterFolder) {
-                _videoStartAfterFolder = false;
-                emitStartVideo(folder);
-            }
+            fetch('/api/snapshot-folders', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder: folder })
+            })
+                .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                .then(function (res) {
+                    if (!res.ok || (res.j && res.j.ok === false)) {
+                        throw new Error((res.j && res.j.error) || 'Could not set folder');
+                    }
+                    var path = (res.j && res.j.path) || folder;
+                    sessionStorage.setItem(SNAPSHOT_FOLDER_KEY, path);
+                    updateSnapshotFolderLabel(path);
+                    if (_snapshotFolderModal) _snapshotFolderModal.hide();
+                    if (_snapshotTakeAfterFolder) {
+                        _snapshotTakeAfterFolder = false;
+                        emitSnapshot(path);
+                    }
+                    if (_videoStartAfterFolder) {
+                        _videoStartAfterFolder = false;
+                        emitStartVideo(path);
+                    }
+                })
+                .catch(function (err) {
+                    setSnapshotFolderError(err.message || String(err));
+                });
+        }
+
+        // Snapshot/video go over plain HTTP (same path as the folder picker, which works).
+        // Socket.IO on the Pi (Flask-SocketIO 4.3.2, threading) drops sessions every ~85 s,
+        // so socket.emit() commands were lost and the UI stayed on "Saving…" forever.
+        function camPost(url, body, timeoutMs) {
+            var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs || 30000) : null;
+            return fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body || {}),
+                signal: ctrl ? ctrl.signal : undefined
+            }).then(function (r) {
+                if (timer) clearTimeout(timer);
+                return r.json().catch(function () { return { ok: false, status: 'HTTP ' + r.status }; });
+            }).catch(function (err) {
+                if (timer) clearTimeout(timer);
+                var msg = (err && err.name === 'AbortError') ? 'timed out' : (err && err.message) || String(err);
+                return { ok: false, status: 'Request failed: ' + msg };
+            });
         }
 
         function emitSnapshot(folder) {
-            if (!socket || !socket.emit) {
-                console.error('socket is not available for cam_snapshot!');
-                return;
-            }
             var st = document.getElementById('snapshot_status');
-            if (st) st.textContent = 'Saving…';
-            socket.emit('cam', { cmd: 'snapshot', parameters: { folder: folder } });
+            if (st) { st.textContent = 'Saving…'; st.className = 'text-muted text-center d-block'; }
+            camPost('/api/camera/snapshot', { folder: folder }, 30000).then(function (j) {
+                if (!st) return;
+                st.textContent = j.ok ? (j.status || ('Saved: ' + j.path)) : (j.status || 'Snapshot failed');
+                st.className = (j.ok ? 'text-success' : 'text-danger') + ' text-center d-block';
+            });
         }
 
         function emitStartVideo(folder) {
-            if (!socket || !socket.emit) {
-                console.error('socket is not available for start video!');
-                return;
-            }
             var statusEl = document.getElementById('video_record_status');
             if (statusEl) {
                 statusEl.textContent = 'Starting…';
                 statusEl.className = 'text-danger d-block mt-1';
             }
-            socket.emit('cam', { cmd: 'start_video_recording', parameters: { folder: folder } });
+            camPost('/api/camera/video/start', { folder: folder }, 30000).then(function (j) {
+                if (j.ok) {
+                    updateVideoRecordingUI(true, null, j.status);
+                } else if (statusEl) {
+                    updateVideoRecordingUI(false, null, null);
+                    statusEl.textContent = j.status || 'Video start failed';
+                    statusEl.className = 'text-danger d-block mt-1';
+                }
+            });
         }
 
         // Override camera_pi.html cam_snapshot: ask once per session
@@ -1833,8 +1934,20 @@
         window.cam_start_video = cam_start_video;
 
         function cam_stop_video() {
-            if (!socket || !socket.emit) return;
-            socket.emit('cam', { cmd: 'stop_video_recording', parameters: {} });
+            var statusEl = document.getElementById('video_record_status');
+            if (statusEl) {
+                statusEl.textContent = 'Stopping and muxing (PTS)…';
+                statusEl.className = 'text-muted d-block mt-1';
+            }
+            var stopBtn = document.getElementById('btn_video_stop');
+            if (stopBtn) stopBtn.disabled = true;
+            camPost('/api/camera/video/stop', {}, 180000).then(function (j) {
+                updateVideoRecordingUI(false, j.last_video, j.status);
+                if (!j.ok && statusEl && !j.last_video) {
+                    statusEl.textContent = j.status || 'Video stop failed';
+                    statusEl.className = 'text-danger d-block mt-1';
+                }
+            });
         }
         window.cam_stop_video = cam_stop_video;
 
@@ -1866,13 +1979,23 @@
                     setSnapshotFolderError('Enter a name for the new folder.');
                     return;
                 }
-                if (socket && socket.emit) {
-                    socket.emit('cam', {
-                        cmd: 'create_snapshot_folder',
-                        parameters: { parent: _browsePath, name: name }
+                fetch('/api/snapshot-folders/create', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parent: _browsePath, name: name })
+                })
+                    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                    .then(function (res) {
+                        if (!res.ok || (res.j && res.j.error && !(res.j.dirs))) {
+                            throw new Error((res.j && res.j.error) || 'Create failed');
+                        }
+                        renderSnapshotFolderBrowse(res.j);
+                        if (input) input.value = '';
+                    })
+                    .catch(function (err) {
+                        setSnapshotFolderError(err.message || String(err));
                     });
-                }
-                if (input) input.value = '';
             });
 
         document.getElementById('input_new_snapshot_folder') &&

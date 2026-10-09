@@ -840,7 +840,8 @@ class Camera:
             h264_path,
             pts_path,
             mean_fps=mean_fps,
-            keep_h264=True,
+            keep_h264=False,
+            cleanup_sidecars=True,
         )
         out = mux.get("path") or h264_path
         mux_mode = mux.get("mux") or "none"
@@ -854,7 +855,7 @@ class Camera:
         self.cam_data["video_max_gap_ms"] = round(max_gap_ms, 2)
         self.cam_data["video_duration_ratio"] = round(ratio, 3) if ratio is not None else None
         self.cam_data["video_mux"] = mux_mode
-        self.cam_data["video_csv"] = csv_path
+        self.cam_data["video_csv"] = csv_path if os.path.isfile(csv_path) else None
 
         ratio_txt = f"{ratio:.2f}" if ratio is not None else "n/a"
         self.cam_data["status"] = (
@@ -959,6 +960,7 @@ class Camera:
                         logger.error(
                             "No frame available and camera not available - cannot save snapshot"
                         )
+                        self.cam_data["status"] = "Snapshot error: no camera frame available"
                         return
                     # Fallback to current frame even if resolution doesn't match
                     logger.info(
@@ -981,17 +983,20 @@ class Camera:
                             logger.error(
                                 "No frame available and capture failed - cannot save snapshot"
                             )
+                            self.cam_data["status"] = "Snapshot error: capture failed, no frame"
                             return
 
             # Convert frame data to PIL Image (single conversion)
             if frame_data is None:
                 logger.error("No image data available for snapshot")
+                self.cam_data["status"] = "Snapshot error: no image data"
                 return
 
             try:
                 img = Image.open(io.BytesIO(frame_data))
             except Exception as e:
                 logger.error(f"Error reading image data: {e}")
+                self.cam_data["status"] = f"Snapshot error: bad image data ({e})"
                 return
 
             current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1883,6 +1888,15 @@ class Camera:
             logger.error(f"Error processing camera command: {e}")
             logger.debug(f"Command data: {data}")
 
+    def _emit_roi(self, payload: Dict[str, Any]) -> None:
+        """Send an ROI payload to the UI (Socket.IO) and remember it for the HTTP ROI API."""
+        self.last_roi_payload = payload
+        if self.socketio:
+            try:
+                self.socketio.emit(WS_EVENT_ROI, payload)
+            except Exception as e:
+                logger.debug("ROI emit failed: %s", e)
+
     def on_roi(self, data: Dict[str, Any]) -> None:
         """
         Handle WebSocket ROI (Region of Interest) commands.
@@ -2063,7 +2077,7 @@ class Camera:
                     payload["multi_roi_enabled"] = bool(self.camera.is_multi_roi_enabled())
                 except Exception:
                     pass
-            self.socketio.emit(WS_EVENT_ROI, payload)
+            self._emit_roi(payload)
             if hardware_applied:
                 self.socketio.emit(WS_EVENT_CAM, self.cam_data)
 
@@ -2072,7 +2086,7 @@ class Camera:
         if not self.socketio:
             return
         if not ok:
-            self.socketio.emit(WS_EVENT_ROI, {"roi_apply_failed": True})
+            self._emit_roi({"roi_apply_failed": True})
             return
 
         sw, sh = self.display_resolution
@@ -2124,7 +2138,7 @@ class Camera:
                 payload["constraints"] = self.camera.get_roi_constraints()
             except Exception:
                 pass
-        self.socketio.emit(WS_EVENT_ROI, payload)
+        self._emit_roi(payload)
         self.socketio.emit(WS_EVENT_CAM, self.cam_data)
         self.update()
 
@@ -2157,7 +2171,7 @@ class Camera:
                 except Exception:
                     pass
 
-            self.socketio.emit(WS_EVENT_ROI, response)
+            self._emit_roi(response)
 
     def _handle_roi_clear(self) -> None:
         """Clear ROI and restore default stream size (Galaxy: reset Width/Height/Offset)."""
@@ -2204,7 +2218,7 @@ class Camera:
                     payload["multi_roi_enabled"] = bool(self.camera.is_multi_roi_enabled())
                 except Exception:
                     pass
-            self.socketio.emit(WS_EVENT_ROI, payload)
+            self._emit_roi(payload)
             self.socketio.emit(WS_EVENT_CAM, self.cam_data)
 
     def get_calibration(self) -> Dict[str, float]:
