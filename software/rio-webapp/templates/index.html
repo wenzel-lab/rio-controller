@@ -630,8 +630,8 @@
                                         <div class="mb-3">
                                             <label for="select_display_resolution" class="form-label">Resolution for Web Streaming:</label>
                                             <select id="select_display_resolution" class="form-select" onchange="cam_set_resolution()">
-                                                <option value="640x480" class="res-opt-general"{% if cam.display_width == 640 and cam.display_height == 480 %} selected{%endif%}>640 × 480 (Low - Fast)</option>
-                                                <option value="800x600" class="res-opt-general"{% if cam.display_width == 800 and cam.display_height == 600 %} selected{%endif%}>800 × 600</option>
+                                                <option value="640x480" class="res-opt-rpi res-opt-general"{% if cam.display_width == 640 and cam.display_height == 480 %} selected{%endif%}>640 × 480 (Low - Fast)</option>
+                                                <option value="800x600" class="res-opt-rpi res-opt-general"{% if cam.display_width == 800 and cam.display_height == 600 %} selected{%endif%}>800 × 600</option>
                                                 <option value="1024x768" class="res-opt-rpi res-opt-general"{% if cam.display_width == 1024 and cam.display_height == 768 %} selected{%endif%}>1024 × 768 (Default)</option>
                                                 <option value="1280x960" class="res-opt-general"{% if cam.display_width == 1280 and cam.display_height == 960 %} selected{%endif%}>1280 × 960</option>
                                                 <option value="1440x1080" class="res-opt-general"{% if cam.display_width == 1440 and cam.display_height == 1080 %} selected{%endif%}>1440 × 1080 (Daheng MER2 Full)</option>
@@ -1094,6 +1094,10 @@
             // same 'roi' handlers; live socket 'roi' broadcasts still work when present.
             var roiHttpSocket = (function () {
                 var handlers = [];
+                // Lets other HTTP responses (e.g. /api/camera/resolution) feed a ROI event.
+                window.dispatchRoiEvent = function (roi) {
+                    handlers.forEach(function (cb) { try { cb(roi); } catch (e) { console.error(e); } });
+                };
                 return {
                     on: function (ev, cb) {
                         if (ev === 'roi') handlers.push(cb);
@@ -1541,7 +1545,7 @@
         }
 
         /**
-         * Pi Camera V2: only 1024×768 streaming + display-resolution snapshots.
+         * Pi Camera V2: 640×480 / 800×600 / 1024×768 streaming + display-resolution snapshots.
          * Other cameras (Daheng/Mako/hybrid) keep the full option lists.
          */
         function applyCameraConfigUiForType(cameraType) {
@@ -1568,7 +1572,10 @@
             });
             if (isRpi) {
                 $('#snapshot_resolution_hint').hide();
-                if ($('#select_display_resolution').val() !== '1024x768') {
+                // Only fall back when the current selection is not a Pi option
+                // (never re-send an allowed preset: every 'cam' event calls this).
+                var $cur = $('#select_display_resolution option:selected');
+                if ($cur.length && !$cur.hasClass('res-opt-rpi')) {
                     $('#select_display_resolution').val('1024x768');
                     cam_set_resolution();
                 }
@@ -1583,8 +1590,21 @@
         
         function cam_set_resolution() {
             var preset = $('#select_display_resolution').val();
-            $('#resolution_change_status').show();
-            socket.emit('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
+            var $st = $('#resolution_change_status');
+            $st.text(' (Changing...)').attr('class', 'text-info').show();
+            // HTTP (not Socket.IO): the Pi socket session drops periodically and the
+            // restart takes seconds; the response carries the new size + ROI reset.
+            camPost('/api/camera/resolution', { preset: preset }, 30000).then(function (j) {
+                if (j && j.ok) {
+                    var resText = j.display_width + ' × ' + j.display_height;
+                    $('#current_display_resolution').text(resText);
+                    $('#cam_display_res').text(resText);
+                    $st.hide();
+                } else {
+                    $st.text(' ' + ((j && j.status) || 'Resolution change failed')).attr('class', 'text-danger').show();
+                }
+                if (j && j.roi && window.dispatchRoiEvent) window.dispatchRoiEvent(j.roi);
+            });
         }
         
         function cam_set_exposure() {

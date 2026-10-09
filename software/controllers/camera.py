@@ -189,6 +189,16 @@ class Camera:
             "last_video": None,
         }
 
+        # Serializes initialize(): /video's get_frame() and _restart_camera_thread()
+        # may both try to start the capture thread; two threads = "port 0 already in use".
+        self._init_lock = threading.Lock()
+        # True while _restart_camera_thread() is in progress: the exiting thread
+        # must stop() the camera hardware, not close() it (close sets cam=None).
+        self._thread_restarting = False
+        # Stream preset chosen by the user (Pi/Mako). Clear ROI restores this,
+        # not the config default, after a resolution change.
+        self._stream_resolution_setting: Tuple[int, int] = (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
+
         # Hardware H.264 recording (picamera splitter_port=1; JPEG stream on port 0)
         self._video_lock = threading.Lock()
         self._video_path: Optional[str] = None
@@ -309,7 +319,7 @@ class Camera:
                         return (int(w), int(h))
                 except Exception:
                     pass
-        return (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT)
+        return getattr(self, "_stream_resolution_setting", (CAMERA_THREAD_WIDTH, CAMERA_THREAD_HEIGHT))
 
     def _sync_default_stream_resolution(self) -> Tuple[int, int]:
         """Update display_resolution + cam_data from camera capabilities."""
@@ -364,6 +374,7 @@ class Camera:
                     )
 
             self.display_resolution = new_resolution
+            self._stream_resolution_setting = new_resolution
             logger.info(
                 f"Setting display resolution to {self.display_resolution[0]}x{self.display_resolution[1]}"
             )
@@ -379,15 +390,23 @@ class Camera:
             # Update camera configuration if camera is available
             if self.camera is not None:
                 try:
-                    self.camera.set_config(
-                        {
-                            "Width": self.display_resolution[0],
-                            "Height": self.display_resolution[1],
-                        }
-                    )
-
-                    # Restart camera thread to apply new resolution
-                    self._restart_camera_thread()
+                    if self.thread is not None and self.thread.is_alive():
+                        # Live stream running: do NOT touch the resolution under the
+                        # active JPEG encoder (picamera reconfigures the camera on
+                        # resolution set). Restart the thread; it applies
+                        # Width/Height itself before camera.start().
+                        self._restart_camera_thread()
+                    else:
+                        self.camera.set_config(
+                            {
+                                "Width": self.display_resolution[0],
+                                "Height": self.display_resolution[1],
+                            }
+                        )
+                    # Pi: zoom crop and the UI's ROI rails were relative to the old
+                    # frame. Reuse the Clear ROI path so both reset to the new size.
+                    if getattr(self.strobe_cam, "_camera_type", None) == CAMERA_TYPE_RPI:
+                        self._handle_roi_clear()
                 except Exception as e:
                     logger.error(f"Error applying resolution change: {e}")
             else:
@@ -454,6 +473,7 @@ class Camera:
         and restarts the camera with new settings. Uses proper synchronization
         to avoid race conditions.
         """
+        self._thread_restarting = True
         try:
             # Stop current thread if running
             if self.thread is not None and self.thread.is_alive():
@@ -464,10 +484,12 @@ class Camera:
                 if hasattr(self, "exit_event"):
                     self.exit_event.set()
 
-                # Wait for thread to finish (with timeout)
+                # Wait for thread to finish (with timeout). Keep a local ref: the
+                # thread's own finally sets self.thread = None while we join.
+                old_thread = self.thread
                 try:
-                    self.thread.join(timeout=2.0)
-                    if self.thread.is_alive():
+                    old_thread.join(timeout=2.0)
+                    if old_thread.is_alive():
                         logger.warning("Camera thread did not stop within timeout")
                 except Exception as e:
                     logger.warning(f"Error waiting for thread to stop: {e}")
@@ -492,7 +514,21 @@ class Camera:
                 try:
                     # Camera will be reconfigured when thread restarts with new resolution
                     # Initialize thread again
+                    prev_frame = self.frame
+                    t0 = time.time()
                     self.initialize()
+                    # initialize() returns at once when an old frame exists; wait for
+                    # the first frame of the NEW capture so callers (ROI clear, UI)
+                    # never touch picamera while the thread is still configuring it.
+                    while self.frame is prev_frame and time.time() - t0 < CAMERA_INIT_TIMEOUT_S:
+                        time.sleep(CAMERA_FRAME_WAIT_SLEEP_S)
+                    logger.info(
+                        "Camera thread restarted at %sx%s (first frame after %.0f ms, thread alive=%s)",
+                        self.display_resolution[0],
+                        self.display_resolution[1],
+                        (time.time() - t0) * 1000.0,
+                        bool(self.thread is not None and self.thread.is_alive()),
+                    )
                 except Exception as e:
                     logger.error(f"Error restarting camera thread: {e}")
         except Exception as e:
@@ -500,6 +536,8 @@ class Camera:
             import traceback
 
             logger.debug(traceback.format_exc())
+        finally:
+            self._thread_restarting = False
 
     def _register_websocket_handlers(self) -> None:
         """
@@ -537,6 +575,14 @@ class Camera:
         Starts the background frame capture thread and waits for the first frame
         to be available. If the camera is set to 'none', the thread is not started.
         """
+        lock = getattr(self, "_init_lock", None)
+        if lock is None:
+            self._initialize_locked()
+            return
+        with lock:
+            self._initialize_locked()
+
+    def _initialize_locked(self) -> None:
         if self.thread is not None and self.thread.is_alive():
             logger.debug("Camera thread already running, skipping initialization")
             return  # Thread already running
@@ -1340,7 +1386,12 @@ class Camera:
                     pass
             if self.camera is not None:
                 try:
-                    self.camera.close()
+                    if getattr(self, "_thread_restarting", False):
+                        # Resolution change: keep the hardware open (Pi close()
+                        # sets cam=None and the restart would find no camera).
+                        self.camera.stop()
+                    else:
+                        self.camera.close()
                 except Exception as e:
                     logger.error(f"Error closing camera: {e}")
             self.thread = None
