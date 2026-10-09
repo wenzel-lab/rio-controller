@@ -28,6 +28,21 @@ for arg in "$@"; do
     case "$arg" in
         --eject) EJECT=1 ;;
         --no-build) BUILD=0 ;;
+        --mount)
+            # Only mount the card (read logs/videos); no deploy. Needed when the desktop
+            # auto-mount did not happen (udisksctl has no polkit agent from a terminal).
+            [ "$(id -u)" -eq 0 ] || exec sudo -n "$0" "$@"
+            for lbl in rootfs bootfs; do
+                dev="$(lsblk -nr -o PATH,LABEL | awk -v l="$lbl" '$2==l{print $1; exit}')"
+                [ -n "$dev" ] || { echo "no $lbl partition"; continue; }
+                mp="$(lsblk -nr -o MOUNTPOINT "$dev")"
+                if [ -z "$mp" ]; then
+                    mp="/media/${SUDO_USER:-tobias-wenzel}/${lbl}2"
+                    mkdir -p "$mp" && mount "$dev" "$mp"
+                fi
+                echo "$lbl -> $mp"
+            done
+            exit 0 ;;
         -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
