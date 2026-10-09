@@ -768,7 +768,18 @@ class Camera:
         self.cam_data["video_recording"] = True
         self.cam_data["last_video"] = None
         self.cam_data["status"] = f"Recording video (PTS)… {h264_path}"
-        logger.info("H.264+PTS video recording started: %s", h264_path)
+        fr = sh = None
+        try:
+            if hasattr(self.camera, "get_actual_framerate"):
+                fr = self.camera.get_actual_framerate()
+            if hasattr(self.camera, "get_actual_shutter_speed"):
+                sh = self.camera.get_actual_shutter_speed()
+        except Exception:
+            pass
+        logger.info(
+            "H.264+PTS video recording started: %s (camera framerate=%s fps shutter=%s us, strobe=%s)",
+            h264_path, fr, sh, self.strobe_data,
+        )
         return {"ok": True, "path": h264_path, "folder": dest}
 
     def stop_video_recording(self) -> Dict[str, Any]:

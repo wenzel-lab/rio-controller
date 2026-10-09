@@ -25,6 +25,68 @@ logger = logging.getLogger(__name__)
 
 CSV_HEADER = ["frame_index", "pts_us", "wall_ns", "frame_size"]
 
+# Per-frame timestamp sidecars are moved here after a successful mux (not left next
+# to the video) so they can be inspected offline from the SD card: ~/rio-controller/diag
+DIAG_DIR = os.path.join(os.path.expanduser("~"), "rio-controller", "diag")
+
+
+def _stash_sidecar(path: str) -> None:
+    """Move a sidecar file into DIAG_DIR (fallback: delete)."""
+    if not path or not os.path.isfile(path):
+        return
+    try:
+        os.makedirs(DIAG_DIR, exist_ok=True)
+        shutil.move(path, os.path.join(DIAG_DIR, os.path.basename(path)))
+    except Exception as e:
+        logger.warning("Could not stash %s into %s: %s", path, DIAG_DIR, e)
+        _try_remove(path)
+
+
+def _nal_stats(h264_path: str) -> None:
+    """Log NAL-unit counts of the raw Annex-B stream (slices vs frames diagnosis)."""
+    counts: Dict[int, int] = {}
+    first_mb_zero = 0
+    try:
+        with open(h264_path, "rb") as fh:
+            data = fh.read()
+        i = 0
+        n = len(data)
+        while True:
+            j = data.find(b"\x00\x00\x01", i)
+            if j < 0 or j + 3 >= n:
+                break
+            hdr = data[j + 3]
+            t = hdr & 0x1F
+            counts[t] = counts.get(t, 0) + 1
+            # slice NAL (1/5): first_mb_in_slice is ue(v) at bit 0 of the slice header;
+            # a leading '1' bit means first_mb_in_slice == 0 (start of a new picture).
+            if t in (1, 5) and j + 4 < n and (data[j + 4] & 0x80):
+                first_mb_zero += 1
+            i = j + 3
+        logger.info(
+            "H.264 NAL stats %s: bytes=%d nal_types=%s slices_first_mb0=%d",
+            h264_path, n, dict(sorted(counts.items())), first_mb_zero,
+        )
+    except Exception as e:
+        logger.warning("NAL stats failed for %s: %s", h264_path, e)
+
+
+def _probe_container(path: str) -> None:
+    """Log what the container itself claims (fps/frames/duration) — offline diagnosis."""
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return
+    try:
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0", "-count_frames",
+             "-show_entries", "stream=r_frame_rate,avg_frame_rate,nb_read_frames,duration:format=duration",
+             "-of", "default=nw=1", path],
+            capture_output=True, text=True, timeout=120,
+        )
+        logger.info("ffprobe %s: %s %s", path, " ".join(proc.stdout.split()), proc.stderr.strip()[-300:])
+    except Exception as e:
+        logger.warning("ffprobe failed for %s: %s", path, e)
+
 
 @dataclass
 class TimestampedRecordingResult:
@@ -210,6 +272,7 @@ def mux_h264_with_pts(
     if os.path.getsize(h264_path) < 32:
         return {"ok": False, "error": "h264 too small", "path": None, "mux": None}
 
+    _nal_stats(h264_path)
     stem = h264_path[:-5] if h264_path.lower().endswith(".h264") else h264_path.rsplit(".", 1)[0]
     mkv_path = f"{stem}.mkv"
     mp4_path = f"{stem}.mp4"
@@ -220,9 +283,10 @@ def mux_h264_with_pts(
         if not keep_h264:
             _try_remove(h264_path)
         if cleanup_sidecars:
-            # Timestamps now live inside the container; drop the .pts/.csv helpers.
-            _try_remove(pts_path)
-            _try_remove(stem_csv)
+            # Timestamps now live inside the container; keep the .pts/.csv in DIAG_DIR.
+            _stash_sidecar(pts_path)
+            _stash_sidecar(stem_csv)
+        _probe_container(path)
         out = {"ok": True, "path": path, "mux": mode}
         out.update(extra)
         return out
@@ -250,6 +314,11 @@ def mux_h264_with_pts(
                 _try_remove(mkv_path)
                 continue
             if proc.returncode in (0, 1) and os.path.isfile(mkv_path) and os.path.getsize(mkv_path) > 0:
+                logger.info(
+                    "mkvmerge rc=%s output: %s",
+                    proc.returncode,
+                    " ".join((proc.stdout or "").split())[-600:],
+                )
                 if proc.returncode == 1:
                     logger.warning(
                         "mkvmerge finished with warnings (kept .mkv): %s",
