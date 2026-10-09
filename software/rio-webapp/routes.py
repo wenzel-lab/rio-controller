@@ -544,34 +544,6 @@ def _register_http_routes(  # noqa: C901
             logger.error("API roi error: %s", e)
             return jsonify({"ok": False, "error": str(e), "roi": None}), 500
 
-    @app.route("/api/camera/resolution", methods=["POST"])
-    def api_camera_resolution():
-        """Stream resolution preset over HTTP (same handler as Socket.IO 'cam' set_resolution)."""
-        from flask import jsonify, request
-
-        try:
-            data = request.get_json(silent=True) or {}
-            preset = str(data.get("preset", "")).strip()
-            if not preset:
-                return jsonify({"ok": False, "status": "preset required"}), 400
-            cam.last_roi_payload = None
-            cam.on_cam({"cmd": "set_resolution", "parameters": {"preset": preset}})
-            w = cam.cam_data.get("display_width")
-            h = cam.cam_data.get("display_height")
-            alive = bool(cam.thread is not None and cam.thread.is_alive())
-            ok = alive and f"{w}x{h}" == preset
-            payload = {
-                "ok": ok,
-                "status": f"Stream {w} × {h}" if ok else f"Resolution change failed ({w}x{h}, camera thread alive={alive})",
-                "display_width": w,
-                "display_height": h,
-                "roi": cam.last_roi_payload,
-            }
-            return jsonify(payload), (200 if ok else 500)
-        except Exception as e:
-            logger.error("API resolution error: %s", e)
-            return jsonify({"ok": False, "status": f"Resolution error: {e}"}), 500
-
     @app.route("/video")
     def video():
         """
