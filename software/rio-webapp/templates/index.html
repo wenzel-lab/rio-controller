@@ -296,6 +296,23 @@
             overflow: hidden;
         }
         .camera-status-bar span { flex-shrink: 0; }
+        /* Collapsible: hide the stats, keep a thin strip with the toggle */
+        .camera-status-bar .sb-toggle {
+            margin-left: auto;
+            flex-shrink: 0;
+            background: transparent;
+            border: 1px solid #555;
+            border-radius: 3px;
+            color: #ccc;
+            font-family: inherit;
+            font-size: 11px;
+            line-height: 1;
+            padding: 1px 6px;
+            cursor: pointer;
+        }
+        .camera-status-bar .sb-toggle:hover { background: #444; }
+        .camera-status-bar.collapsed { padding: 0 8px; background: transparent; }
+        .camera-status-bar.collapsed > span { display: none; }
         .roi-x-slider-container {
             flex-shrink: 0;
             margin-top: 8px;
@@ -501,6 +518,7 @@
                                                                 <span>Frame Num: <span id="sb_frame_num">--</span></span>
                                                                 <span>Acq FPS: <span id="sb_acq_fps">--</span></span>
                                                                 <span>Bandwidth: <span id="sb_bandwidth">--</span> Mbps</span>
+                                                                <button type="button" id="sb_toggle" class="sb-toggle" onclick="toggleStatusBar()" title="Hide / show camera stats">&#9660; stats</button>
                                                             </div>
                                                             <div class="roi-x-slider-container">
                                                                 <div id="roi_x_slider_inner" class="roi-x-slider-inner">
@@ -1143,6 +1161,28 @@
             }
         }
         window.clearROI = clearROI;
+
+        // Collapsible camera status bar (frame num / fps / bandwidth). State persists.
+        function setStatusBarCollapsed(collapsed) {
+            var bar = document.getElementById('camera_status_bar');
+            var btn = document.getElementById('sb_toggle');
+            if (!bar) return;
+            bar.classList.toggle('collapsed', !!collapsed);
+            if (btn) btn.innerHTML = collapsed ? '&#9654; stats' : '&#9660; stats';
+            try { localStorage.setItem('rio_status_bar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+            // Image area changes height: let the ROI overlay re-measure.
+            window.dispatchEvent(new Event('resize'));
+        }
+        function toggleStatusBar() {
+            var bar = document.getElementById('camera_status_bar');
+            setStatusBarCollapsed(!(bar && bar.classList.contains('collapsed')));
+        }
+        window.toggleStatusBar = toggleStatusBar;
+        (function () {
+            var saved = null;
+            try { saved = localStorage.getItem('rio_status_bar_collapsed'); } catch (e) {}
+            if (saved === '1') setStatusBarCollapsed(true);
+        })();
         
         // Heater functions
         function heaters_update_init() {
