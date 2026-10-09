@@ -150,10 +150,51 @@ class TestH264TimestampedOutput(unittest.TestCase):
                 ):
                     result = mux_h264_with_pts(h264, pts, mean_fps=30.0, keep_h264=True)
 
+            # mkvmerge only (no ffmpeg): the .mkv stays
             self.assertTrue(result["ok"])
             self.assertEqual(result["mux"], "mkvmerge")
             self.assertTrue(result["path"].endswith(".mkv"))
             self.assertTrue(os.path.isfile(result["path"]))
+
+    def test_mux_mkv_then_mp4_removes_mkv(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            h264 = os.path.join(td, "v.h264")
+            pts = os.path.join(td, "v.pts")
+            with open(h264, "wb") as fh:
+                fh.write(b"\x00" * 64)
+            write_pts_v2(pts, [0, 33, 66])
+            seen = []
+
+            def fake_run(cmd, **kwargs):
+                exe = os.path.basename(cmd[0])
+                seen.append(exe)
+                if exe == "mkvmerge":
+                    Path(cmd[2]).write_bytes(b"mkv")
+                elif exe == "ffmpeg":
+                    self.assertIn("copy", cmd)
+                    self.assertNotIn("-r", cmd)
+                    self.assertNotIn("-framerate", cmd)
+                    Path(cmd[-1]).write_bytes(b"mp4")
+                return MagicMock(returncode=0, stdout="", stderr="")
+
+            tools = {"mkvmerge": "/bin/mkvmerge", "ffmpeg": "/usr/bin/ffmpeg"}
+            with patch("drivers.camera.h264_timestamped_output.shutil.which") as which:
+                which.side_effect = lambda name: tools.get(name)
+                with patch(
+                    "drivers.camera.h264_timestamped_output.subprocess.run",
+                    side_effect=fake_run,
+                ):
+                    result = mux_h264_with_pts(h264, pts, mean_fps=30.0, keep_h264=True)
+            files = sorted(os.listdir(td))
+
+        self.assertEqual(seen[:2], ["mkvmerge", "ffmpeg"])
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mux"], "mkvmerge+mp4")
+        self.assertTrue(result["path"].endswith(".mp4"))
+        self.assertIn("v.mp4", files)
+        self.assertNotIn("v.mkv", files)
 
     def test_mux_ffmpeg_fallback(self):
         import tempfile

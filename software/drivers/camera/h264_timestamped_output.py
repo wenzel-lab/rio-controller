@@ -133,6 +133,35 @@ def _reconcile_pts_with_frames(pts_path: str, n_frames: Optional[int]) -> None:
         logger.warning("PTS reconcile: cannot rewrite %s: %s", pts_path, e)
 
 
+def _mkv_to_mp4(mkv_path: str, mp4_path: str) -> bool:
+    """
+    Rewrap the mkvmerge output as .mp4 with ffmpeg stream copy (-c copy): the
+    H.264 frames and their per-frame timestamps are copied unchanged, nothing is
+    re-encoded (no -r/-framerate, which would discard the stored timestamps).
+    Returns True only if the .mp4 was written; on failure any partial .mp4 is removed.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning("ffmpeg not available; keeping %s", mkv_path)
+        return False
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+           "-i", mkv_path, "-c", "copy", "-movflags", "+faststart", mp4_path]
+    try:
+        proc = subprocess.run(cmd, check=False, timeout=180, capture_output=True, text=True)
+    except Exception as e:
+        logger.warning("ffmpeg mkv->mp4 failed (%s); keeping %s", e, mkv_path)
+        _try_remove(mp4_path)
+        return False
+    if proc.returncode == 0 and os.path.isfile(mp4_path) and os.path.getsize(mp4_path) > 0:
+        return True
+    logger.warning(
+        "ffmpeg mkv->mp4 rc=%s (%s); keeping %s",
+        proc.returncode, (proc.stderr or "").strip()[-300:], mkv_path,
+    )
+    _try_remove(mp4_path)
+    return False
+
+
 def _probe_container(path: str) -> None:
     """Log what the container itself claims (fps/frames/duration) — offline diagnosis."""
     ffprobe = shutil.which("ffprobe")
@@ -404,6 +433,9 @@ def mux_h264_with_pts(
                         "mkvmerge finished with warnings (kept .mkv): %s",
                         (proc.stdout or proc.stderr or "").strip()[-400:],
                     )
+                if _mkv_to_mp4(mkv_path, mp4_path):
+                    _try_remove(mkv_path)
+                    return _finish(mp4_path, "mkvmerge+mp4", command_flag=flag, returncode=proc.returncode)
                 return _finish(mkv_path, "mkvmerge", command_flag=flag, returncode=proc.returncode)
             logger.warning(
                 "mkvmerge %s rc=%s: %s",
