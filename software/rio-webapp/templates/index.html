@@ -41,11 +41,32 @@
                 padding: 0.35rem 0.55rem;
                 font-size: 0.85rem;
             }
-            .roi-view-row {
-                height: calc(100vh - 8.5rem);
-                max-height: calc(100vh - 8.5rem);
-                min-height: 200px;
+        }
+        /* Shared height of the camera view row and the controls panel */
+        :root { --rio-view-h: calc(100vh - 11rem); }
+        /* Short screens (Pi 7" displays): compact header so the view keeps room */
+        @media (max-height: 720px) {
+            :root { --rio-view-h: calc(100vh - 9.25rem); }
+            .main-content { padding: 8px 12px; }
+            .main-content > h1 {
+                font-size: 1.1rem;
+                margin-bottom: 0.35rem !important;
             }
+            .rio-brand-title img { width: 28px; height: 28px; }
+            .nav-tabs .nav-link {
+                padding: 0.3rem 0.55rem;
+                font-size: 0.85rem;
+            }
+            #mainTabContent.mt-3 { margin-top: 0.5rem !important; }
+            #camera-view-pane .card { margin-bottom: 8px; }
+            #camera-view-pane .card-body { padding: 0.5rem 0.75rem; }
+            #camera-view-pane .card-title { font-size: 1rem; margin-bottom: 0.35rem !important; }
+        }
+        /* Narrow screens: controls go below the image, so the view must not
+           take the whole viewport — otherwise camera and buttons never fit together */
+        @media (max-width: 767.98px) {
+            :root { --rio-view-h: max(200px, 46vh); }
+            .camera-controls-panel { max-height: none; }
         }
         .card {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -166,11 +187,12 @@
         /* Camera workspace: viewport (ROI + live feed) | controls sidebar */
         .camera-workspace {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) min(340px, 30vw);
+            grid-template-columns: minmax(0, 1fr) min(340px, 34vw);
             gap: 1rem;
             align-items: stretch;
         }
-        @media (max-width: 1199px) {
+        /* Side-by-side from 768px (Pi 800- and 1024-wide screens); stacked below */
+        @media (max-width: 767.98px) {
             .camera-workspace {
                 grid-template-columns: 1fr;
             }
@@ -185,9 +207,9 @@
             display: flex;
             align-items: stretch;
             gap: 6px;
-            height: calc(100vh - 11rem);
-            min-height: 260px;
-            max-height: calc(100vh - 11rem);
+            height: var(--rio-view-h);
+            min-height: 200px;
+            max-height: var(--rio-view-h);
             min-width: 0;
             overflow: visible;
         }
@@ -283,12 +305,13 @@
         .camera-status-bar {
             flex-shrink: 0;
             display: flex;
-            gap: 14px;
+            gap: 12px;
             align-items: center;
-            padding: 2px 8px;
+            padding: 1px 6px;
             margin-top: 2px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 11px;
+            line-height: 15px;
             background: #222;
             color: #ccc;
             border-radius: 3px;
@@ -298,7 +321,9 @@
         .camera-status-bar span { flex-shrink: 0; }
         /* Collapsible: hide the stats, keep a thin strip with the toggle */
         .camera-status-bar .sb-toggle {
-            margin-left: auto;
+            /* First in the bar so it stays visible when the stats overflow on narrow images */
+            order: -1;
+            margin-right: 4px;
             flex-shrink: 0;
             background: transparent;
             border: 1px solid #555;
@@ -313,12 +338,30 @@
         .camera-status-bar .sb-toggle:hover { background: #444; }
         .camera-status-bar.collapsed { padding: 0 8px; background: transparent; }
         .camera-status-bar.collapsed > span { display: none; }
+        /* X ROI slider below the image, as thin as possible (rail + one short inputs row) */
         .roi-x-slider-container {
             flex-shrink: 0;
-            margin-top: 8px;
+            margin-top: 3px;
             width: 100%;
             min-width: 0;
             overflow: hidden;
+        }
+        .roi-x-slider-container .input-group.mt-2 {
+            margin-top: 2px !important;
+        }
+        .roi-x-slider-container .input-group .form-control-sm {
+            height: 22px;
+            min-height: 22px;
+            padding: 0 0.3rem;
+            font-size: 0.75rem;
+            line-height: 20px;
+            width: 64px !important;
+            flex: 0 0 64px;
+        }
+        .roi-x-slider-container .input-group .input-group-text {
+            padding: 0 0.35rem !important;
+            font-size: 0.75rem;
+            line-height: 20px;
         }
         .roi-x-slider-inner {
             position: relative;
@@ -329,7 +372,7 @@
             width: 100%;
         }
         .camera-controls-panel {
-            max-height: calc(100vh - 11rem);
+            max-height: var(--rio-view-h);
             overflow-y: auto;
             padding: 0.75rem 1rem;
             border: 1px solid #e0e0e0;
