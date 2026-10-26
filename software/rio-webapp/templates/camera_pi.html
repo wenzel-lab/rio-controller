@@ -76,64 +76,39 @@
   function cam_select() {
     socket.emit( 'cam', { cmd: 'select', parameters: { 'camera': $('#select_camera').val() } } );
   }
+  // Commands go over HTTP (camCommand, defined in index.html) — see note there.
   function strobe_enable() {
-    console.log('strobe_enable() called, socket:', socket);
-    if (!socket || !socket.emit) {
-      console.error('socket is not available or socket.emit is not a function!');
-      return;
-    }
     // Optimistic UI flip so a desynced label cannot trap the user on DISABLED
     // while the PIC is already enabled (or the reverse).
     var next = strobe.enable ? 0 : 1;
     strobe.enable = next;
     cam_update();
-    var data = { cmd: 'enable', parameters: { 'on': next } };
-    console.log('Emitting strobe event:', data);
-    socket.emit( 'strobe', data );
+    camCommand( 'strobe', { cmd: 'enable', parameters: { 'on': next } } );
   }
   function strobe_hold() {
-    console.log('strobe_hold() called, socket:', socket);
-    if (!socket || !socket.emit) {
-      console.error('socket is not available or socket.emit is not a function!');
-      return;
-    }
     var next = strobe.hold ? 0 : 1;
     strobe.hold = next;
     cam_update();
-    var data = { cmd: 'hold', parameters: { 'on': next } };
-    console.log('Emitting strobe event:', data);
-    socket.emit( 'strobe', data );
+    camCommand( 'strobe', { cmd: 'hold', parameters: { 'on': next } } );
   }
   function strobe_wait() {
-    socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': ( $('#input_strobe_wait_us').val() * 1000 ), 'period_ns': strobe.period_ns } } );
+    camCommand( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': ( $('#input_strobe_wait_us').val() * 1000 ), 'period_ns': strobe.period_ns } } );
   }
   function strobe_period() {
-    if (!socket || !socket.emit) {
-      console.error('socket is not available for strobe_period!');
-      return;
-    }
-    socket.emit( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': strobe.wait_ns, 'period_ns': ( $('#input_strobe_period_us').val() * 1000 ) } } );
+    camCommand( 'strobe', { cmd: 'timing', parameters: { 'wait_ns': strobe.wait_ns, 'period_ns': ( $('#input_strobe_period_us').val() * 1000 ) } } );
   }
   function cam_optimize()
   {
-    if (!socket || !socket.emit) {
-      console.error('socket is not available for cam_optimize!');
-      return;
-    }
-    socket.emit( 'cam', { cmd: 'optimize', parameters: {} } );
+    camCommand( 'cam', { cmd: 'optimize', parameters: {} } );
   }
   function cam_record_roi()
   {
-    if (!socket || !socket.emit) {
-      console.error('socket is not available for cam_record_roi!');
-      return;
-    }
     var frames = parseInt($('#input_roi_record_frames').val(), 10);
     if (isNaN(frames) || frames <= 0) {
       console.error('Invalid ROI frame count');
       return;
     }
-    socket.emit( 'cam', { cmd: 'record_roi_frames', parameters: { frames: frames } } );
+    camCommand( 'cam', { cmd: 'record_roi_frames', parameters: { frames: frames } } );
     var statusEl = document.getElementById('roi_record_status');
     if (statusEl) {
       statusEl.textContent = 'Recording...';
@@ -141,13 +116,10 @@
   }
   function cam_snapshot()
   {
-    if (!socket || !socket.emit) {
-      console.error('socket is not available for cam_snapshot!');
-      return;
-    }
+    // Overridden by index.html (HTTP /api/camera/snapshot); kept as fallback.
     var folder = '';
     try { folder = sessionStorage.getItem('rio_snapshot_folder') || ''; } catch (e) {}
-    socket.emit( 'cam', { cmd: 'snapshot', parameters: folder ? { folder: folder } : {} } );
+    camCommand( 'cam', { cmd: 'snapshot', parameters: folder ? { folder: folder } : {} } );
   }
   
   // Make functions globally accessible (for onclick handlers)

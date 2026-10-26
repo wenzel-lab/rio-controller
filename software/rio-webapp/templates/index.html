@@ -1585,7 +1585,7 @@
             var send = function() {
                 exposureEmitTimer = null;
                 lastEmittedExposureUs = us;
-                socket.emit('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
+                camCommand('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
             };
             if (immediate) {
                 if (exposureEmitTimer) { clearTimeout(exposureEmitTimer); exposureEmitTimer = null; }
@@ -1694,7 +1694,7 @@
         function cam_set_resolution() {
             var preset = $('#select_display_resolution').val();
             $('#resolution_change_status').show();
-            socket.emit('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
+            camCommand('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
         }
         
         function cam_set_exposure() {
@@ -1707,7 +1707,7 @@
 
         function cam_set_snapshot_resolution() {
             var mode = $('#select_snapshot_resolution').val();
-            socket.emit('cam', { cmd: 'set_snapshot_resolution', parameters: { 'mode': mode } });
+            camCommand('cam', { cmd: 'set_snapshot_resolution', parameters: { 'mode': mode } });
         }
         
         // Update UI when camera data changes
@@ -1994,6 +1994,35 @@
                 return { ok: false, status: 'Request failed: ' + msg };
             });
         }
+
+        // Strobe / camera commands go over HTTP for the same reason as snapshot/video/ROI:
+        // the Socket.IO session on the Pi is dead ~30 s of every ~85 s and socket.emit()
+        // was silently dropped. The response state is fed to the existing 'strobe'/'cam'
+        // handlers, so the UI updates exactly as it would from a socket broadcast.
+        function camDispatchLocal(ev, data) {
+            if (data == null) return;
+            var cbs = (socket && typeof socket.listeners === 'function') ? socket.listeners(ev) : [];
+            if (cbs && cbs.length) {
+                cbs.forEach(function (cb) { try { cb(data); } catch (e) { console.error(e); } });
+            } else {
+                if (ev === 'strobe') strobe = data;
+                if (ev === 'cam') cam = data;
+                if (typeof cam_update === 'function') cam_update();
+            }
+        }
+        function camCommand(ev, data) {
+            var url = (ev === 'strobe') ? '/api/camera/strobe' : '/api/camera/cmd';
+            return camPost(url, data, 30000).then(function (j) {
+                if (!j || !j.ok) {
+                    console.error('camera command failed', ev, data, j);
+                    return j;
+                }
+                camDispatchLocal('strobe', j.strobe);
+                camDispatchLocal('cam', j.cam);
+                return j;
+            });
+        }
+        window.camCommand = camCommand;
 
         function emitSnapshot(folder) {
             var st = document.getElementById('snapshot_status');
