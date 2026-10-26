@@ -42,8 +42,9 @@ def _stash_sidecar(path: str) -> None:
         _try_remove(path)
 
 
-def _nal_stats(h264_path: str) -> None:
-    """Log NAL-unit counts of the raw Annex-B stream (slices vs frames diagnosis)."""
+def _nal_stats(h264_path: str) -> Optional[int]:
+    """Log NAL-unit counts of the raw Annex-B stream; return the picture count
+    (slices with first_mb_in_slice == 0) or None if the scan failed."""
     counts: Dict[int, int] = {}
     first_mb_zero = 0
     try:
@@ -67,8 +68,98 @@ def _nal_stats(h264_path: str) -> None:
             "H.264 NAL stats %s: bytes=%d nal_types=%s slices_first_mb0=%d",
             h264_path, n, dict(sorted(counts.items())), first_mb_zero,
         )
+        return first_mb_zero
     except Exception as e:
         logger.warning("NAL stats failed for %s: %s", h264_path, e)
+        return None
+
+
+def _read_pts_v2_ms(path: str) -> List[int]:
+    out: List[int] = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                out.append(int(float(line)))
+            except ValueError:
+                continue
+    return out
+
+
+def _median_gap_ms(pts_ms: Sequence[int], default: int = 20) -> int:
+    gaps = sorted(b - a for a, b in zip(pts_ms, pts_ms[1:]) if b > a)
+    return gaps[len(gaps) // 2] if gaps else default
+
+
+def _reconcile_pts_with_frames(pts_path: str, n_frames: Optional[int]) -> None:
+    """
+    Make the timestamp file have exactly one entry per H.264 picture.
+
+    mkvmerge requires this. With fewer timestamps than frames it extrapolates the
+    leftovers far beyond the end (observed: a 70 s recording became a 140 s file,
+    playback stops at 70 s). Missing entries are appended at the median frame gap;
+    extras are dropped. Both cases are logged for the SD-card log.
+    """
+    if not n_frames or not pts_path or not os.path.isfile(pts_path):
+        return
+    try:
+        pts_ms = _read_pts_v2_ms(pts_path)
+    except Exception as e:
+        logger.warning("PTS reconcile: cannot read %s: %s", pts_path, e)
+        return
+    n_pts = len(pts_ms)
+    if n_pts == n_frames or n_pts == 0:
+        return
+    gap = _median_gap_ms(pts_ms)
+    if n_pts < n_frames:
+        missing = n_frames - n_pts
+        last = pts_ms[-1]
+        pts_ms.extend(last + gap * (i + 1) for i in range(missing))
+        logger.warning(
+            "PTS reconcile %s: %d timestamps for %d frames -> appended %d at %d ms gap",
+            pts_path, n_pts, n_frames, missing, gap,
+        )
+    else:
+        logger.warning(
+            "PTS reconcile %s: %d timestamps for %d frames -> dropped %d trailing",
+            pts_path, n_pts, n_frames, n_pts - n_frames,
+        )
+        pts_ms = pts_ms[:n_frames]
+    try:
+        write_pts_v2(pts_path, pts_ms)
+    except Exception as e:
+        logger.warning("PTS reconcile: cannot rewrite %s: %s", pts_path, e)
+
+
+def _mkv_to_mp4(mkv_path: str, mp4_path: str) -> bool:
+    """
+    Rewrap the mkvmerge output as .mp4 with ffmpeg stream copy (-c copy): the
+    H.264 frames and their per-frame timestamps are copied unchanged, nothing is
+    re-encoded (no -r/-framerate, which would discard the stored timestamps).
+    Returns True only if the .mp4 was written; on failure any partial .mp4 is removed.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning("ffmpeg not available; keeping %s", mkv_path)
+        return False
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+           "-i", mkv_path, "-c", "copy", "-movflags", "+faststart", mp4_path]
+    try:
+        proc = subprocess.run(cmd, check=False, timeout=180, capture_output=True, text=True)
+    except Exception as e:
+        logger.warning("ffmpeg mkv->mp4 failed (%s); keeping %s", e, mkv_path)
+        _try_remove(mp4_path)
+        return False
+    if proc.returncode == 0 and os.path.isfile(mp4_path) and os.path.getsize(mp4_path) > 0:
+        return True
+    logger.warning(
+        "ffmpeg mkv->mp4 rc=%s (%s); keeping %s",
+        proc.returncode, (proc.stderr or "").strip()[-300:], mkv_path,
+    )
+    _try_remove(mp4_path)
+    return False
 
 
 def _probe_container(path: str) -> None:
@@ -199,13 +290,30 @@ class TimestampedH264Output:
         if fr is None:
             return len(buf)
         complete = bool(getattr(fr, "complete", False))
+        if not complete:
+            return len(buf)
+        # SPS/PPS header buffers are not pictures (picamera frame_type 2).
+        if getattr(fr, "frame_type", None) == 2:
+            return len(buf)
         ts = getattr(fr, "timestamp", None)
-        if not complete or ts is None:
-            return len(buf)
-        try:
-            pts_us = int(ts)
-        except (TypeError, ValueError):
-            return len(buf)
+        if ts is None:
+            # picamera maps buf.pts == 0 (and MMAL_TIME_UNKNOWN) to None. With the
+            # default clock reset the FIRST picture really is at t=0; skipping it
+            # left the .pts one entry short and mkvmerge doubled the file duration.
+            if not self._pts_us:
+                pts_us = 0
+            else:
+                gap = (self._pts_us[-1] - self._pts_us[-2]) if len(self._pts_us) >= 2 else 20000
+                pts_us = self._pts_us[-1] + max(1, gap)
+            logger.info(
+                "H.264 picture without PTS (frame index=%s); assigned %d us",
+                getattr(fr, "index", None), pts_us,
+            )
+        else:
+            try:
+                pts_us = int(ts)
+            except (TypeError, ValueError):
+                return len(buf)
         idx = getattr(fr, "index", None)
         if idx is None:
             idx = len(self._pts_us)
@@ -272,7 +380,8 @@ def mux_h264_with_pts(
     if os.path.getsize(h264_path) < 32:
         return {"ok": False, "error": "h264 too small", "path": None, "mux": None}
 
-    _nal_stats(h264_path)
+    n_frames = _nal_stats(h264_path)
+    _reconcile_pts_with_frames(pts_path, n_frames)
     stem = h264_path[:-5] if h264_path.lower().endswith(".h264") else h264_path.rsplit(".", 1)[0]
     mkv_path = f"{stem}.mkv"
     mp4_path = f"{stem}.mp4"
@@ -324,6 +433,9 @@ def mux_h264_with_pts(
                         "mkvmerge finished with warnings (kept .mkv): %s",
                         (proc.stdout or proc.stderr or "").strip()[-400:],
                     )
+                if _mkv_to_mp4(mkv_path, mp4_path):
+                    _try_remove(mkv_path)
+                    return _finish(mp4_path, "mkvmerge+mp4", command_flag=flag, returncode=proc.returncode)
                 return _finish(mkv_path, "mkvmerge", command_flag=flag, returncode=proc.returncode)
             logger.warning(
                 "mkvmerge %s rc=%s: %s",

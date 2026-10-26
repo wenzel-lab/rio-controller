@@ -41,11 +41,44 @@
                 padding: 0.35rem 0.55rem;
                 font-size: 0.85rem;
             }
-            .roi-view-row {
-                height: calc(100vh - 8.5rem);
-                max-height: calc(100vh - 8.5rem);
-                min-height: 200px;
+        }
+        /* Shared height of the camera view row and the controls panel */
+        :root { --rio-view-h: calc(100vh - 11rem); }
+        /* Short screens (Pi 7" displays): compact header so the view keeps room */
+        @media (max-height: 720px) {
+            :root { --rio-view-h: calc(100vh - 9.25rem); }
+            .main-content { padding: 8px 12px; }
+            .main-content > h1 {
+                font-size: 1.1rem;
+                margin-bottom: 0.35rem !important;
             }
+            .rio-brand-title img { width: 28px; height: 28px; }
+            .nav-tabs .nav-link {
+                padding: 0.3rem 0.55rem;
+                font-size: 0.85rem;
+            }
+            #mainTabContent.mt-3 { margin-top: 0.5rem !important; }
+            #camera-view-pane .card { margin-bottom: 8px; }
+            #camera-view-pane .card-body { padding: 0.5rem 0.75rem; }
+            #camera-view-pane .card-title { font-size: 1rem; margin-bottom: 0.35rem !important; }
+        }
+        /* Narrow screens: controls go below the image, so the view must not
+           take the whole viewport — otherwise camera and buttons never fit together */
+        @media (max-width: 767.98px) {
+            :root { --rio-view-h: max(240px, 50vh); }
+            #camera-view-pane .camera-workspace { gap: 0.4rem; }
+            /* Shrink-wrap the view: the row is as tall as image + bar + slider,
+               so hiding the stats pulls the slider (and the controls below) up */
+            .camera-viewport .roi-view-row { height: auto; min-height: 0; max-height: none; }
+            .roi-view-row .camera-container { flex: 0 0 auto; }
+            .roi-view-row .roi-y-slider-container { height: auto; }
+            #camera_image {
+                width: auto;
+                max-width: 100%;
+                height: auto;
+                max-height: calc(var(--rio-view-h) - 70px);
+            }
+            .camera-controls-panel { max-height: none; padding: 0.5rem 0.75rem; }
         }
         .card {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -166,11 +199,12 @@
         /* Camera workspace: viewport (ROI + live feed) | controls sidebar */
         .camera-workspace {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) min(340px, 30vw);
+            grid-template-columns: minmax(0, 1fr) min(340px, 34vw);
             gap: 1rem;
             align-items: stretch;
         }
-        @media (max-width: 1199px) {
+        /* Side-by-side from 768px (Pi 800- and 1024-wide screens); stacked below */
+        @media (max-width: 767.98px) {
             .camera-workspace {
                 grid-template-columns: 1fr;
             }
@@ -185,9 +219,9 @@
             display: flex;
             align-items: stretch;
             gap: 6px;
-            height: calc(100vh - 11rem);
-            min-height: 260px;
-            max-height: calc(100vh - 11rem);
+            height: var(--rio-view-h);
+            min-height: 200px;
+            max-height: var(--rio-view-h);
             min-width: 0;
             overflow: visible;
         }
@@ -262,6 +296,7 @@
             flex: 1;
             min-width: 0;
             align-items: stretch;
+            position: relative; /* anchor for the collapsed stats toggle */
         }
         .camera-container {
             position: relative;
@@ -283,12 +318,13 @@
         .camera-status-bar {
             flex-shrink: 0;
             display: flex;
-            gap: 14px;
+            gap: 12px;
             align-items: center;
-            padding: 2px 8px;
+            padding: 1px 6px;
             margin-top: 2px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 11px;
+            line-height: 15px;
             background: #222;
             color: #ccc;
             border-radius: 3px;
@@ -296,12 +332,63 @@
             overflow: hidden;
         }
         .camera-status-bar span { flex-shrink: 0; }
+        /* Collapsible: hide the stats, keep a thin strip with the toggle */
+        .camera-status-bar .sb-toggle {
+            /* First in the bar so it stays visible when the stats overflow on narrow images */
+            order: -1;
+            margin-right: 4px;
+            flex-shrink: 0;
+            background: transparent;
+            border: 1px solid #555;
+            border-radius: 3px;
+            color: #ccc;
+            font-family: inherit;
+            font-size: 11px;
+            line-height: 1;
+            padding: 1px 6px;
+            cursor: pointer;
+        }
+        .camera-status-bar .sb-toggle:hover { background: #444; }
+        /* Collapsed: the bar leaves the layout (0 px tall) and only the toggle
+           floats over the bottom-left corner of the view, just above the X slider */
+        .camera-status-bar.collapsed {
+            position: absolute;
+            left: 0;
+            bottom: 49px; /* X slider block: 3 + 20 + 2 + 22 px, + 2 px handle overhang */
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            z-index: 3;
+        }
+        .camera-status-bar.collapsed > span { display: none; }
+        .camera-status-bar.collapsed .sb-toggle {
+            margin: 0;
+            background: rgba(34, 34, 34, 0.85);
+        }
+        /* X ROI slider below the image, as thin as possible (rail + one short inputs row) */
         .roi-x-slider-container {
             flex-shrink: 0;
-            margin-top: 8px;
+            margin-top: 3px;
             width: 100%;
             min-width: 0;
             overflow: hidden;
+        }
+        .roi-x-slider-container .input-group.mt-2 {
+            margin-top: 2px !important;
+        }
+        .roi-x-slider-container .input-group .form-control-sm {
+            height: 22px;
+            min-height: 22px;
+            padding: 0 0.3rem;
+            font-size: 0.75rem;
+            line-height: 20px;
+            width: 64px !important;
+            flex: 0 0 64px;
+        }
+        .roi-x-slider-container .input-group .input-group-text {
+            padding: 0 0.35rem !important;
+            font-size: 0.75rem;
+            line-height: 20px;
         }
         .roi-x-slider-inner {
             position: relative;
@@ -312,7 +399,7 @@
             width: 100%;
         }
         .camera-controls-panel {
-            max-height: calc(100vh - 11rem);
+            max-height: var(--rio-view-h);
             overflow-y: auto;
             padding: 0.75rem 1rem;
             border: 1px solid #e0e0e0;
@@ -501,6 +588,7 @@
                                                                 <span>Frame Num: <span id="sb_frame_num">--</span></span>
                                                                 <span>Acq FPS: <span id="sb_acq_fps">--</span></span>
                                                                 <span>Bandwidth: <span id="sb_bandwidth">--</span> Mbps</span>
+                                                                <button type="button" id="sb_toggle" class="sb-toggle" onclick="toggleStatusBar()" title="Hide / show camera stats">&#9660; stats</button>
                                                             </div>
                                                             <div class="roi-x-slider-container">
                                                                 <div id="roi_x_slider_inner" class="roi-x-slider-inner">
@@ -1143,6 +1231,28 @@
             }
         }
         window.clearROI = clearROI;
+
+        // Collapsible camera status bar (frame num / fps / bandwidth). State persists.
+        function setStatusBarCollapsed(collapsed) {
+            var bar = document.getElementById('camera_status_bar');
+            var btn = document.getElementById('sb_toggle');
+            if (!bar) return;
+            bar.classList.toggle('collapsed', !!collapsed);
+            if (btn) btn.innerHTML = collapsed ? '&#9654; stats' : '&#9660; stats';
+            try { localStorage.setItem('rio_status_bar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+            // Image area changes height: let the ROI overlay re-measure.
+            window.dispatchEvent(new Event('resize'));
+        }
+        function toggleStatusBar() {
+            var bar = document.getElementById('camera_status_bar');
+            setStatusBarCollapsed(!(bar && bar.classList.contains('collapsed')));
+        }
+        window.toggleStatusBar = toggleStatusBar;
+        (function () {
+            var saved = null;
+            try { saved = localStorage.getItem('rio_status_bar_collapsed'); } catch (e) {}
+            if (saved === '1') setStatusBarCollapsed(true);
+        })();
         
         // Heater functions
         function heaters_update_init() {
@@ -1475,7 +1585,7 @@
             var send = function() {
                 exposureEmitTimer = null;
                 lastEmittedExposureUs = us;
-                socket.emit('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
+                camCommand('cam', { cmd: 'set_exposure', parameters: { exposure_us: us } });
             };
             if (immediate) {
                 if (exposureEmitTimer) { clearTimeout(exposureEmitTimer); exposureEmitTimer = null; }
@@ -1584,7 +1694,7 @@
         function cam_set_resolution() {
             var preset = $('#select_display_resolution').val();
             $('#resolution_change_status').show();
-            socket.emit('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
+            camCommand('cam', { cmd: 'set_resolution', parameters: { 'preset': preset } });
         }
         
         function cam_set_exposure() {
@@ -1597,7 +1707,7 @@
 
         function cam_set_snapshot_resolution() {
             var mode = $('#select_snapshot_resolution').val();
-            socket.emit('cam', { cmd: 'set_snapshot_resolution', parameters: { 'mode': mode } });
+            camCommand('cam', { cmd: 'set_snapshot_resolution', parameters: { 'mode': mode } });
         }
         
         // Update UI when camera data changes
@@ -1884,6 +1994,35 @@
                 return { ok: false, status: 'Request failed: ' + msg };
             });
         }
+
+        // Strobe / camera commands go over HTTP for the same reason as snapshot/video/ROI:
+        // the Socket.IO session on the Pi is dead ~30 s of every ~85 s and socket.emit()
+        // was silently dropped. The response state is fed to the existing 'strobe'/'cam'
+        // handlers, so the UI updates exactly as it would from a socket broadcast.
+        function camDispatchLocal(ev, data) {
+            if (data == null) return;
+            var cbs = (socket && typeof socket.listeners === 'function') ? socket.listeners(ev) : [];
+            if (cbs && cbs.length) {
+                cbs.forEach(function (cb) { try { cb(data); } catch (e) { console.error(e); } });
+            } else {
+                if (ev === 'strobe') strobe = data;
+                if (ev === 'cam') cam = data;
+                if (typeof cam_update === 'function') cam_update();
+            }
+        }
+        function camCommand(ev, data) {
+            var url = (ev === 'strobe') ? '/api/camera/strobe' : '/api/camera/cmd';
+            return camPost(url, data, 30000).then(function (j) {
+                if (!j || !j.ok) {
+                    console.error('camera command failed', ev, data, j);
+                    return j;
+                }
+                camDispatchLocal('strobe', j.strobe);
+                camDispatchLocal('cam', j.cam);
+                return j;
+            });
+        }
+        window.camCommand = camCommand;
 
         function emitSnapshot(folder) {
             var st = document.getElementById('snapshot_status');

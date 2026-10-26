@@ -544,6 +544,45 @@ def _register_http_routes(  # noqa: C901
             logger.error("API roi error: %s", e)
             return jsonify({"ok": False, "error": str(e), "roi": None}), 500
 
+    # Strobe / camera commands over HTTP (same handlers as the Socket.IO 'strobe' and
+    # 'cam' events). The response carries the resulting state so the UI can update even
+    # while its Socket.IO session is in the dead part of its ~85 s cycle.
+    def _cam_state_payload(extra=None):
+        payload = {
+            "ok": True,
+            "strobe": getattr(cam, "strobe_data", None),
+            "cam": getattr(cam, "cam_data", None),
+        }
+        if extra:
+            payload.update(extra)
+        return payload
+
+    @app.route("/api/camera/strobe", methods=["POST"])
+    def api_camera_strobe():
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            logger.info("API strobe command: %s %s", data.get("cmd"), data.get("parameters"))
+            cam.on_strobe(data)
+            return jsonify(_cam_state_payload())
+        except Exception as e:
+            logger.error("API strobe error: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.route("/api/camera/cmd", methods=["POST"])
+    def api_camera_cmd():
+        from flask import jsonify, request
+
+        try:
+            data = request.get_json(silent=True) or {}
+            logger.info("API camera command: %s %s", data.get("cmd"), data.get("parameters"))
+            cam.on_cam(data)
+            return jsonify(_cam_state_payload())
+        except Exception as e:
+            logger.error("API camera command error: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
     @app.route("/video")
     def video():
         """
