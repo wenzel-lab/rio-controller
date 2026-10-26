@@ -1803,11 +1803,15 @@ class Camera:
                         hw_wait = getattr(self.strobe_cam, "strobe_wait_ns", None)
                         if hw_period:
                             self.strobe_period_ns = int(hw_period)
-                        if hw_wait is not None:
-                            self.strobe_data["wait_ns"] = int(hw_wait)
+                        # Publish the *requested* pre-padding, not the PIC wait
+                        # (pre-padding + inter-frame dead time). Clients echo
+                        # wait_ns back on the next timing command; echoing the
+                        # derived value made the wait grow on every Set.
+                        self.strobe_data["wait_ns"] = int(wait_ns)
                         self.strobe_data["period_ns"] = self.strobe_period_ns
                         logger.debug(
-                            f"Strobe timing set: period={self.strobe_period_ns}ns, wait={self.strobe_data.get('wait_ns')}ns"
+                            f"Strobe timing set: period={self.strobe_period_ns}ns, "
+                            f"pre_padding={wait_ns}ns, hw_wait={hw_wait}ns"
                         )
             else:
                 logger.warning(f"Unknown strobe command: {cmd}")
