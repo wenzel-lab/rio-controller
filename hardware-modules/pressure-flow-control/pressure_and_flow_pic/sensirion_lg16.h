@@ -18,6 +18,14 @@ extern "C" {
 #define SENSIRION_FLOW_SCALE_ML_MIN     500
 #define SENSIRION_TEMP_SCALE_DEGC       200
 
+/* v3: measurement resolution (Advanced User Register bits 11:9) */
+#define SENSIRION_ADV_USER_RESOLUTION_MASK   0x0E00
+#define SENSIRION_ADV_USER_RESOLUTION_SHIFT  9
+#define SENSIRION_RESOLUTION_MIN_BITS        9
+#define SENSIRION_RESOLUTION_MAX_BITS        16
+#define SENSIRION_RESOLUTION_DEFAULT_BITS    13     /* v3.2: 8.9 ms/measurement, 1 uL/h step; factory default is 16 (74 ms) */
+#define SENSIRION_DRAIN_TIMEOUT_MS           80     /* v3.2: > 16 bit max processing time (73.2 ms) */
+
 typedef struct __attribute__((packed))
 {
     uint8_t air_in_line : 1;
@@ -36,6 +44,9 @@ extern err sensirion_read_part_name( char *part_name );
 extern err sensirion_read_scale( uint16_t addr, uint16_t *scale );
 extern err sensirion_measurement_start( void );
 extern err sensirion_measurement_read( int16_t *flow );
+extern err sensirion_set_resolution( uint8_t bits );
+extern uint8_t sensirion_crc8( const uint8_t *data, uint8_t len );
+extern uint8_t sensirion_processing_time_min_ms( uint8_t bits );
 
 #ifdef	__cplusplus
 }

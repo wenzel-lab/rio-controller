@@ -14,6 +14,8 @@ extern "C" {
 
 /* Macros */
 #define COPY_16BIT_TO_PTR(ptr,val)      {*((uint8_t *)(ptr)+1)=*((uint8_t *)&(val)+1); *(uint8_t *)(ptr)=*(uint8_t *)&(val);}
+/* v3: little-endian 32-bit copy, byte-wise like COPY_16BIT_TO_PTR */
+#define COPY_32BIT_TO_PTR(ptr,val)      {uint8_t _i; for(_i=0;_i<4;_i++) *((uint8_t *)(ptr)+_i)=*((uint8_t *)&(val)+_i);}
 
 /* For __delay_ms */
 #define FCY 75000000UL
@@ -39,6 +41,10 @@ extern "C" {
 #define ERR_EEPROM_VERIFY_FAIL      60
 
 #define ERR_SENSIRION_COMMS_FAIL    70
+#define ERR_SENSIRION_CRC_FAIL      71      /* v3: reading rejected by CRC-8 */
+#define ERR_SENSIRION_RESOLUTION_INVALID 72 /* v3: resolution outside 9..16 bit */
+#define ERR_SENSIRION_NOT_READY     73      /* v3: read header NACKed = measurement still running (hold-master off) */
+#define ERR_FLOW_BATCH_GAP          74      /* v3.2: requested sequence no longer in the ring; batch restarts from oldest kept */
 
 #define ERR_PCA9544A_COMMS_FAIL     80
 

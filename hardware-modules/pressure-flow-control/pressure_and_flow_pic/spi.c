@@ -9,10 +9,19 @@
 #define SPI1_INT_ON()           { IEC0bits.SPI1RXIE = 1; }
 #define SPI1_INT_OFF()          { IEC0bits.SPI1RXIE = 0; }
 
-#define READ_BUF_SIZE           32
+/* v3.2: 128-byte ring buffers so that a GET_FLOW_BATCH reply (up to 75 bytes)
+ * fits, and the dummy bytes clocked in while it is being read out do not
+ * overrun the receive side.  Sizes must be powers of two (index masks). */
+#define READ_BUF_SIZE           128
 #define READ_BUF_SIZE_MASK      ( READ_BUF_SIZE - 1 )
-#define WRITE_BUF_SIZE          32
+#define WRITE_BUF_SIZE          128
 #define WRITE_BUF_SIZE_MASK     ( WRITE_BUF_SIZE - 1 )
+#if ( READ_BUF_SIZE & ( READ_BUF_SIZE - 1 ) ) || ( WRITE_BUF_SIZE & ( WRITE_BUF_SIZE - 1 ) )
+#error "SPI buffer sizes must be powers of two"
+#endif
+#if ( READ_BUF_SIZE > 255 ) || ( WRITE_BUF_SIZE > 255 )
+#error "SPI buffer indices are uint8_t"
+#endif
 
 #define STX                     2
 
