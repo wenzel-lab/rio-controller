@@ -17,12 +17,16 @@ extern err pca9544a_write( uint8_t addr, uint8_t enabled, uint8_t channel )
     
     I2C2_MasterWrite( writeBuffer, 1, addr, (I2C2_MESSAGE_STATUS *)&status );
     
+    /* v3.2: same rule as sensirion_lg16.c: return as soon as the driver has
+     * finished (the driver already sends STOP on a NACK); only a transaction
+     * that never completes justifies re-initialising the peripheral. */
     time = timer_ms;
-    while ( ( status != I2C2_MESSAGE_COMPLETE ) && ( ( timer_ms - time ) <= I2C_TIMEOUT_MS ) );
+    while ( ( status == I2C2_MESSAGE_PENDING ) && ( ( timer_ms - time ) <= I2C_TIMEOUT_MS ) );
     if ( status != I2C2_MESSAGE_COMPLETE )
     {
         rc = ERR_PCA9544A_COMMS_FAIL;
-        I2C2_Abort();
+        if ( status == I2C2_MESSAGE_PENDING )
+            I2C2_Abort();
     }
     
 	return rc;

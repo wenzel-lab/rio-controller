@@ -46,7 +46,25 @@
 
 /* Flow / Pressure Macros */
 #define ADC_CHAN_MAX                        ( NUM_PRESSURE_CLTRLS - 1 )
-#define ADC_PERIOD_MS                       100
+
+// MODIFIED: ADC datarate configuration for 100 Hz flow updates
+// ADC datarate options and their conversion times:
+//   DATARATE_128SPS  -> 7.81 ms/conversion x 4 ch = 31.2 ms scan
+//   DATARATE_250SPS  -> 4.00 ms/conversion x 4 ch = 16.0 ms scan  
+//   DATARATE_475SPS  -> 2.11 ms/conversion x 4 ch =  8.4 ms scan
+//   DATARATE_860SPS  -> 1.16 ms/conversion x 4 ch =  4.6 ms scan (highest noise)
+//
+// Set ADC_DATARATE and ADC_PERIOD_MS together - ADC_PERIOD_MS must be >=
+// (conversion_time_ms x NUM_PRESSURE_CLTRLS + margin_ms).
+#define ADC_DATARATE          DATARATE_475SPS // Optimized for stable operation
+#define ADC_PERIOD_MS_860SPS  6      // 4.6ms scan + 1.4ms margin
+#define ADC_PERIOD_MS_475SPS  8      // 8.4ms scan + 0.6ms margin (optimized)
+#define ADC_PERIOD_MS_250SPS  18     // 16.0ms scan + 2.0ms margin
+#define ADC_PERIOD_MS_128SPS  35     // 31.2ms scan + 3.8ms margin
+
+// Active period - change ADC_DATARATE above and update this line:
+#undef  ADC_PERIOD_MS
+#define ADC_PERIOD_MS         ADC_PERIOD_MS_475SPS // Optimized 475SPS timing
 #define PRESSURE_ADC_TO_MBARSHL(adc)        ( ( ( ( ( (int32_t)( (int16_t)(adc) ) ) - PRESSURE_ADC_ZERO ) << PRESSURE_SHL ) * PRESSURE_CTLR_MBAR / PRESSURE_ADC_SCALE ) )
 //#define PRESSURE_ADC_TO_MBARSHL(adc)        ( ( ( ( ( (int32_t)( (int16_t)(adc) ) ) - PRESSURE_ADC_ZERO ) << PRESSURE_SHL ) * 1000 / PRESSURE_ADC_SCALE ) )
 
@@ -62,6 +80,37 @@
 #define PACKET_TYPE_GET_CONTROL_MODE        9
 #define PACKET_TYPE_SET_FPID_CONSTS         10
 #define PACKET_TYPE_GET_FPID_CONSTS         11
+#define PACKET_TYPE_SET_ACTIVE_SENSORS       12
+#define PACKET_TYPE_GET_ACTIVE_SENSORS       13
+/* v3 additions (existing packet formats are unchanged) */
+#define PACKET_TYPE_GET_FLOW_STATS           14  /* [chan U8] -> [err][ok U32][crc_err U32][i2c_err U32][not_ready U32][saturated U32 desde v3.3] */
+#define PACKET_TYPE_SET_FLOW_RESOLUTION      15  /* [bits U8 9..16] -> [err] */
+#define PACKET_TYPE_GET_FLOW_RESOLUTION      16  /* [] -> [err][bits U8] */
+#define PACKET_TYPE_GET_FW_VERSION           17  /* [] -> [err][major U8][minor U8] */
+/* v3.2 */
+#define PACKET_TYPE_GET_FLOW_BATCH           18  /* [chan U8][since_seq U16] -> [err][n U8][seq0 U16][scale U16][n x (t_ms U32, flow_raw I16)][crc8] (t_ms U16 hasta v3.2) */
+
+#define FW_VERSION_MAJOR                     3
+#define FW_VERSION_MINOR                     4
+
+/* v3.3: |raw| at which the LG16 clips (+-120 ul/min); readings at the rail are
+ * valid transfers but not valid measurements, so they are counted per channel. */
+#define FLOW_SATURATION_COUNTS               32400
+
+/* v3.2: per-channel history of accepted readings, indexed by the ok counter.
+ * 128 samples = 1.1 s at 13 bit, 0.6 s at 12 bit: covers host hiccups. */
+#define FLOW_RING_SIZE                       128
+#define FLOW_RING_MASK                       ( FLOW_RING_SIZE - 1 )
+#define FLOW_BATCH_MAX_SAMPLES               16
+#if ( FLOW_RING_SIZE & ( FLOW_RING_SIZE - 1 ) )
+#error "FLOW_RING_SIZE must be a power of two"
+#endif
+
+typedef struct
+{
+    uint32_t t_ms;      /* PIC millisecond timer at the time the reading was accepted (v3.3: 32 bit, wrap 49.7 days) */
+    int16_t flow_raw;   /* sensor raw value; ul/h = raw * 60 / scale */
+} flow_sample_t;
 
 /* DAC Constants */
 typedef enum
@@ -121,6 +170,7 @@ bool eeprom_okay;
 bool adc_okay;
 bool mux_okay;
 volatile uint16_t timer_ms;
+volatile uint16_t timer_ms_hi;  /* v3.3: high word; timer_now32() composes the 32-bit time */
 E_CTRL_MODE ctrl_modes[NUM_PRESSURE_CLTRLS];
 
 /* Pressure Data */
@@ -132,7 +182,8 @@ E_ADC_STATE adc_state;
 uint8_t adc_go = 0;
 uint8_t adc_chan;
 uint16_t adc_time;
-ads1115_datarate adc_datarate = DATARATE_128SPS;
+// MODIFIED: Use configurable ADC datarate
+ads1115_datarate adc_datarate = ADC_DATARATE;
 ads1115_fsr_gain adc_gain = FSR_6_144;
 uint8_t adc_i2c_addr = ADS1115_ADDR_GND;
 ads1115_task_t adc_task;
@@ -143,6 +194,26 @@ volatile int16_t flow_raw_actual[NUM_PRESSURE_CLTRLS];
 int16_t flow_raw_target[NUM_PRESSURE_CLTRLS];
 uint16_t flow_scales_ul_min[NUM_PRESSURE_CLTRLS];
 bool flow_present[NUM_PRESSURE_CLTRLS];
+
+// MODIFIED: Added flow refresh counter for duplicate detection
+volatile uint16_t flow_refresh_counter = 0;   // v3.1: advances only when a channel accepted a new reading
+// MODIFIED: Added active sensor mask for dynamic sensor selection
+volatile uint8_t active_sensor_mask = 0b1111;  // All 4 sensors active by default (bit 0=sensor0, bit3=sensor3)
+/* v3: per-channel read statistics (wrap at 2^32; host computes deltas) */
+uint32_t flow_stats_ok[NUM_PRESSURE_CLTRLS];        // readings accepted (I2C ok + CRC ok)
+uint32_t flow_stats_crc_err[NUM_PRESSURE_CLTRLS];   // readings rejected by CRC-8
+uint32_t flow_stats_i2c_err[NUM_PRESSURE_CLTRLS];   // mux or sensor I2C failures (timeouts, bus errors)
+uint32_t flow_stats_not_ready[NUM_PRESSURE_CLTRLS]; // polls NACKed because the measurement was still running (benign)
+uint32_t flow_stats_saturated[NUM_PRESSURE_CLTRLS]; // v3.3: accepted readings at the +-32400 rail (sensor out of range)
+/* v3: sensor measurement resolution applied to all present sensors */
+uint8_t flow_resolution_bits = SENSIRION_RESOLUTION_DEFAULT_BITS;
+/* v3.2: free-running measurement scheduler (see poll_flows) */
+flow_sample_t flow_ring[NUM_PRESSURE_CLTRLS][FLOW_RING_SIZE];
+bool flow_pending[NUM_PRESSURE_CLTRLS];     /* a measurement is believed to be in progress */
+uint16_t flow_trig_ms[NUM_PRESSURE_CLTRLS]; /* timer_ms when it was triggered */
+uint16_t flow_poll_ms[NUM_PRESSURE_CLTRLS]; /* timer_ms of the last read attempt (max one poll per ms) */
+uint8_t flow_tmin_ms = 8;                   /* min processing time of the active resolution */
+int8_t mux_selected = -1;                   /* PCA9544A channel currently routed, -1 = unknown */
 uint8_t pca9544a_i2c_addr = 0b1110000;
 volatile int32_t fpid_integrated[NUM_PRESSURE_CLTRLS];
 int32_t fpid_windup_limit = 100;
@@ -159,7 +230,7 @@ uint8_t packet_type;
 uint8_t packet_data[SPI_PACKET_BUF_SIZE];
 uint8_t packet_data_size;
 
-inline int32_t constrain_i32( int32_t value, int32_t min, int32_t max )
+static inline int32_t constrain_i32( int32_t value, int32_t min, int32_t max )
 {
     if ( value < min )
         return min;
@@ -220,6 +291,10 @@ void set_pressures( void )
     dac_write_ldac( DAC_CHAN_D, pressure_mbar_shl_output[3], 1 );
     */
 }
+
+/* v3.2 forward declarations (defined after the packet handlers) */
+err select_flow_mux( uint8_t chan );
+void flow_apply_resolution_timing( void );
 
 err parse_packet_get_id( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
 {
@@ -401,15 +476,22 @@ err parse_packet_get_flow_target( uint8_t packet_type, uint8_t *packet_data, uin
 
 err parse_packet_get_flow_actual( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
 {
-    /* Return: [err U8]4x[Flow ul/hr I16] */
+    // MODIFIED: Response layout now includes refresh counter
+    // Return: [err U8][refresh_counter U16][4 × flow_ul_hr I16]
     
     err rc = ERR_OK;
     uint8_t chan;
-    uint8_t return_buf[ sizeof(err) + (NUM_PRESSURE_CLTRLS*sizeof(int16_t)) ];
+    // MODIFIED: Increased buffer size to accommodate refresh counter
+    uint8_t return_buf[ sizeof(err) + sizeof(uint16_t) + (NUM_PRESSURE_CLTRLS*sizeof(int16_t)) ];
     uint8_t *return_buf_ptr;
     
     return_buf_ptr = return_buf;
     *return_buf_ptr++ = ERR_OK;
+    
+    // MODIFIED: Insert refresh counter before flow data
+    uint16_t counter_snapshot = flow_refresh_counter;
+    COPY_16BIT_TO_PTR(return_buf_ptr, counter_snapshot);
+    return_buf_ptr += sizeof(uint16_t);
     
     for ( chan=0; chan<NUM_PRESSURE_CLTRLS; chan++ )
     {
@@ -419,6 +501,7 @@ err parse_packet_get_flow_actual( uint8_t packet_type, uint8_t *packet_data, uin
         return_buf_ptr += sizeof(int16_t);
     }
     
+    // MODIFIED: Response size now includes refresh counter (11 bytes vs 9 bytes)
     spi_packet_write( packet_type, return_buf, sizeof(return_buf) );
     
     return rc;
@@ -625,6 +708,248 @@ err parse_packet_get_fpid_consts( uint8_t packet_type, uint8_t *packet_data, uin
     return rc;
 }
 
+err parse_packet_set_active_sensors( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* Data: [Sensor Mask U8] - bit 0=sensor0, bit3=sensor3 */
+    
+    err rc = ERR_OK;
+    uint8_t sensor_mask;
+    
+    if ( packet_data_size != 1 )
+    {
+        rc = ERR_PACKET_INVALID;
+    }
+    else
+    {
+        sensor_mask = packet_data[0];
+        
+        // MODIFIED: Validate sensor mask - only allow bits 0-3
+        if ( sensor_mask & 0xF0 )
+        {
+            // Invalid bits set
+            rc = ERR_PACKET_INVALID;
+        }
+        else
+        {
+            // MODIFIED: Set active sensor mask
+            active_sensor_mask = sensor_mask;
+        }
+    }
+    
+    /* v3.2: reply only on success; on error the main loop sends the single [err]
+     * reply (previously both were sent, leaving a stale packet in the buffer). */
+    if ( rc == ERR_OK )
+        spi_packet_write( packet_type, &rc, 1 );
+    return rc;
+}
+
+err parse_packet_get_active_sensors( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* Return: [err U8][Sensor Mask U8] */
+    
+    err rc = ERR_OK;
+    uint8_t return_buf[ sizeof(err) + sizeof(uint8_t) ];
+    
+    return_buf[0] = ERR_OK;
+    return_buf[1] = active_sensor_mask;
+    
+    spi_packet_write( packet_type, return_buf, sizeof(return_buf) );
+    return rc;
+}
+
+/* ---- v3 packets ---------------------------------------------------------- */
+
+err parse_packet_get_flow_stats( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* Data:   [chan U8]
+     * Return: [err U8][ok U32][crc_err U32][i2c_err U32][not_ready U32][saturated U32]  (little-endian)
+     * saturated (v3.3) appended at the end: old hosts read the first 17 bytes unchanged. */
+
+    err rc = ERR_OK;
+    uint8_t chan;
+    uint8_t return_buf[ sizeof(err) + 5*sizeof(uint32_t) ];
+    uint8_t *return_buf_ptr = return_buf;
+    
+    if ( packet_data_size != 1 )
+        rc = ERR_PACKET_INVALID;
+    else
+    {
+        chan = packet_data[0];
+        if ( chan >= NUM_PRESSURE_CLTRLS )
+            rc = ERR_PACKET_INVALID;
+    }
+    
+    /* On error the caller (main loop) sends the [err] reply, like the other handlers. */
+    if ( rc == ERR_OK )
+    {
+        *return_buf_ptr++ = ERR_OK;
+        COPY_32BIT_TO_PTR( return_buf_ptr, flow_stats_ok[chan] );      return_buf_ptr += sizeof(uint32_t);
+        COPY_32BIT_TO_PTR( return_buf_ptr, flow_stats_crc_err[chan] ); return_buf_ptr += sizeof(uint32_t);
+        COPY_32BIT_TO_PTR( return_buf_ptr, flow_stats_i2c_err[chan] ); return_buf_ptr += sizeof(uint32_t);
+        COPY_32BIT_TO_PTR( return_buf_ptr, flow_stats_not_ready[chan] ); return_buf_ptr += sizeof(uint32_t);
+        COPY_32BIT_TO_PTR( return_buf_ptr, flow_stats_saturated[chan] ); return_buf_ptr += sizeof(uint32_t);
+
+        spi_packet_write( packet_type, return_buf, sizeof(return_buf) );
+    }
+    
+    return rc;
+}
+
+err parse_packet_set_flow_resolution( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* Data:   [bits U8]  9..16 (9 bit = 1 ms, 16 bit = 74 ms per measurement)
+     * Return: [err U8]
+     * Applied to every present sensor; measurement is restarted afterwards.
+     * Not persisted: the PIC boots at SENSIRION_RESOLUTION_DEFAULT_BITS. */
+    
+    err rc = ERR_OK;
+    err chan_rc;
+    uint8_t bits;
+    uint8_t chan;
+    
+    if ( packet_data_size != 1 )
+        rc = ERR_PACKET_INVALID;
+    else
+    {
+        bits = packet_data[0];
+        if ( ( bits < SENSIRION_RESOLUTION_MIN_BITS ) || ( bits > SENSIRION_RESOLUTION_MAX_BITS ) )
+            rc = ERR_SENSIRION_RESOLUTION_INVALID;
+    }
+    
+    if ( rc == ERR_OK )
+    {
+        /* v3.2: packet handlers run before the ADC state machine in the main
+         * loop, so an ADC transaction may still be in flight.  Let it finish
+         * (< 0.3 ms) instead of queueing behind it or aborting it. */
+        uint16_t wait_start = timer_ms;
+        while ( ( adc_task.status == I2C2_MESSAGE_PENDING ) && ( (uint16_t)( timer_ms - wait_start ) <= 3 ) );
+        
+        for ( chan=0; chan<NUM_PRESSURE_CLTRLS; chan++ )
+        {
+            if ( !flow_present[chan] )
+                continue;
+            
+            chan_rc = select_flow_mux( chan );
+            if ( chan_rc == ERR_OK )
+                chan_rc = sensirion_set_resolution( bits );
+            if ( chan_rc == ERR_OK )
+                chan_rc = sensirion_measurement_start();
+            
+            /* v3.2: tell the scheduler what state the sensor is in now */
+            flow_pending[chan] = ( chan_rc == ERR_OK );
+            flow_trig_ms[chan] = timer_ms;
+            
+            if ( chan_rc != ERR_OK )
+                rc = chan_rc;   /* report the failure but keep configuring the others */
+        }
+        
+        if ( rc == ERR_OK )
+        {
+            flow_resolution_bits = bits;
+            flow_apply_resolution_timing();
+        }
+    }
+    
+    /* Success reply here; on error the main loop sends the [err] reply. */
+    if ( rc == ERR_OK )
+        spi_packet_write( packet_type, &rc, 1 );
+    
+    return rc;
+}
+
+err parse_packet_get_flow_resolution( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* Return: [err U8][bits U8] */
+    
+    uint8_t return_buf[ sizeof(err) + sizeof(uint8_t) ];
+    
+    return_buf[0] = ERR_OK;
+    return_buf[1] = flow_resolution_bits;
+    
+    spi_packet_write( packet_type, return_buf, sizeof(return_buf) );
+    return ERR_OK;
+}
+
+err parse_packet_get_fw_version( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* Return: [err U8][major U8][minor U8] */
+    
+    uint8_t return_buf[ sizeof(err) + 2 ];
+    
+    return_buf[0] = ERR_OK;
+    return_buf[1] = FW_VERSION_MAJOR;
+    return_buf[2] = FW_VERSION_MINOR;
+    
+    spi_packet_write( packet_type, return_buf, sizeof(return_buf) );
+    return ERR_OK;
+}
+
+err parse_packet_get_flow_batch( uint8_t packet_type, uint8_t *packet_data, uint8_t packet_data_size )
+{
+    /* v3.2 (v3.3: t_ms widened to U32, 6 bytes/sample, max reply 103 B within the 128 B SPI buffer)
+     * Data:   [chan U8][since_seq U16]   since_seq = last sequence number the host already has
+     * Return: [err U8][n U8][seq0 U16][scale U16][n x (t_ms U32, flow_raw I16)][crc8 U8]
+     *   - seq is the per-channel ok counter (GET_FLOW_STATS) truncated to 16 bit; the k-th
+     *     accepted reading has seq k.  Samples are delivered in order from seq0 = since_seq+1.
+     *   - err = ERR_OK and n = 0 means nothing new yet.
+     *   - err = ERR_FLOW_BATCH_GAP: since_seq is outside the ring (host too slow, PIC reset,
+     *     or first request); delivery restarts from the oldest sample kept, so the host sees
+     *     the hole as seq0 != since_seq+1.  The packet is still a valid data packet.
+     *   - crc8 (Sensirion polynomial 0x31) covers all preceding bytes of the data field.
+     * Stateless on the PIC: repeating a request returns the same data (idempotent). */
+    
+    err rc = ERR_OK;
+    uint8_t chan;
+    uint16_t since_seq;
+    uint16_t head_seq;
+    uint16_t seq0;
+    uint16_t kept;
+    int16_t avail;
+    uint8_t n;
+    uint8_t i;
+    /* 6 B/sample on the wire (t_ms U32 + flow_raw I16), independent of struct padding */
+    uint8_t return_buf[ 1 + 1 + 2 + 2 + FLOW_BATCH_MAX_SAMPLES * 6 + 1 ];
+    uint8_t *ptr = return_buf;
+    err status = ERR_OK;
+    
+    if ( packet_data_size != 3 )
+        return ERR_PACKET_INVALID;
+    chan = packet_data[0];
+    if ( chan >= NUM_PRESSURE_CLTRLS )
+        return ERR_PACKET_INVALID;
+    since_seq = (uint16_t)packet_data[1] | ( (uint16_t)packet_data[2] << 8 );
+    
+    head_seq = (uint16_t)flow_stats_ok[chan];
+    kept = ( flow_stats_ok[chan] < FLOW_RING_SIZE ) ? (uint16_t)flow_stats_ok[chan] : FLOW_RING_SIZE;
+    avail = (int16_t)( head_seq - since_seq );
+    
+    if ( ( avail < 0 ) || ( avail > (int16_t)kept ) )
+    {
+        /* Outside what we still hold: resynchronise from the oldest kept sample. */
+        status = ERR_FLOW_BATCH_GAP;
+        avail = (int16_t)kept;
+    }
+    seq0 = (uint16_t)( head_seq - avail + 1 );
+    n = ( avail > FLOW_BATCH_MAX_SAMPLES ) ? FLOW_BATCH_MAX_SAMPLES : (uint8_t)avail;
+    
+    *ptr++ = status;
+    *ptr++ = n;
+    COPY_16BIT_TO_PTR( ptr, seq0 );                      ptr += 2;
+    COPY_16BIT_TO_PTR( ptr, flow_scales_ul_min[chan] );  ptr += 2;
+    for ( i = 0; i < n; i++ )
+    {
+        flow_sample_t *smp = &flow_ring[chan][ (uint16_t)( seq0 + i ) & FLOW_RING_MASK ];
+        COPY_32BIT_TO_PTR( ptr, smp->t_ms );     ptr += 4;
+        COPY_16BIT_TO_PTR( ptr, smp->flow_raw ); ptr += 2;
+    }
+    *ptr = sensirion_crc8( return_buf, (uint8_t)( ptr - return_buf ) );
+    ptr++;
+    
+    spi_packet_write( packet_type, return_buf, (uint8_t)( ptr - return_buf ) );
+    
+    return rc;
+}
+
 void init( void )
 {
     uint8_t chan;
@@ -696,6 +1021,23 @@ void __attribute__ ((weak)) timer_isr(void)
 //    PORTAbits.RA1 = OSCCONbits.LOCK ? 1 : 0;
 //    PORTAbits.RA1 = OSCCONbits.OSWEN;
     timer_ms++;
+    if ( timer_ms == 0 )
+        timer_ms_hi++;
+}
+
+/* v3.3: 32-bit millisecond time. Read hi/lo with a retry so a timer tick between
+ * the two reads (lo wrapping, hi advancing) cannot produce a torn value. */
+static uint32_t timer_now32( void )
+{
+    uint16_t hi, lo;
+
+    do
+    {
+        hi = timer_ms_hi;
+        lo = timer_ms;
+    } while ( hi != timer_ms_hi );
+
+    return ( (uint32_t)hi << 16 ) | lo;
 }
 
 void storage_save_defaults()
@@ -745,49 +1087,130 @@ void storage_startup()
     printf( "\n" );
 }
 
-void read_flows( void )
+err select_flow_mux( uint8_t chan )
 {
+    /* v3.2: route the I2C mux to the sensor of `chan`, skipping the transaction
+     * when it is already routed there.  Any failure forgets the cached state. */
     err rc = ERR_OK;
+    
+    if ( mux_selected != (int8_t)flow_map[chan] )
+    {
+        rc = pca9544a_write( pca9544a_i2c_addr, 1, flow_map[chan] );
+        mux_selected = ( rc == ERR_OK ) ? (int8_t)flow_map[chan] : -1;
+    }
+    return rc;
+}
+
+void flow_apply_resolution_timing( void )
+{
+    flow_tmin_ms = sensirion_processing_time_min_ms( flow_resolution_bits );
+}
+
+void poll_flows( void )
+{
+    /* v3.2: free-running measurement scheduler, called from the main loop on
+     * every iteration in which the ADC state machine has no I2C transaction in
+     * flight (the MCC queue holds a single transaction).
+     *
+     * Per present+active channel (Sensirion I2C guide 4.1/4.5, hold-master off):
+     *   - no measurement pending  -> trigger one (0xF1 + read header), note the time
+     *   - pending and >= t_min elapsed -> read; the sensor NACKs cheaply if still busy
+     *   - accepted reading -> store in the ring, advance counters, trigger the next
+     *     measurement immediately (continuous coverage, no blind spots)
+     * Error handling keeps the previous value (as before) and never blocks the loop
+     * beyond one I2C transaction. */
+    err rc;
     uint8_t chan;
     int16_t flow;
-    float pressure_actual;
-    float pressure_target;
-//    uint16_t elapsed;
-    
-    /* 672us to set MUX and read one channel = 16us * 42 ticks at 400kHz I2C */
+    bool new_data = false;
     
     for ( chan=0; chan<NUM_PRESSURE_CLTRLS; chan++ )
     {
-//        if ( chan == 0 )
-//            elapsed = TMR1;
+        if ( !( active_sensor_mask & ( 1 << chan ) ) || !flow_present[chan] )
+            continue;
         
-        if ( flow_present[chan] )
+        if ( !flow_pending[chan] )
         {
-            /* Set Sensirion I2C MUX channel */
-            rc = pca9544a_write( pca9544a_i2c_addr, 1, flow_map[chan] );
-
-            /* Read Sensirion flow rate */
+            rc = select_flow_mux( chan );
             if ( rc == ERR_OK )
+                rc = sensirion_measurement_start();
+            if ( ( rc == ERR_OK ) || ( rc == ERR_SENSIRION_NOT_READY ) )
             {
-                rc = sensirion_measurement_read( &flow );
-                sensirion_measurement_start();
+                /* NOT_READY here = sensor already measuring (e.g. after a CRC
+                 * failure the read header itself restarted it): same outcome. */
+                flow_pending[chan] = true;
+                flow_trig_ms[chan] = timer_ms;
             }
+            else
+            {
+                flow_stats_i2c_err[chan]++;
+                mux_selected = -1;
+            }
+            continue;
+        }
         
-            if ( rc == ERR_OK )
-                flow_raw_actual[chan] = flow;
+        if ( (uint16_t)( timer_ms - flow_trig_ms[chan] ) < flow_tmin_ms )
+            continue;
+        /* At most one read attempt per millisecond: a NACK costs ~50 us of bus
+         * time, polling every loop iteration would add ~20 of them per sample. */
+        if ( timer_ms == flow_poll_ms[chan] )
+            continue;
+        flow_poll_ms[chan] = timer_ms;
+        
+        rc = select_flow_mux( chan );
+        if ( rc == ERR_OK )
+            rc = sensirion_measurement_read( &flow );
+        
+        if ( rc == ERR_OK )
+        {
+            uint16_t seq;
+            
+            flow_raw_actual[chan] = flow;
+            flow_stats_ok[chan]++;
+            if ( ( flow >= FLOW_SATURATION_COUNTS ) || ( flow <= -FLOW_SATURATION_COUNTS ) )
+                flow_stats_saturated[chan]++;
+            seq = (uint16_t)flow_stats_ok[chan];
+            flow_ring[chan][seq & FLOW_RING_MASK].t_ms = timer_now32();
+            flow_ring[chan][seq & FLOW_RING_MASK].flow_raw = flow;
+            new_data = true;
+            
+            /* Trigger the next measurement right away (datasheet recommendation). */
+            rc = sensirion_measurement_start();
+            flow_pending[chan] = ( ( rc == ERR_OK ) || ( rc == ERR_SENSIRION_NOT_READY ) );
+            flow_trig_ms[chan] = timer_ms;
+            if ( !flow_pending[chan] )
+            {
+                flow_stats_i2c_err[chan]++;
+                mux_selected = -1;
+            }
+        }
+        else if ( rc == ERR_SENSIRION_NOT_READY )
+        {
+            flow_stats_not_ready[chan]++;
+            /* Give up waiting if the measurement should long have finished
+             * (sensor reset / power glitch): re-trigger on the next pass. */
+            if ( (uint16_t)( timer_ms - flow_trig_ms[chan] ) > (uint16_t)( 2 * flow_tmin_ms + 20 ) )
+                flow_pending[chan] = false;
+        }
+        else if ( rc == ERR_SENSIRION_CRC_FAIL )
+        {
+            flow_stats_crc_err[chan]++;
+            /* Re-trigger explicitly on the next pass (0xF1 + read header):
+             * whether or not the failed read header restarted the sensor,
+             * start() answers OK or NOT_READY and the scheduler stays in sync. */
+            flow_pending[chan] = false;
         }
         else
-            flow = 0;
-        
-//        if ( chan == 0 )
-//            elapsed = TMR1 - elapsed;
-        
-        pressure_actual = (float)pressure_mbar_shl_actual[chan] / ( 1 << PRESSURE_SHL );
-        pressure_target = (float)pressure_mbar_shl_output[chan] / ( 1 << PRESSURE_SHL );
-        printf( "Chan %hu mode %u, Pressure %8.2f / %7.2f, Flow %8.3f ul/hr rc=%3hu present=%u\n", chan+1, ctrl_modes[chan], (double)pressure_actual, (double)pressure_target, (double)flow*60/flow_scales_ul_min[chan], rc, flow_present[chan] );
+        {
+            flow_stats_i2c_err[chan]++;
+            mux_selected = -1;
+            flow_pending[chan] = false;
+        }
     }
     
-    printf( "\n" );
+    /* v3.1 rule: the refresh counter is a measurement sequence number. */
+    if ( new_data )
+        flow_refresh_counter++;
 }
 
 void update_outputs( void )
@@ -906,7 +1329,13 @@ void init_sensirion_lg16( void )
         if ( rc == ERR_OK )
             rc = sensirion_read_reg( SENSIRION_REG_ADV_USER_READ, &adv_user_reg );
         if ( rc == ERR_OK )
+        {
             adv_user_reg &= ~0x02;  // Disable hold-master
+            /* v3: pin the resolution explicitly (default 16 bit = factory value,
+             * so the register written at boot is the same as before). */
+            adv_user_reg &= ~SENSIRION_ADV_USER_RESOLUTION_MASK;
+            adv_user_reg |= (uint16_t)( flow_resolution_bits - SENSIRION_RESOLUTION_MIN_BITS ) << SENSIRION_ADV_USER_RESOLUTION_SHIFT;
+        }
         if ( rc == ERR_OK )
             rc = sensirion_write_reg( SENSIRION_REG_ADV_USER_WRITE, adv_user_reg );
         if ( rc == ERR_OK )
@@ -915,6 +1344,10 @@ void init_sensirion_lg16( void )
             flow_scale = 1;
         if ( rc == ERR_OK )
             sensirion_measurement_start();
+        
+        /* v3.2: scheduler state after init */
+        flow_pending[chan] = ( rc == ERR_OK );
+        flow_trig_ms[chan] = timer_ms;
         
         flow_scales_ul_min[chan] = flow_scale;
         flow_present[chan] = ( rc == ERR_OK ) ? true : false;
@@ -927,6 +1360,9 @@ void init_sensirion_lg16( void )
     }
     
     printf( "\n" );
+    
+    mux_selected = -1;              /* v3.2: mux was driven directly above */
+    flow_apply_resolution_timing();
     
     /* Allow enough time for first measurements. */
     __delay_ms( 100 );
@@ -1022,11 +1458,117 @@ int main(void)
     
     while (1)
     {
+        // MODIFIED: SPI processing moved here to handle packets every iteration
+        comms_rc = spi_packet_read( &spi_packet, &packet_type, (uint8_t *)&packet_data, &packet_data_size, SPI_PACKET_BUF_SIZE );
+        
+        if ( ( comms_rc == ERR_OK ) && ( packet_type != 0 ) )
+        {
+            rc = ERR_OK;
+            
+            // MODIFIED: Commented out printf to reduce SPI processing overhead
+            // printf( "Packet received: Cmd %hu\n", packet_type );
+            spi_clear_write();
+            
+            switch ( packet_type )
+            {
+                case 0:
+                {
+                    /* No or invalid packet */
+                    rc = ERR_PACKET_INVALID;
+                    break;
+                }
+                case PACKET_TYPE_GET_ID:
+                    rc = parse_packet_get_id( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_SET_PRESSURE_TARGET:
+                    rc = parse_packet_set_pressure_target( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_PRESSURE_TARGET:
+                    rc = parse_packet_get_pressure_target( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_PRESSURE_ACTUAL:
+                    rc = parse_packet_get_pressure_actual( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_SET_FLOW_TARGET:
+                    rc = parse_packet_set_flow_target( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_FLOW_TARGET:
+                    rc = parse_packet_get_flow_target( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_FLOW_ACTUAL:
+                    rc = parse_packet_get_flow_actual( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_SET_CONTROL_MODE:
+                    rc = parse_packet_set_control_mode( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_CONTROL_MODE:
+                    rc = parse_packet_get_control_mode( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_SET_FPID_CONSTS:
+                    rc = parse_packet_set_fpid_consts( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_FPID_CONSTS:
+                    rc = parse_packet_get_fpid_consts( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_SET_ACTIVE_SENSORS:
+                    rc = parse_packet_set_active_sensors( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_ACTIVE_SENSORS:
+                    rc = parse_packet_get_active_sensors( packet_type, packet_data, packet_data_size );
+                    break;
+                /* v3 */
+                case PACKET_TYPE_GET_FLOW_STATS:
+                    rc = parse_packet_get_flow_stats( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_SET_FLOW_RESOLUTION:
+                    rc = parse_packet_set_flow_resolution( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_FLOW_RESOLUTION:
+                    rc = parse_packet_get_flow_resolution( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_FW_VERSION:
+                    rc = parse_packet_get_fw_version( packet_type, packet_data, packet_data_size );
+                    break;
+                case PACKET_TYPE_GET_FLOW_BATCH:
+                    rc = parse_packet_get_flow_batch( packet_type, packet_data, packet_data_size );
+                    break;
+                default:
+                    rc = ERR_PACKET_INVALID;
+            }
+            
+            if ( rc != ERR_OK )
+                spi_packet_write( packet_type, &rc, 1 );
+        }
+        else if ( ( spi_write_bytes_written() > 0 ) && spi_packet_timeout( &spi_packet ) )
+        {
+            spi_clear_write();
+            // MODIFIED: Commented out printf to reduce timeout handling overhead
+            // printf( "Cleared\n" );
+        }
+        else if ( SS1_GetValue() != slave_select )
+        {
+            /* If slave select dropped, clear SPI interface */
+            
+            slave_select = !slave_select;
+            
+            if ( slave_select == 1 )
+            {
+                spi_packet_clear( &spi_packet );
+                spi_clear_write();
+            }
+        }
+        
         if ( I2C2_Aborted() )
         {
             adc_state = ADC_STATE_WAIT;
             adc_i2c_wait = 0;
+            mux_selected = -1;      /* v3.2: peripheral was re-initialised */
         }
+        
+        /* v3.2: sensor scheduler runs whenever the ADC has no I2C transaction
+         * in flight, so the two never interleave on the single-entry queue. */
+        if ( !adc_i2c_wait )
+            poll_flows();
         
         if ( adc_i2c_wait )
         {
@@ -1081,7 +1623,8 @@ int main(void)
             /* When we have read all ADCs (or error), update outputs */
             if ( ( adc_state == ADC_STATE_WAIT ) && ( adc_rc != 0 ) )
             {
-                read_flows();
+                /* v3.2: flow readings are no longer taken here (see poll_flows);
+                 * the control loop uses the latest accepted value. */
                 update_outputs();
             }
         }
@@ -1089,11 +1632,24 @@ int main(void)
         {
             case ADC_STATE_START:
             {
+                // MODIFIED: Find first active ADC channel to start scanning
                 adc_chan = 0;
-                ads1115_read_adc_start( adc_i2c_addr, -1, adc_chan, adc_datarate, adc_gain, &adc_task );
-//                __delay_ms( 10 );
-                adc_i2c_wait = 1;
-                adc_state = ADC_STATE_SAMPLE;
+                while ( adc_chan < NUM_PRESSURE_CLTRLS && !(active_sensor_mask & (1 << adc_chan)) )
+                {
+                    adc_chan++;
+                }
+                
+                if ( adc_chan >= NUM_PRESSURE_CLTRLS )
+                {
+                    // No active sensors - skip to wait state
+                    adc_state = ADC_STATE_WAIT;
+                }
+                else
+                {
+                    ads1115_read_adc_start( adc_i2c_addr, -1, adc_chan, adc_datarate, adc_gain, &adc_task );
+                    adc_i2c_wait = 1;
+                    adc_state = ADC_STATE_SAMPLE;
+                }
                 break;
             }
             case ADC_STATE_SAMPLE:
@@ -1111,9 +1667,25 @@ int main(void)
                     }
                     else
                     {
-                        /* Read and start next */
-                        adc_chan++;
-                        ads1115_read_adc_start( adc_i2c_addr, read_chan, adc_chan, adc_datarate, adc_gain, &adc_task );
+                        /* Find next active channel */
+                        uint8_t next_chan = adc_chan + 1;
+                        while ( next_chan < NUM_PRESSURE_CLTRLS && !(active_sensor_mask & (1 << next_chan)) )
+                        {
+                            next_chan++;
+                        }
+                        
+                        if ( next_chan >= NUM_PRESSURE_CLTRLS )
+                        {
+                            /* No more active channels - read last and go to wait */
+                            ads1115_read_adc_start( adc_i2c_addr, read_chan, -1, adc_datarate, adc_gain, &adc_task );
+                            adc_state = ADC_STATE_WAIT;
+                        }
+                        else
+                        {
+                            /* Read current and start next active channel */
+                            adc_chan = next_chan;
+                            ads1115_read_adc_start( adc_i2c_addr, read_chan, adc_chan, adc_datarate, adc_gain, &adc_task );
+                        }
                     }
                     
                     adc_i2c_wait = 1;
@@ -1141,81 +1713,6 @@ int main(void)
             }
             default:
                 adc_state = ADC_STATE_START;
-        }
-        
-        comms_rc = spi_packet_read( &spi_packet, &packet_type, (uint8_t *)&packet_data, &packet_data_size, SPI_PACKET_BUF_SIZE );
-        
-        if ( ( comms_rc == ERR_OK ) && ( packet_type != 0 ) )
-        {
-            rc = ERR_OK;
-            
-            printf( "Packet received: Cmd %hu\n", packet_type );
-            spi_clear_write();
-            
-            switch ( packet_type )
-            {
-                case 0:
-                {
-                    /* No or invalid packet */
-                    rc = ERR_PACKET_INVALID;
-                    break;
-                }
-                case PACKET_TYPE_GET_ID:
-                    rc = parse_packet_get_id( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_SET_PRESSURE_TARGET:
-                    rc = parse_packet_set_pressure_target( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_GET_PRESSURE_TARGET:
-                    rc = parse_packet_get_pressure_target( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_GET_PRESSURE_ACTUAL:
-                    rc = parse_packet_get_pressure_actual( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_SET_FLOW_TARGET:
-                    rc = parse_packet_set_flow_target( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_GET_FLOW_TARGET:
-                    rc = parse_packet_get_flow_target( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_GET_FLOW_ACTUAL:
-                    rc = parse_packet_get_flow_actual( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_SET_CONTROL_MODE:
-                    rc = parse_packet_set_control_mode( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_GET_CONTROL_MODE:
-                    rc = parse_packet_get_control_mode( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_SET_FPID_CONSTS:
-                    rc = parse_packet_set_fpid_consts( packet_type, packet_data, packet_data_size );
-                    break;
-                case PACKET_TYPE_GET_FPID_CONSTS:
-                    rc = parse_packet_get_fpid_consts( packet_type, packet_data, packet_data_size );
-                    break;
-                default:
-                    rc = ERR_PACKET_INVALID;
-            }
-            
-            if ( rc != ERR_OK )
-                spi_packet_write( packet_type, &rc, 1 );
-        }
-        else if ( ( spi_write_bytes_written() > 0 ) && spi_packet_timeout( &spi_packet ) )
-        {
-            spi_clear_write();
-            printf( "Cleared\n" );
-        }
-        else if ( SS1_GetValue() != slave_select )
-        {
-            /* If slave select dropped, clear SPI interface */
-            
-            slave_select = !slave_select;
-            
-            if ( slave_select == 1 )
-            {
-                spi_packet_clear( &spi_packet );
-                spi_clear_write();
-            }
         }
     }
     

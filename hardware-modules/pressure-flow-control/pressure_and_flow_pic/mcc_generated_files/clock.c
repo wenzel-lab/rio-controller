@@ -52,8 +52,11 @@ void CLOCK_Initialize(void)
     CLKDIV = 0x3001;
     // PLLFBDIV 150; 
     PLLFBD = 0x96;
-    // TUN Center frequency; 
-    OSCTUN = 0x00;
+    // TUN -15 steps (~-0.70 %, 0.047 %/step). v3.3 shipped +15 (0x0F) because the
+    // 11-nov skew sign was inverted: measured pre-trim +0.698 % (FRC fast), post +15
+    // steps +1.400 % (2026-11-16, two-point fit => 0.47  permil/step, matches DS).
+    // -15 steps nulls it. 6-bit two's complement in TUN<5:0>: -15 = 0x31. v3.4.
+    OSCTUN = 0x31;
     // POST1DIV 1:4; VCODIV FVCO/4; POST2DIV 1:1; 
     PLLDIV = 0x41;
     // APLLEN disabled; FRCSEL FRC; APLLPRE 1:1; 
